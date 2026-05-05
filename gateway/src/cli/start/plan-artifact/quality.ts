@@ -65,36 +65,36 @@ function rewriteHintForFinding(finding: PlanReviewFinding): string | undefined {
   switch (finding.code) {
     case "missing_section":
     case "proposed_plan_missing_section":
-      return `补齐章节 ${finding.section ?? "global"}，并写明可执行条目`;
+      return `Fill in section ${finding.section ?? "global"} and add executable items`;
     case "placeholder_detected":
-      return `移除占位词并补齐 ${finding.section ?? "global"} 的具体实现内容`;
+      return `Remove placeholders and fill in concrete implementation details for ${finding.section ?? "global"}`;
     case "unresolved_question":
-      return `先澄清未决问题，再重新评审 ${finding.section ?? "global"}`;
+      return `Clarify unresolved questions before re-reviewing ${finding.section ?? "global"}`;
     case "milestones_missing_done_criteria":
-      return "每个里程碑增加“完成判据”";
+      return "Add a done-when criterion to each milestone";
     case "milestones_missing_validation":
-      return "每个里程碑增加“验证”步骤与命令";
+      return "Add validation steps and commands to each milestone";
     case "milestones_missing_rollback":
-      return "每个里程碑增加“回退”预案";
+      return "Add rollback plans to each milestone";
     case "validation_missing_items":
-      return "Validation 至少补 1 条可执行命令与预期结果";
+      return "Validation needs at least one executable command and expected result";
     case "validation_missing_command":
-      return "Validation 补真实命令，或写明手工验证步骤";
+      return "Add real commands or spell out manual validation steps in Validation";
     case "validation_missing_expected_result":
-      return "Validation 补每条验证的预期结果";
+      return "Add expected results for every Validation item";
     case "risk_missing_item":
     case "risk_too_vague":
-      return "Risk & Rollback 写具体风险，而不是“低/无/可控”";
+      return "Write specific risks in Risk & Rollback instead of vague labels";
     case "rollback_missing_item":
     case "rollback_too_vague":
-      return "Risk & Rollback 写可执行回退动作";
+      return "Write executable rollback actions in Risk & Rollback";
     case "goal_too_vague":
-      return "Goal 写清楚目标行为变化和完成状态";
+      return "Make Goal describe the expected behavior change and done state";
     case "scope_in_missing_items":
     case "scope_out_missing_items":
-      return `补齐 ${finding.section ?? "Scope"} 的明确列表项`;
+      return `Add explicit list items for ${finding.section ?? "Scope"}`;
     case "proposed_plan_too_short":
-      return "补充关键改动、验证计划和风险回退，避免过短计划";
+      return "Add key changes, validation, and rollback details to avoid an overly short plan";
     default:
       return undefined;
   }
@@ -111,10 +111,10 @@ export function evaluatePlanQuality(planContent: string): PlanQualitySummary {
     .filter((item, index, list) => list.indexOf(item) === index)
     .slice(0, 4);
   const recommendation = review.ok
-    ? "质量达标，可进入审批或执行阶段"
+    ? "Quality is good enough to enter approval or execution"
     : review.blocked
-      ? "存在阻断项，先澄清未决问题再继续"
-      : "建议先修复高优先级 findings，再重新评审";
+      ? "Blocking items exist; clarify unresolved questions before continuing"
+      : "Fix high-priority findings before re-reviewing";
   return {
     score,
     grade,
@@ -181,16 +181,16 @@ function hasAnyFindingCode(findings: readonly PlanReviewFinding[], codes: readon
 function resolveMilestoneRepairHint(findings: readonly PlanReviewFinding[]): string {
   const parts: string[] = [];
   if (hasAnyFindingCode(findings, ["milestones_missing_items"])) {
-    parts.push("补里程碑条目");
+    parts.push("Add milestone entries");
   }
   if (hasAnyFindingCode(findings, ["milestones_missing_done_criteria"])) {
-    parts.push("补完成判据");
+    parts.push("Add done-when criteria");
   }
   if (hasAnyFindingCode(findings, ["milestones_missing_validation"])) {
-    parts.push("补验证步骤");
+    parts.push("Add validation steps");
   }
   if (hasAnyFindingCode(findings, ["milestones_missing_rollback"])) {
-    parts.push("补回退预案");
+    parts.push("Add rollback plans");
   }
   return parts.join(" + ");
 }
@@ -209,36 +209,36 @@ export function buildPlanQualityRepairActions(args: {
     actions.push({
       id: "repair_sections",
       priority: "p0",
-      title: `补齐关键章节（${sections}）`,
-      command: `直接补充当前计划：补齐 ${sections}，并给出可执行条目`,
-      rationale: "缺失或空章节会显著拉低质量分，并导致审批风险升高",
+      title: `Fill key sections (${sections})`,
+      command: `Update the current plan: fill ${sections} and add executable items`,
+      rationale: "Missing or empty sections lower the quality score and increase approval risk",
     });
   }
   if (hasAnyFindingCode(review.findings, ["unresolved_question"])) {
     actions.push({
       id: "resolve_unresolved_questions",
       priority: "p0",
-      title: "先消除未决问题再推进",
-      command: "直接补充当前计划：先明确未决问题答案，再回写 Goal / Scope / Risk",
-      rationale: "未决问题属于阻断类风险，未澄清不应进入审批/执行",
+      title: "Resolve unresolved questions first",
+      command: "Update the current plan: answer unresolved questions first, then rewrite Goal / Scope / Risk",
+      rationale: "Unresolved questions are blocking risks and should not enter approval or execution",
     });
   }
   if (hasAnyFindingCode(review.findings, ["placeholder_detected"])) {
     actions.push({
       id: "remove_placeholders",
       priority: "p1",
-      title: "移除占位词并替换为真实步骤",
-      command: "直接补充当前计划：移除 __REQUIRED__ / TODO，并写具体实现与验收",
-      rationale: "占位文本会触发质量扣分并削弱计划可执行性",
+      title: "Remove placeholders and replace them with real steps",
+      command: "Update the current plan: remove __REQUIRED__ / TODO and write concrete implementation and acceptance",
+      rationale: "Placeholder text lowers quality and weakens executability",
     });
   }
   if (hasAnyFindingCode(review.findings, ["scope_in_missing_items", "scope_out_missing_items", "goal_too_vague"])) {
     actions.push({
       id: "repair_goal_scope",
       priority: "p1",
-      title: "补清目标与范围边界",
-      command: "直接补充当前计划：把 Goal 写成可判断的行为变化，并为 Scope In/Out 各列具体条目",
-      rationale: "目标与范围不清会让执行阶段自行猜边界",
+      title: "Clarify goal and scope boundaries",
+      command: "Update the current plan: make Goal a verifiable behavior change and list concrete Scope In/Out items",
+      rationale: "Unclear goals and scope force the execution phase to guess boundaries",
     });
   }
   const milestoneRepairHint = resolveMilestoneRepairHint(review.findings);
@@ -246,9 +246,9 @@ export function buildPlanQualityRepairActions(args: {
     actions.push({
       id: "repair_milestones",
       priority: "p1",
-      title: "修复里程碑结构完整性",
-      command: `直接补充当前计划：为每个里程碑补“完成判据 + 验证 + 回退”；当前缺口：${milestoneRepairHint}`,
-      rationale: "里程碑缺少完成判据/验证/回退会直接降低执行可靠性",
+      title: "Fix milestone structure completeness",
+      command: `Update the current plan: add done-when criteria, validation, and rollback for each milestone; current gaps: ${milestoneRepairHint}`,
+      rationale: "Missing criteria, validation, or rollback reduces execution reliability",
     });
   }
   if (hasAnyFindingCode(review.findings, [
@@ -259,9 +259,9 @@ export function buildPlanQualityRepairActions(args: {
     actions.push({
       id: "repair_validation",
       priority: "p1",
-      title: "补齐 Validation 可执行命令与预期结果",
-      command: "直接补充当前计划：增加真实验证命令或手工验证步骤，并写明每条预期结果",
-      rationale: "缺少可执行验证与预期结果时，计划无法形成闭环验收",
+      title: "Fill Validation with executable commands and expected results",
+      command: "Update the current plan: add real validation commands or manual steps, and write the expected result for each",
+      rationale: "Without executable validation and expected results, the plan cannot close the loop",
     });
   }
   if (hasAnyFindingCode(review.findings, [
@@ -273,45 +273,45 @@ export function buildPlanQualityRepairActions(args: {
     actions.push({
       id: "repair_risk_rollback",
       priority: "p1",
-      title: "补具体风险与回退动作",
-      command: "直接补充当前计划：把 Risk & Rollback 改成“风险: 具体失败面 / 回退: 可执行恢复动作”",
-      rationale: "空泛风险会让审批看起来通过，但 apply 阶段缺少可恢复路径",
+      title: "Add concrete risks and rollback actions",
+      command: "Update the current plan: rewrite Risk & Rollback as specific failure modes and executable recovery actions",
+      rationale: "Vague risks may pass approval but leave the apply phase without a recovery path",
     });
   }
   if (hasAnyFindingCode(review.findings, ["proposed_plan_too_short", "proposed_plan_empty"])) {
     actions.push({
       id: "expand_plan_detail",
       priority: "p2",
-      title: "扩充计划细节深度",
-      command: "直接补充当前计划：补关键改动、验证矩阵、风险与回退边界",
-      rationale: "过短计划通常缺少可执行细节，容易在 apply 阶段失败",
+      title: "Expand plan detail depth",
+      command: "Update the current plan: add key changes, validation matrix, and risk/rollback boundaries",
+      rationale: "Overly short plans usually lack executable detail and often fail in apply",
     });
   }
   if (actions.length === 0 && args.guard.level !== "healthy") {
     actions.push({
       id: "guard_watch_reinforce",
       priority: args.guard.level === "critical" ? "p0" : "p1",
-      title: "针对 guard 风险做定向加固",
-      command: "直接补充当前计划：补充本轮降分原因与改进动作，再重新评审",
-      rationale: `当前 guard=${args.guard.level}，建议先提升计划稳定性`,
+      title: "Reinforce the specific guard risk",
+      command: "Update the current plan: explain this round's score drop and the improvement steps, then re-review",
+      rationale: `Current guard=${args.guard.level}; improve plan stability first`,
     });
   }
   if (actions.length === 0 && args.trend.trend === "down") {
     actions.push({
       id: "trend_down_recover",
       priority: "p2",
-      title: "回补较上轮退化的细节",
-      command: "直接补充当前计划：对比上轮计划，补齐被删减的验证与回退项",
-      rationale: "质量趋势下滑时应先恢复关键细节，再推进审批",
+      title: "Restore details lost from the previous round",
+      command: "Update the current plan: compare with the previous round and restore removed validation and rollback items",
+      rationale: "When quality trends down, restore key details before approval",
     });
   }
   if (actions.length === 0 && args.quality.score < 80) {
     actions.push({
       id: "raise_quality_baseline",
       priority: "p2",
-      title: "提高计划质量基线",
-      command: "直接补充当前计划：补依赖边界、执行步骤与回归验证",
-      rationale: "当前质量分仍有提升空间，建议先优化后审批",
+      title: "Raise the plan quality baseline",
+      command: "Update the current plan: add dependency boundaries, execution steps, and regression validation",
+      rationale: "The current quality score still has room to improve; optimize before approval",
     });
   }
   return compactRepairActions(actions);

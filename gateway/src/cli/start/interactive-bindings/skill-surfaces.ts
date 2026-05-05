@@ -59,37 +59,37 @@ export function buildSkillsStatusSurface(input: {
   const projectStatus = readSkillDirectoryStatus(projectSkillsDir);
   const globalStatus = readSkillDirectoryStatus(globalSkillsDir);
   const widestLine = Math.max(
-    measureDisplayWidth(`目录 ${projectSkillsDir}`),
-    measureDisplayWidth(`目录 ${globalSkillsDir}`),
-    measureDisplayWidth(`技能 ${String(projectStatus.skillCount)} 个 · 无效目录 ${String(projectStatus.invalidDirectoryCount)} 个`),
-    measureDisplayWidth(`技能 ${String(globalStatus.skillCount)} 个 · 无效目录 ${String(globalStatus.invalidDirectoryCount)} 个`),
+    measureDisplayWidth(`directory ${projectSkillsDir}`),
+    measureDisplayWidth(`directory ${globalSkillsDir}`),
+    measureDisplayWidth(`skills ${String(projectStatus.skillCount)} · invalid directories ${String(projectStatus.invalidDirectoryCount)}`),
+    measureDisplayWidth(`skills ${String(globalStatus.skillCount)} · invalid directories ${String(globalStatus.invalidDirectoryCount)}`),
   );
   return renderInfoPanel({
-    title: "技能",
-    subtitle: "项目与全局技能目录",
+    title: "Skills",
+    subtitle: "Project and global skill directories",
     sections: [
       {
         rows: [
           {
-            title: `项目 · ${projectStatus.exists ? "可用" : "未找到"}`,
+            title: `Project · ${projectStatus.exists ? "available" : "not found"}`,
             detailLines: [
-              `目录 ${projectStatus.path}`,
-              `技能 ${String(projectStatus.skillCount)} 个 · 无效目录 ${String(projectStatus.invalidDirectoryCount)} 个`,
+              `directory ${projectStatus.path}`,
+              `skills ${String(projectStatus.skillCount)} · invalid directories ${String(projectStatus.invalidDirectoryCount)}`,
             ],
           },
           {
-            title: `全局 · ${globalStatus.exists ? "可用" : "未找到"}`,
+            title: `Global · ${globalStatus.exists ? "available" : "not found"}`,
             detailLines: [
-              `目录 ${globalStatus.path}`,
-              `技能 ${String(globalStatus.skillCount)} 个 · 无效目录 ${String(globalStatus.invalidDirectoryCount)} 个`,
+              `directory ${globalStatus.path}`,
+              `skills ${String(globalStatus.skillCount)} · invalid directories ${String(globalStatus.invalidDirectoryCount)}`,
             ],
           },
         ],
       },
     ],
     footerLines: [
-      "使用 /skill-creator <需求> 创建或更新技能",
-      "使用 /commands 管理可复用本地命令模板",
+      "Use /skill-creator <requirement> to create or update skills",
+      "Use /commands to manage reusable local command templates",
     ],
     terminalColumns: Math.max(96, widestLine + 10),
   });
@@ -107,7 +107,7 @@ export function buildSkillCreatorSurface(input: {
     title: input.title,
     sections: [{
       rows: [{
-        title: primary ?? "无更多信息",
+        title: primary ?? "No details",
         detailLines,
       }],
     }],
@@ -123,22 +123,22 @@ export function buildSkillCreatorPrompt(input: {
   const projectSkillsDir = `${trimTrailingSlashes(input.projectRoot)}/.grobot/skills`;
   const globalSkillsDir = `${trimTrailingSlashes(input.homeDir)}/skills`;
   return [
-    "你现在需要作为内置 `skill-creator` 执行技能创建任务。",
-    "请按以下约束执行：",
-    "- 优先创建或更新项目技能目录：`./.grobot/skills`。",
-    `- 绝对路径参考：${projectSkillsDir}`,
-    `- 全局内置技能目录：${globalSkillsDir}/skill-creator`,
-    "- 若需求不完整，请先补齐最少必要澄清，再继续产出可执行技能。",
-    "- 产出目标是可以直接落地使用的 skill 文件结构与内容。",
+    "You are now running the built-in `skill-creator` task.",
+    "Follow these constraints:",
+    "- Prefer creating or updating the project skill directory: `./.grobot/skills`.",
+    `- Absolute path reference: ${projectSkillsDir}`,
+    `- Global built-in skill directory: ${globalSkillsDir}/skill-creator`,
+    "- If requirements are incomplete, ask the minimum necessary clarification before producing an executable skill.",
+    "- Output a skill file structure and content that can be used directly.",
     "",
-    "用户需求：",
+    "User request:",
     requirement,
   ].join("\n");
 }
 
 export function buildSkillCreatorStartedSurface(requirement: string): string {
   return buildSkillCreatorSurface({
-    title: "正在生成技能",
+    title: "Generating skill",
     details: [compactSingleLine(requirement, 120)],
   });
 }

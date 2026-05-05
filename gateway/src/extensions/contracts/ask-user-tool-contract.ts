@@ -436,12 +436,12 @@ const payload = {
   answer_blank_falls_back_default: resolvedByBlank?.resolvedAsk.answer === "safe",
   queue_ttl_prune_removed_expired: expiredByTtl.length === 1 && expiredByTtl[0]?.askId === "ask_q_005",
   queue_ttl_prune_keeps_fresh: remainingAfterTtlPrune.length === 1 && remainingAfterTtlPrune[0]?.askId === "ask_q_006",
-  issued_display_has_reply_hint: display.includes("Enter 打开选择菜单"),
-  issued_display_has_reply_guide: display.includes("数字直接回复"),
+  issued_display_has_reply_hint: display.includes("Enter open picker"),
+  issued_display_has_reply_guide: display.includes("number direct reply"),
   issued_display_uses_prompt_chevron: display.includes("❯ 1"),
   issued_display_has_other_type_something:
-    display.includes("自定义  输入自定义回复")
-    && display.includes("自定义输入"),
+    display.includes("Custom  Type custom reply")
+    && display.includes("Custom"),
   issued_display_shows_question_progress: describedDisplay.includes("Scope · 1/2"),
   issued_display_shows_option_description:
     describedDisplay.includes("safe — Run checks before continuing"),
@@ -450,22 +450,22 @@ const payload = {
   issued_display_hides_log_prefix: !display.includes("[ask-user]"),
   issued_display_hides_options_preview: !display.includes("options_preview: "),
   issued_display_hides_raw_question_prefix: !display.includes("question="),
-  issued_display_uses_confirmation_card: display.includes("需要确认 ·"),
+  issued_display_uses_confirmation_card: display.includes("Input needed ·"),
   issued_display_overflow_lists_sixth_option: overflowDisplay.includes("还有 0 项") === false
-    && overflowDisplay.includes("自定义  输入自定义回复")
-    && overflowDisplay.includes("还有 1 项"),
+    && overflowDisplay.includes("Custom  Type custom reply")
+    && overflowDisplay.includes("... 1 more"),
   issued_event_has_ask_id: formatAskUserIssuedEvent(nextEnvelope).includes("ask_id=ask_q_002"),
   ask_user_menu_title_has_progress:
     askUserMenuDescriptor?.title.includes("Scope · 1/2") === true,
   ask_user_menu_hint_returns_to_input:
-    askUserMenuDescriptor?.hint.includes("Esc 返回输入框") === true,
+    askUserMenuDescriptor?.hint.includes("Esc back to input") === true,
   ask_user_menu_omits_noisy_default_descriptions:
     askUserMenuDescriptor?.items.every((item) =>
       item.description !== "选择后立即继续当前任务") === true,
   ask_user_menu_preserves_option_descriptions:
     askUserMenuDescriptor?.items[0]?.description === "Run checks before continuing",
   ask_user_queue_display_shows_progress:
-    askUserQueueDisplay.includes("需要确认 · Scope · 1/2")
+    askUserQueueDisplay.includes("Input needed · Scope · 1/2")
     && askUserQueueDisplay.includes("[□ Scope]"),
   ask_user_queue_display_hides_raw_diagnostics:
     !askUserQueueDisplay.includes("[ask-user]")
@@ -489,8 +489,8 @@ const payload = {
     questionnaireView.kind === "question"
     && questionnaireView.optionItems.some((item) =>
       item.kind === "other"
-      && item.label === "自定义"
-      && item.placeholder === "输入自定义回复"
+      && item.label === "Custom"
+      && item.placeholder === "Type custom reply"
       && item.id === "__other__"),
   questionnaire_review_available:
     questionnaireReviewView.kind === "review"

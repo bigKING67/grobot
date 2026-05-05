@@ -139,10 +139,10 @@ export function hasFailureSignals(history: ChatHistoryMessage[]): boolean {
     "error",
     "exception",
     "timeout",
-    "失败",
-    "错误",
-    "异常",
-    "超时",
+    "failure",
+    "error",
+    "exception",
+    "timeout",
   ];
   for (const row of rows) {
     const lowered = row.toLowerCase();

@@ -20,14 +20,14 @@ function formatResumeUpdatedAt(value: string): string {
     const [, year, month, day, hour, minute] = isoMatch;
     return `${year}-${month}-${day} ${hour}:${minute}`;
   }
-  return normalized.length > 0 ? normalized : "未知";
+  return normalized.length > 0 ? normalized : "unknown";
 }
 
 function buildResumeNoMatchMessage(query: string): string {
-  return buildSlashNotice("没有匹配的会话", [
-    `查询 ${query}`,
-    "使用 /resume 打开菜单。",
-    '提示：可匹配 ID、标题、摘要或更新时间；紧凑查询会忽略空格、"_" 和 "-"。',
+  return buildSlashNotice("No matching sessions", [
+    `query ${query}`,
+    "Use /resume to open the menu.",
+    'Hint: matches ID, title, summary, or updated time; compact query ignores spaces, "_", and "-".',
   ]);
 }
 
@@ -40,7 +40,7 @@ export async function executeResumeSlashCommand(
     return writeMenuHintAndMaybeOpen(
       input,
       "resume",
-      `${parsed.reason ?? "恢复会话命令无效"}\n\n`,
+      `${parsed.reason ?? "Invalid resume command"}\n\n`,
     );
   }
   if (parsed.kind === "query") {
@@ -60,10 +60,10 @@ export async function executeResumeSlashCommand(
       const rows = matches
         .slice(0, MATCH_LIST_LIMIT)
         .map((session) => ({
-          title: `${formatSingleLinePreview(session.title || session.id, 44)}${session.active ? "（当前）" : ""}`,
+          title: `${formatSingleLinePreview(session.title || session.id, 44)}${session.active ? " (current)" : ""}`,
           detailLines: [
-            `会话 ${session.id} · 更新 ${formatResumeUpdatedAt(session.updatedAt)}`,
-            `重点 ${formatSingleLinePreview(session.summary, 44)}`,
+            `session ${session.id} · updated ${formatResumeUpdatedAt(session.updatedAt)}`,
+            `summary ${formatSingleLinePreview(session.summary, 44)}`,
           ],
         }));
       const quickPickHints = matches
@@ -78,14 +78,14 @@ export async function executeResumeSlashCommand(
         input,
         "resume",
         renderInfoPanel({
-          title: "找到多个会话",
-          subtitle: `查询 ${query} · 匹配 ${String(matches.length)}`,
+          title: "Multiple sessions found",
+          subtitle: `query ${query} · matches ${String(matches.length)}`,
           sections: [{
             rows,
           }],
           footerLines: [
             ...disambiguationBlock,
-            "使用 /resume 明确选择一个。",
+            "Use /resume to choose one explicitly.",
           ],
         }),
       );
@@ -95,9 +95,9 @@ export async function executeResumeSlashCommand(
       return writeMenuHintAndMaybeOpen(
         input,
         "resume",
-        buildSlashNotice("会话已是当前会话", [
-          `会话 ${target.id}`,
-          "使用 /resume 打开菜单。",
+        buildSlashNotice("Session already current", [
+          `session ${target.id}`,
+          "Use /resume to open the menu.",
         ]),
       );
     }

@@ -6,18 +6,18 @@ const lines = output.split(/\r?\n/);
 
 const payload = {
   has_reference_title: output.startsWith("Grobot\n"),
-  has_local_tui_entry: output.includes("直接运行 `grobot` 进入 TUI"),
+  has_local_tui_entry: output.includes("run `grobot` to enter the TUI"),
   uses_reference_command_rows:
     output.includes("  • grobot\n")
-    && output.includes("    ⎿  进入本地交互 TUI"),
+    && output.includes("    ⎿  Enter local interactive TUI"),
   has_status_summary_copy:
     output.includes("grobot status")
-    && output.includes("可操作摘要")
-    && output.includes("--json 输出完整机器快照"),
+    && output.includes("Show actionable summary")
+    && output.includes("--json for full snapshot"),
   has_session_recovery_rows:
     output.includes("grobot --resume <session-id|query>")
     && output.includes("grobot --rewind [checkpoint-id|query]"),
-  has_interactive_help_hint: output.includes("交互内输入 /help 查看 TUI 命令"),
+  has_interactive_help_hint: output.includes("Use /help inside the TUI for commands"),
   avoids_legacy_dev_cli_copy:
     !output.includes("Grobot TS dev CLI")
     && !output.includes("source-checkout fallback")

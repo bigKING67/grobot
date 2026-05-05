@@ -5,7 +5,7 @@ import { type UserCommandRecord } from "./contract";
 const COMMAND_PROMPT_PREVIEW_LINE_LIMIT = 4;
 
 function formatCommandDescription(value: string): string {
-  return value.trim().length > 0 ? value.trim() : "未填写说明";
+  return value.trim().length > 0 ? value.trim() : "No description";
 }
 
 function buildPromptPreviewLines(prompt: string): string[] {
@@ -14,12 +14,12 @@ function buildPromptPreviewLines(prompt: string): string[] {
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
   if (lines.length === 0) {
-    return ["未设置模板内容"];
+    return ["No template content"];
   }
   const visible = lines.slice(0, COMMAND_PROMPT_PREVIEW_LINE_LIMIT);
   const hiddenCount = lines.length - visible.length;
   if (hiddenCount > 0) {
-    visible.push(`… 还有 ${String(hiddenCount)} 行`);
+    visible.push(`... ${String(hiddenCount)} more lines`);
   }
   return visible;
 }
@@ -36,7 +36,7 @@ export function buildCommandsSurface(input: {
     title: input.title,
     sections: [{
       rows: [{
-        title: primary ?? "无更多信息",
+        title: primary ?? "No more information",
         detailLines,
       }],
     }],
@@ -45,38 +45,38 @@ export function buildCommandsSurface(input: {
 
 export function buildCommandsUsageSurface(usage: string): string {
   return buildCommandsSurface({
-    title: "命令还缺参数",
+    title: "Command needs more arguments",
     details: [
       usage,
-      "补齐参数后再执行。",
+      "Add the missing arguments and try again.",
     ],
   });
 }
 
 export function formatCommandList(records: readonly UserCommandRecord[], commandsDir: string): string {
   const rows: InfoPanelRow[] = [{
-    title: `命令目录 ${commandsDir}`,
-    detailLines: [`共 ${String(records.length)} 个命令`],
+    title: `Commands directory ${commandsDir}`,
+    detailLines: [`${String(records.length)} commands`],
   }];
   if (records.length === 0) {
     rows.push({
-      title: "还没有用户命令",
-      detailLines: ['使用 "/commands new <name> [prompt]" 创建。'],
+      title: "No user commands yet",
+      detailLines: ['Use "/commands new <name> [prompt]" to create one.'],
     });
   } else {
     for (const record of records) {
       const summary = formatCommandDescription(record.description);
       rows.push({
-        title: `/${record.name} · ${record.enabled ? "启用" : "停用"}`,
+        title: `/${record.name} · ${record.enabled ? "enabled" : "disabled"}`,
         tone: record.enabled ? "brand" : "muted",
         detailLines: [
-          `说明 ${summary}`,
+          `description ${summary}`,
         ],
       });
     }
   }
   rows.push({
-    title: "常用入口",
+    title: "Common commands",
     detailLines: [
       "/commands list",
       "/commands new <name> [prompt]",
@@ -88,7 +88,7 @@ export function formatCommandList(records: readonly UserCommandRecord[], command
     ],
   });
   return renderInfoPanel({
-    title: "用户自定义命令",
+    title: "User commands",
     sections: [{ rows }],
   });
 }
@@ -96,25 +96,25 @@ export function formatCommandList(records: readonly UserCommandRecord[], command
 export function formatCommandDetails(record: UserCommandRecord): string {
   return renderInfoPanel({
     title: `/${record.name}`,
-    subtitle: "用户自定义命令",
+    subtitle: "User command",
     sections: [{
       rows: [
         {
-          title: record.enabled ? "已启用" : "已停用",
+          title: record.enabled ? "Enabled" : "Disabled",
           tone: record.enabled ? "brand" : "muted",
           detailLines: [
-            `说明 ${formatCommandDescription(record.description)}`,
-            `保存位置 ${record.path}`,
+            `description ${formatCommandDescription(record.description)}`,
+            `saved at ${record.path}`,
           ],
         },
         {
-          title: "提示词模板",
+          title: "Prompt template",
           detailLines: buildPromptPreviewLines(record.prompt),
         },
       ],
     }],
     footerLines: [
-      `使用 /commands set ${record.name} <prompt> 更新模板`,
+      `Use /commands set ${record.name} <prompt> to update the template`,
     ],
   });
 }

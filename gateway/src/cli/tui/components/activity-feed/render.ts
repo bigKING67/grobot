@@ -103,18 +103,18 @@ function humanToolLabel(toolName: string): string {
   switch (toolName) {
     case "search":
     case "semantic_search":
-      return "搜索";
+      return "Search";
     case "read":
-      return "读取";
+      return "Read";
     case "glob":
     case "list":
-      return "探索";
+      return "Explore";
     case "edit":
-      return "编辑";
+      return "Edit";
     case "write":
-      return "写入";
+      return "Write";
     case "bash":
-      return "运行";
+      return "Run";
     default:
       return toolName
         .split(/[_-]+/g)
@@ -249,10 +249,10 @@ function detailFromParts(parts: string[]): string | undefined {
 
 function formatToolStatusTitle(status: string, label: string): string {
   if (status === "failed") {
-    return `${label}失败`;
+    return `${label} failed`;
   }
   if (status === "deferred") {
-    return `${label}已延后`;
+    return `${label} deferred`;
   }
   return label;
 }
@@ -260,27 +260,27 @@ function formatToolStatusTitle(status: string, label: string): string {
 function formatRecoveryAction(value: string): string {
   switch (value) {
     case "inspect_visible_tool_schema_then_retry":
-      return "检查可见工具参数后重试";
+      return "Inspect visible tool args, then retry";
     case "inspect_error_and_switch_strategy":
-      return "检查错误后切换策略";
+      return "Inspect error, then switch strategy";
     case "switch_tool_strategy":
-      return "切换工具策略";
+      return "Switch tool strategy";
     case "use_suggested_distinct_tool":
-      return "改用建议工具";
+      return "Use suggested tool";
     case "reread_target_then_retry":
-      return "重新读取后重试";
+      return "Reread target, then retry";
     case "request_environment_fix":
-      return "需要修复环境";
+      return "Environment fix needed";
     case "observe_prior_tool_result":
-      return "先观察已有工具结果";
+      return "Observe prior tool result first";
     case "inspect_runtime_tool_recovery_policy":
-      return "检查工具恢复策略";
+      return "Inspect tool recovery strategy";
     case "ask_user_for_config_or_switch_provider":
-      return "需要配置或切换通道";
+      return "Configure or switch provider";
     case "observe_and_continue":
-      return "观察结果后继续";
+      return "Observe and continue";
     case "avoid_unknown_tool":
-      return "避开未知工具";
+      return "Avoid unknown tool";
     case "":
       return "";
     default:
@@ -291,13 +291,13 @@ function formatRecoveryAction(value: string): string {
 function formatRecoveryStage(value: string): string {
   switch (value) {
     case "strategy_switch":
-      return "切换策略";
+      return "Switch strategy";
     case "ask_user":
-      return "等待确认";
+      return "Waiting for confirmation";
     case "local_fix":
-      return "本地修复";
+      return "Local fix";
     case "observe_first":
-      return "先观察";
+      return "Observe first";
     case "none":
     case "":
       return "";
@@ -309,13 +309,13 @@ function formatRecoveryStage(value: string): string {
 function formatOperationLabel(operation: string): string {
   switch (operation) {
     case "create":
-      return "创建";
+      return "Create";
     case "update":
-      return "更新";
+      return "Update";
     case "overwrite":
-      return "覆盖";
+      return "Overwrite";
     case "delete":
-      return "删除";
+      return "Delete";
     default:
       return operation;
   }
@@ -346,16 +346,16 @@ function buildToolEndRow(
   const label = humanToolLabel(toolName);
   const severity = status === "failed" ? "error" : status === "deferred" ? "warning" : "ok";
   if (isPlanFileTool(toolName, path)) {
-    const detailLines = status === "failed" ? [] : ["/plan 预览"];
+    const detailLines = status === "failed" ? [] : ["/plan preview"];
     if (errorClass) {
-      detailLines.push(`错误 ${formatTuiErrorClassLabel(errorClass)}`);
+      detailLines.push(`Error ${formatTuiErrorClassLabel(errorClass)}`);
     }
     return {
       title: status === "failed"
-        ? "计划更新失败"
+        ? "Plan update failed"
         : status === "deferred"
-          ? "计划更新已延后"
-          : "计划已更新",
+          ? "Plan update deferred"
+          : "Plan updated",
       detailLines,
       severity,
     };
@@ -377,9 +377,9 @@ function buildToolEndRow(
     const engine = firstString(payloadString(summary, "engine"));
     const limitReached = payloadBoolean(summary, "limit_reached");
     const detail = detailFromParts([
-      typeof matches === "number" ? `${String(matches)} 个匹配` : "",
+      typeof matches === "number" ? `${String(matches)} matches` : "",
       engine,
-      limitReached === true ? "已到结果上限" : "",
+      limitReached === true ? "limit reached" : "",
       duration ?? "",
     ]);
     if (detail) {
@@ -392,10 +392,10 @@ function buildToolEndRow(
     const kind = firstString(payloadString(summary, "kind"), payloadString(summary, "type"));
     const detail = detailFromParts([
       typeof lineStart === "number" && typeof lineEnd === "number"
-        ? `行 ${String(lineStart)}-${String(lineEnd)}`
+        ? `lines ${String(lineStart)}-${String(lineEnd)}`
         : "",
       kind && kind !== "text" ? kind : "",
-      hasMore === true ? "还有更多" : "",
+      hasMore === true ? "more available" : "",
       duration ?? "",
     ]);
     if (detail) {
@@ -409,9 +409,9 @@ function buildToolEndRow(
     );
     const engine = firstString(payloadString(summary, "engine"));
     const detail = detailFromParts([
-      typeof count === "number" ? `${String(count)} 项` : "",
+      typeof count === "number" ? `${String(count)} items` : "",
       engine,
-      payloadBoolean(summary, "limit_reached") === true ? "已到结果上限" : "",
+      payloadBoolean(summary, "limit_reached") === true ? "limit reached" : "",
     ]);
     if (detail) {
       detailLines.push(detail);
@@ -419,13 +419,13 @@ function buildToolEndRow(
   } else if (toolName === "edit") {
     const replacements = firstNumber(payloadNumber(summary, "replacements"));
     const firstChangedLine = firstNumber(payloadNumber(summary, "first_changed_line"));
-    const editLocation = typeof firstChangedLine === "number" ? `行 ${String(firstChangedLine)}` : "";
+    const editLocation = typeof firstChangedLine === "number" ? `line ${String(firstChangedLine)}` : "";
     const replacementDetail = typeof replacements === "number"
-      ? `${String(replacements)} 处替换${editLocation ? `，${editLocation}` : ""}`
+      ? `${String(replacements)} replacement${replacements === 1 ? "" : "s"}${editLocation ? `, ${editLocation}` : ""}`
       : editLocation;
     const detail = detailFromParts([
       replacementDetail,
-      payloadBoolean(summary, "fuzzy_fallback_used") === true ? "模糊匹配" : "",
+      payloadBoolean(summary, "fuzzy_fallback_used") === true ? "fuzzy match" : "",
     ]);
     if (detail) {
       detailLines.push(detail);
@@ -438,21 +438,21 @@ function buildToolEndRow(
     if (status !== "failed" && status !== "deferred" && typeof preview.lineCount === "number") {
       title = compactSpaces(
         path
-          ? `写入 ${path} · ${String(preview.lineCount)} 行`
-          : `写入 ${String(preview.lineCount)} 行`,
+          ? `Write ${path} · ${String(preview.lineCount)} lines`
+          : `Write ${String(preview.lineCount)} lines`,
       );
     }
     if (preview.lines.length > 0) {
       detailLines.push(...preview.lines);
       if (preview.hiddenLineCount > 0) {
         detailLines.push(
-          `… 还有 ${String(preview.hiddenLineCount)} 行，Ctrl+O 展开`,
+          `... ${String(preview.hiddenLineCount)} more lines, Ctrl+O expand`,
         );
       }
     }
     const detail = detailFromParts([
       operation ? formatOperationLabel(operation) : "",
-      typeof bytesWritten === "number" ? `${String(bytesWritten)} 字节` : "",
+      typeof bytesWritten === "number" ? `${String(bytesWritten)} bytes` : "",
     ]);
     if (detail && preview.lines.length === 0) {
       detailLines.push(detail);
@@ -464,8 +464,8 @@ function buildToolEndRow(
     );
     const exitCode = firstNumber(payloadNumber(summary, "exit_code"));
     const detail = detailFromParts([
-      commandPreview ? `命令 ${commandPreview.replace(/"/g, "'")}` : "",
-      typeof exitCode === "number" ? `退出码 ${String(exitCode)}` : "",
+      commandPreview ? `command ${commandPreview.replace(/"/g, "'")}` : "",
+      typeof exitCode === "number" ? `exit ${String(exitCode)}` : "",
       duration ?? "",
     ]);
     if (detail) {
@@ -474,7 +474,7 @@ function buildToolEndRow(
   }
 
   if (errorClass) {
-    detailLines.push(`错误 ${formatTuiErrorClassLabel(errorClass)}`);
+    detailLines.push(`Error ${formatTuiErrorClassLabel(errorClass)}`);
   }
   return {
     title,
@@ -494,12 +494,12 @@ function buildRecoveryRow(event: RuntimeEvent): ActivityFeedRow | undefined {
   const action = firstString(payloadString(payload, "recommended_next_action"));
   const errorClass = firstString(payloadString(payload, "error_class"));
   return {
-    title: `恢复策略 · ${label}`,
+    title: `Recovery · ${label}`,
     detailLines: [
       detailFromParts([
         formatRecoveryStage(stage),
         formatRecoveryAction(action),
-        errorClass ? `错误 ${formatTuiErrorClassLabel(errorClass)}` : "",
+        errorClass ? `Error ${formatTuiErrorClassLabel(errorClass)}` : "",
       ]) ?? "",
     ].filter(Boolean),
     severity: "warning",

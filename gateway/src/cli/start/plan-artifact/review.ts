@@ -157,9 +157,9 @@ function isVaguePlanFieldValue(valueRaw: string): boolean {
 }
 
 const VALIDATION_COMMAND_PATTERN =
-  /(`[^`]+`|\b(?:npm|pnpm|yarn|bun|cargo|go|pytest|python|node|npx|tsx|deno|make|bash|sh|curl|script|uv|docker|psql|sqlite3|mysql|kubectl)\b|\.\/|\/[A-Za-z0-9._/-]+|手工验证|人工验证|manual verification|manual test|browser check|浏览器验证|截图对比)/i;
+  /(`[^`]+`|\b(?:npm|pnpm|yarn|bun|cargo|go|pytest|python|node|npx|tsx|deno|make|bash|sh|curl|script|uv|docker|psql|sqlite3|mysql|kubectl)\b|\.\/|\/[A-Za-z0-9._/-]+|手工验证|人工验证|manual verification|manual test|browser check|浏览器验证|截图对比|screenshot comparison)/i;
 const VALIDATION_EXPECTED_RESULT_PATTERN =
-  /(预期|expected|expect|通过|passes?|green|成功|should|assert|断言|结果|输出|exit\s*0|exit code\s*0|无报错|不出现)/i;
+  /(预期|expected|expect|通过|passes?|green|成功|should|assert|断言|结果|输出|exit\s*0|exit code\s*0|无报错|no error|不出现|does not appear)/i;
 
 function hasConcreteValidationSignal(sectionBody: string): boolean {
   return sectionBody
@@ -182,7 +182,7 @@ function reviewProposedPlanContent(proposedPlanContent: string): PlanReviewResul
     findings.push({
       code: "proposed_plan_empty",
       section: "proposed_plan",
-      message: "提取到的 <proposed_plan> 为空。",
+      message: "Extracted <proposed_plan> is empty.",
     });
   }
   const placeholder = findPlaceholder(normalized);
@@ -190,21 +190,21 @@ function reviewProposedPlanContent(proposedPlanContent: string): PlanReviewResul
     findings.push({
       code: "placeholder_detected",
       section: "proposed_plan",
-      message: `计划仍含占位词(${placeholder})。`,
+      message: `Plan still contains placeholder (${placeholder}).`,
     });
   }
   if (hasUnresolvedQuestion(normalized)) {
     findings.push({
       code: "unresolved_question",
       section: "proposed_plan",
-      message: "计划存在未决问题，需先澄清。",
+      message: "Plan has unresolved questions; clarify them first.",
     });
   }
   if (normalized.length > 0 && normalized.length < 120) {
     findings.push({
       code: "proposed_plan_too_short",
       section: "proposed_plan",
-      message: "计划内容过短，无法支撑可执行实现。",
+      message: "Plan is too short to support executable implementation.",
     });
   }
   const hasSummary = hasSectionHeading(normalized, /^##\s*(summary|概要|概述|摘要)\b/i);
@@ -224,21 +224,21 @@ function reviewProposedPlanContent(proposedPlanContent: string): PlanReviewResul
     findings.push({
       code: "proposed_plan_missing_section",
       section: "Summary",
-      message: "缺少 Summary 章节。",
+      message: "Missing Summary section.",
     });
   }
   if (!hasKeyChanges) {
     findings.push({
       code: "proposed_plan_missing_section",
       section: "Key Changes",
-      message: "缺少 Key Changes/Implementation Changes 章节。",
+      message: "Missing Key Changes/Implementation Changes section.",
     });
   }
   if (!hasTestPlan) {
     findings.push({
       code: "proposed_plan_missing_section",
       section: "Test Plan",
-      message: "缺少 Test Plan/Tests 章节。",
+      message: "Missing Test Plan/Tests section.",
     });
   } else {
     const testPlan = extractSectionByHeadingMatcher(
@@ -249,14 +249,14 @@ function reviewProposedPlanContent(proposedPlanContent: string): PlanReviewResul
       findings.push({
         code: "validation_missing_command",
         section: "Test Plan",
-        message: "Test Plan 缺少可执行命令或明确的手工验证步骤。",
+        message: "Test Plan lacks executable commands or explicit manual validation steps.",
       });
     }
     if (!hasValidationExpectedResult(testPlan)) {
       findings.push({
         code: "validation_missing_expected_result",
         section: "Test Plan",
-        message: "Test Plan 缺少预期结果。",
+        message: "Test Plan lacks expected results.",
       });
     }
   }
@@ -264,7 +264,7 @@ function reviewProposedPlanContent(proposedPlanContent: string): PlanReviewResul
     findings.push({
       code: "proposed_plan_missing_section",
       section: "Assumptions",
-      message: "缺少 Assumptions 章节。",
+      message: "Missing Assumptions section.",
     });
   }
   const blocked = findings.some((item) => item.code === "unresolved_question");
@@ -288,7 +288,7 @@ function reviewStructuredPlanContent(planContent: string): PlanReviewResult {
       findings.push({
         code: "missing_section",
         section: sectionName,
-        message: `缺少必填章节: ${sectionName}`,
+        message: `Missing required section: ${sectionName}`,
       });
       continue;
     }
@@ -298,7 +298,7 @@ function reviewStructuredPlanContent(planContent: string): PlanReviewResult {
       findings.push({
         code: "empty_section",
         section: sectionName,
-        message: `章节内容为空: ${sectionName}`,
+        message: `Section is empty: ${sectionName}`,
       });
       continue;
     }
@@ -307,14 +307,14 @@ function reviewStructuredPlanContent(planContent: string): PlanReviewResult {
       findings.push({
         code: "placeholder_detected",
         section: sectionName,
-        message: `章节仍含占位词(${placeholder}): ${sectionName}`,
+        message: `Section still contains placeholder (${placeholder}): ${sectionName}`,
       });
     }
     if (hasUnresolvedQuestion(normalizedLines.join("\n"))) {
       findings.push({
         code: "unresolved_question",
         section: sectionName,
-        message: `章节存在未决问题，需先澄清: ${sectionName}`,
+        message: `Section has unresolved questions; clarify first: ${sectionName}`,
       });
     }
   }
@@ -326,7 +326,7 @@ function reviewStructuredPlanContent(planContent: string): PlanReviewResult {
       findings.push({
         code: "goal_too_vague",
         section: "Goal",
-        message: "Goal 过短，缺少可判断的目标行为变化。",
+        message: "Goal is too short and lacks a verifiable behavior change.",
       });
     }
   }
@@ -337,7 +337,7 @@ function reviewStructuredPlanContent(planContent: string): PlanReviewResult {
       findings.push({
         code: sectionName === "Scope In" ? "scope_in_missing_items" : "scope_out_missing_items",
         section: sectionName,
-        message: `${sectionName} 至少需要 1 条明确列表项。`,
+        message: `${sectionName} needs at least one explicit list item.`,
       });
     }
   }
@@ -349,28 +349,28 @@ function reviewStructuredPlanContent(planContent: string): PlanReviewResult {
       findings.push({
         code: "milestones_missing_items",
         section: "Milestones",
-        message: "Milestones 至少需要 1 条编号里程碑。",
+        message: "Milestones needs at least one numbered milestone.",
       });
     }
-    if (!/完成判据/.test(milestones)) {
+    if (!/done when|完成判据/i.test(milestones)) {
       findings.push({
         code: "milestones_missing_done_criteria",
         section: "Milestones",
-        message: "Milestones 缺少“完成判据”。",
+        message: "Milestones lacks done-when criteria.",
       });
     }
-    if (!/验证/.test(milestones)) {
+    if (!/validation|验证/i.test(milestones)) {
       findings.push({
         code: "milestones_missing_validation",
         section: "Milestones",
-        message: "Milestones 缺少“验证”。",
+        message: "Milestones lacks validation.",
       });
     }
-    if (!/回退/.test(milestones)) {
+    if (!/rollback|回退/i.test(milestones)) {
       findings.push({
         code: "milestones_missing_rollback",
         section: "Milestones",
-        message: "Milestones 缺少“回退”。",
+        message: "Milestones lacks rollback.",
       });
     }
   }
@@ -384,21 +384,21 @@ function reviewStructuredPlanContent(planContent: string): PlanReviewResult {
       findings.push({
         code: "validation_missing_items",
         section: "Validation",
-        message: "Validation 至少需要 1 条可执行验证项。",
+        message: "Validation needs at least one executable validation item.",
       });
     }
     if (hasValidationItems && !hasConcreteValidationSignal(validation)) {
       findings.push({
         code: "validation_missing_command",
         section: "Validation",
-        message: "Validation 缺少真实命令或明确的手工验证步骤。",
+        message: "Validation lacks real commands or explicit manual validation steps.",
       });
     }
     if (hasValidationItems && !hasValidationExpectedResult(validation)) {
       findings.push({
         code: "validation_missing_expected_result",
         section: "Validation",
-        message: "Validation 缺少预期结果。",
+        message: "Validation lacks expected results.",
       });
     }
   }
@@ -414,26 +414,26 @@ function reviewStructuredPlanContent(planContent: string): PlanReviewResult {
       findings.push({
         code: "risk_missing_item",
         section: "Risk & Rollback",
-        message: "Risk & Rollback 缺少明确“风险:”条目。",
+        message: "Risk & Rollback lacks explicit Risk items.",
       });
     } else if (riskLines.some((line) => isVaguePlanFieldValue(normalizePlanFieldValue(line)))) {
       findings.push({
         code: "risk_too_vague",
         section: "Risk & Rollback",
-        message: "风险描述过于空泛，需要写出具体失败面。",
+        message: "Risk description is too vague; write concrete failure modes.",
       });
     }
     if (rollbackLines.length === 0) {
       findings.push({
         code: "rollback_missing_item",
         section: "Risk & Rollback",
-        message: "Risk & Rollback 缺少明确“回退:”条目。",
+        message: "Risk & Rollback lacks explicit Rollback items.",
       });
     } else if (rollbackLines.some((line) => isVaguePlanFieldValue(normalizePlanFieldValue(line)))) {
       findings.push({
         code: "rollback_too_vague",
         section: "Risk & Rollback",
-        message: "回退描述过于空泛，需要写出可执行恢复动作。",
+        message: "Rollback description is too vague; write executable recovery actions.",
       });
     }
   }

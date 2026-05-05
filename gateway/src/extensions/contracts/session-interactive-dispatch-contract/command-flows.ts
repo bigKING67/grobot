@@ -66,8 +66,8 @@ export async function runCommandDispatchFlows() {
     model_menu_dispatched: includesEvent(modelMenu.events, "openModelMenu"),
     model_legacy_reset_warned: includesEvent(modelLegacyReset.events, "writeStdout"),
     model_legacy_reset_surface_is_human:
-      stripAnsi(modelLegacyReset.stdout).includes("模型选择")
-      && stripAnsi(modelLegacyReset.stdout).includes("旧子命令已移除")
+      stripAnsi(modelLegacyReset.stdout).includes("Model selection")
+      && stripAnsi(modelLegacyReset.stdout).includes("Legacy subcommands have been removed")
       && !modelLegacyReset.stdout.includes("[model]"),
     model_legacy_reset_hits_run_turn: includesEvent(modelLegacyReset.events, "runTurn:/model reset"),
     plan_root_tty_enters_plan_directly:
@@ -93,22 +93,22 @@ export async function runCommandDispatchFlows() {
     plan_goal_tty_in_plan_skips_new_plan:
       !planGoalInPlan.events.some((event) => event.startsWith("enterPlan:")),
     plan_removed_subcommand_surface_is_human:
-      stripAnsi(planRemovedBenchmark.stdout).includes("计划模式")
-      && stripAnsi(planRemovedBenchmark.stdout).includes("不支持该 /plan 子命令")
-      && stripAnsi(planRemovedBenchmark.stdout).includes("/plan、/plan <目标> 或 /plan open"),
+      stripAnsi(planRemovedBenchmark.stdout).includes("Plan mode")
+      && stripAnsi(planRemovedBenchmark.stdout).includes("Unsupported /plan subcommand")
+      && stripAnsi(planRemovedBenchmark.stdout).includes("/plan, /plan <goal>, or /plan open"),
     plan_removed_subcommand_hides_machine_output:
       !planRemovedBenchmark.stdout.includes("[plan-benchmark]")
       && !planRemovedBenchmark.stdout.includes("plan_quality_benchmark_")
       && !planRemovedBenchmark.stdout.includes("suggested_action_")
       && !planRemovedBenchmark.stdout.includes("recommended_next_action:"),
     blocked_plan_mode_command_surface_is_human:
-      stripAnsi(blockedResumeInPlan.stdout).includes("计划模式中暂不可用")
+      stripAnsi(blockedResumeInPlan.stdout).includes("Unavailable in plan mode")
       && stripAnsi(blockedResumeInPlan.stdout).includes("/resume")
-      && stripAnsi(blockedResumeInPlan.stdout).includes("计划模式只接受计划相关操作。")
-      && stripAnsi(blockedResumeInPlan.stdout).includes("可用入口 /plan、/plan open、/interrupt、/exit"),
+      && stripAnsi(blockedResumeInPlan.stdout).includes("Plan mode only accepts plan-related operations.")
+      && stripAnsi(blockedResumeInPlan.stdout).includes("Available entries: /plan, /plan open, /interrupt, /exit"),
     blocked_plan_mode_command_avoids_raw_labels:
-      !stripAnsi(blockedResumeInPlan.stdout).includes("命令:")
-      && !stripAnsi(blockedResumeInPlan.stdout).includes("可使用:"),
+      !stripAnsi(blockedResumeInPlan.stdout).includes("command:")
+      && !stripAnsi(blockedResumeInPlan.stdout).includes("available:"),
     blocked_plan_mode_command_avoids_legacy_marker:
       !blockedResumeInPlan.stdout.includes("[plan]")
       && !blockedResumeInPlan.stdout.includes("plan_id="),
@@ -128,8 +128,8 @@ export async function runCommandDispatchFlows() {
     status_theme_dispatched: includesEvent(statusTheme.events, "setStatusTheme:nerd"),
     status_theme_tty_warned: includesEvent(statusThemeTty.events, "writeStdout"),
     status_theme_tty_redirect_surface_is_human:
-      stripAnsi(statusThemeTty.stdout).includes("已打开状态栏菜单")
-      && stripAnsi(statusThemeTty.stdout).includes("交互模式已收敛为主入口 /status")
+      stripAnsi(statusThemeTty.stdout).includes("Status bar menu opened")
+      && stripAnsi(statusThemeTty.stdout).includes("Interactive mode uses /status as the main entry.")
       && !statusThemeTty.stdout.includes("[status]"),
     status_theme_tty_opened_menu: includesEvent(statusThemeTty.events, "openStatusMenu"),
     status_theme_tty_dispatched_directly: includesEvent(statusThemeTty.events, "setStatusTheme:nerd"),
@@ -152,13 +152,13 @@ export async function runCommandDispatchFlows() {
     history_hits_run_turn: includesEvent(historyCommand.events, "runTurn:/history"),
     ask_dispatched: includesEvent(askCommand.events, "writeStdout"),
     ask_unknown_warned:
-      stripAnsi(askCommand.stdout).includes("未知命令")
-      && !stripAnsi(askCommand.stdout).includes("● 未知命令"),
+      stripAnsi(askCommand.stdout).includes("Unknown command")
+      && !stripAnsi(askCommand.stdout).includes("● Unknown command"),
     ask_hits_run_turn: includesEvent(askCommand.events, "runTurn:/ask"),
     ask_invalid_args_warned: includesEvent(askInvalidArgsCommand.events, "writeStdout"),
     ask_invalid_args_usage_hint:
-      stripAnsi(askInvalidArgsCommand.stdout).includes("未知命令")
-      && !stripAnsi(askInvalidArgsCommand.stdout).includes("● 未知命令"),
+      stripAnsi(askInvalidArgsCommand.stdout).includes("Unknown command")
+      && !stripAnsi(askInvalidArgsCommand.stdout).includes("● Unknown command"),
     ask_invalid_args_dispatched: includesEvent(
       askInvalidArgsCommand.events,
       "showPendingAskQueue:default",
@@ -186,16 +186,16 @@ export async function runCommandDispatchFlows() {
     ),
     skill_creator_empty_tty_dispatched: includesEvent(
       skillCreatorNoDemandTty.events,
-      "runSkillCreator:补齐技能需求",
+      "runSkillCreator:Fill in skill requirement",
     ),
     skill_creator_empty_non_tty_usage: includesEvent(
       skillCreatorNoDemandNonTty.events,
       "writeStdout",
     ),
     skill_creator_empty_non_tty_surface_is_human:
-      stripAnsi(skillCreatorNoDemandNonTty.stdout).includes("需要提供技能需求")
-      && stripAnsi(skillCreatorNoDemandNonTty.stdout).includes("用法 /skill-creator [需求]")
-      && !stripAnsi(skillCreatorNoDemandNonTty.stdout).includes("用法: /skill-creator [需求]")
+      stripAnsi(skillCreatorNoDemandNonTty.stdout).includes("Skill requirement required")
+      && stripAnsi(skillCreatorNoDemandNonTty.stdout).includes("Usage /skill-creator [requirement]")
+      && !stripAnsi(skillCreatorNoDemandNonTty.stdout).includes("Usage: /skill-creator [requirement]")
       && !skillCreatorNoDemandNonTty.stdout.includes("[skill-creator]"),
     skill_creator_empty_non_tty_prompted: includesEvent(
       skillCreatorNoDemandNonTty.events,
@@ -203,7 +203,7 @@ export async function runCommandDispatchFlows() {
     ),
     skill_creator_empty_non_tty_dispatched: includesEvent(
       skillCreatorNoDemandNonTty.events,
-      "runSkillCreator:补齐技能需求",
+      "runSkillCreator:Fill in skill requirement",
     ),
     init_dispatched: includesEvent(initCommand.events, "runInitProjectInstructions"),
     init_hits_run_turn: includesEvent(initCommand.events, "runTurn:/init"),

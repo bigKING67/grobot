@@ -64,11 +64,11 @@ export function prepareSuccessfulTurnReportPresentation(input: {
     if (!activeAskEnvelope) {
       throw new Error("ask_user interrupt emitted empty question set");
     }
-    assistantTextForHistory = `需要确认：${activeAskEnvelope.question}`;
+    assistantTextForHistory = `Confirmation needed: ${activeAskEnvelope.question}`;
     turnStdout = input.interactiveMode
       ? input.options?.autoOpenAskUserPanel
         ? ""
-        : "需要你的输入 · Enter 打开选择\n\n"
+        : "Input needed · Enter to choose\n\n"
       : input.runnerInput.gaMechanismRuntime.buildAskUserDisplay(activeAskEnvelope);
     askUserEvent = askUserEnvelopes
       .map((envelope) => formatAskUserIssuedEvent(envelope))

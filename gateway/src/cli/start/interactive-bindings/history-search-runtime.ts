@@ -25,7 +25,7 @@ export function createOpenHistorySearch(
     const candidates = buildHistorySearchCandidates(rows);
     if (candidates.length === 0) {
       input.output.writeStdout(
-        buildCompactNotice("对话历史", ["暂无对话历史。"]),
+        buildCompactNotice("Conversation history", ["No conversation history."]),
       );
       return undefined;
     }
@@ -33,18 +33,18 @@ export function createOpenHistorySearch(
     const filtered = filterHistorySearchCandidates(candidates, query);
     const effectiveCandidates = filtered.length > 0 ? filtered : candidates;
     const picked = await runSelectMenu({
-      title: "历史搜索 (Ctrl+R)",
+      title: "History search (Ctrl+R)",
       subtitle:
         query.length >= 2
           ? filtered.length > 0
-            ? `查询 ${compactSingleLine(query, 60)} · 匹配 ${String(filtered.length)}`
-            : `查询 ${compactSingleLine(query, 60)} · 无精确匹配，显示最近历史`
-          : "最近的 prompts 和回复",
-      hint: "↑/↓ 选择 · Enter 填入 · Esc 返回",
+            ? `query ${compactSingleLine(query, 60)} · matches ${String(filtered.length)}`
+            : `query ${compactSingleLine(query, 60)} · no exact match, showing recent history`
+          : "Recent prompts and replies",
+      hint: "↑/↓ select · Enter fill · Esc back",
       items: effectiveCandidates.slice(0, 30).map((candidate) => ({
         id: candidate.id,
         label: compactSingleLine(candidate.content, 120),
-        description: `${candidate.role === "user" ? "用户" : "助手"} · ${compactSingleLine(candidate.content, 240)}`,
+        description: `${candidate.role === "user" ? "user" : "assistant"} · ${compactSingleLine(candidate.content, 240)}`,
       })),
       initialIndex: 0,
     });

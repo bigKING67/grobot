@@ -236,22 +236,22 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
   );
   const slashInputPartialHighlight = shouldHighlightSlashInputToken({
     activeLineInput: "/e",
-    suggestions: [{ command: "/exit", description: "退出交互模式" }],
+    suggestions: [{ command: "/exit", description: "Exit interactive mode" }],
   });
   const slashInputExactHighlight = shouldHighlightSlashInputToken({
     activeLineInput: "/exit",
-    suggestions: [{ command: "/exit", description: "退出交互模式" }],
+    suggestions: [{ command: "/exit", description: "Exit interactive mode" }],
   });
   const slashInputWithArgsHighlight = shouldHighlightSlashInputToken({
     activeLineInput: "/plan 帮我写一份抖音直播规划",
-    suggestions: [{ command: "/plan", description: "进入计划模式" }],
+    suggestions: [{ command: "/plan", description: "Enter plan mode" }],
   });
   const slashInputWithArgsFallbackSuggestions = resolveSlashInputHighlightSuggestions({
     activeLineInput: "/plan 帮我写一份抖音直播规划",
     suggestions: [],
     getSlashSuggestions: (input) =>
       input === "/plan"
-        ? [{ command: "/plan", description: "进入计划模式" }]
+        ? [{ command: "/plan", description: "Enter plan mode" }]
         : [],
   });
   const slashInputWithArgsFallbackHighlight = shouldHighlightSlashInputToken({
@@ -263,7 +263,7 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
     suggestions: [],
     getSlashSuggestions: (input) =>
       input === "/pl"
-        ? [{ command: "/plan", description: "进入计划模式" }]
+        ? [{ command: "/plan", description: "Enter plan mode" }]
         : [],
   });
   const slashInputPartialWithArgsFallbackHighlight = shouldHighlightSlashInputToken({

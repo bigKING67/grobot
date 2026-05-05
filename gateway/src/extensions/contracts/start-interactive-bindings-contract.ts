@@ -338,6 +338,7 @@ async function main(): Promise<void> {
     "## Validation",
     "",
     "- npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/start-interactive-bindings-contract.ts",
+    "  - Expected: exit 0 and slash suggestions show Implement the plan.",
     "",
     "## Risk & Rollback",
     "",
@@ -478,13 +479,13 @@ async function main(): Promise<void> {
       switch_first_call: switchEvents[0] ?? "",
       switch_second_call: switchEvents[1] ?? "",
       model_override_count: applyModelOverrideCount,
-      health_has_header: outputText.includes("模型通道"),
-      health_has_sticky_provider: outputText.includes("会话固定通道 alpha"),
+      health_has_header: outputText.includes("Model providers"),
+      health_has_sticky_provider: outputText.includes("Sticky provider alpha"),
       health_hides_raw_sticky_label: !outputText.includes("sticky alpha"),
       health_hides_raw_session_namespace:
         !outputText.includes("session feishu:grobot:dm")
         && !outputText.includes("feishu:grobot:dm:interactive-binding-contract"),
-      health_has_provider_row: outputText.includes("alpha · 正常"),
+      health_has_provider_row: outputText.includes("alpha · Healthy"),
       health_hides_raw_status_codes:
         !outputText.includes("(CLOSED)")
         && !outputText.includes("(OPEN)")
@@ -492,47 +493,46 @@ async function main(): Promise<void> {
       health_hides_raw_rpm_burst_labels:
         !outputText.includes("rpm ")
         && !outputText.includes("burst "),
-      health_uses_human_cooldown: outputText.includes("冷却 30 秒"),
-      context_status_has_header: outputText.includes("上下文"),
+      health_uses_human_cooldown: outputText.includes("cooldown 30s"),
+      context_status_has_header: outputText.includes("Context"),
       context_status_uses_human_subtitle:
-        outputText.includes("每轮发送前组装的上下文窗口"),
-      context_status_has_system_prompt_name: outputText.includes("系统提示 · SYSTEM.md 内置"),
-      context_status_keeps_memory_separate: outputText.includes("不等同于当前上下文窗口"),
-      memory_status_has_header: outputText.includes("记忆"),
+        outputText.includes("Context window assembled before each turn"),
+      context_status_has_system_prompt_name: outputText.includes("System prompt · built-in SYSTEM.md"),
+      context_status_keeps_memory_separate: outputText.includes("not the current context window"),
+      memory_status_has_header: outputText.includes("Memory"),
       memory_status_uses_human_subtitle:
-        outputText.includes("跨回合、跨会话、跨项目的持久记忆"),
+        outputText.includes("Persistent memory across turns, sessions, projects"),
       skills_status_counts_project_skill:
-        outputText.includes("项目 · 可用")
-        && outputText.includes(`目录 ${tempProjectRoot}/.grobot/skills`)
-        && outputText.includes("技能 1 个"),
+        outputText.includes("Project · available")
+        && outputText.includes(`directory ${tempProjectRoot}/.grobot/skills`)
+        && outputText.includes("skills 1"),
       skills_status_counts_global_skill:
-        outputText.includes("全局 · 可用")
-        && outputText.includes(`目录 ${tempHomeDir}/skills`)
-        && outputText.includes("技能 1 个"),
+        outputText.includes("Global · available")
+        && outputText.includes(`directory ${tempHomeDir}/skills`)
+        && outputText.includes("skills 1"),
       skills_status_uses_human_subtitle:
-        outputText.includes("项目与全局技能目录"),
-      mcp_status_has_server: outputText.includes("服务 · grok-search"),
-      mcp_status_instruction_pack_loaded: outputText.includes("指令包 · 已加载"),
+        outputText.includes("Project and global skill directories"),
+      mcp_status_has_server: outputText.includes("Services · grok-search"),
+      mcp_status_instruction_pack_loaded: outputText.includes("Instruction pack · loaded"),
       mcp_status_uses_human_subtitle:
-        outputText.includes("服务清单与指令注入状态"),
+        outputText.includes("Service list and instruction injection status"),
       history_status_uses_human_subtitle:
-        outputText.includes("最近对话记录"),
+        outputText.includes("Recent conversation records"),
       init_prompt_targets_agents: turnInputs.some((item) =>
-        item.includes(`必须创建文件：${tempProjectRoot}/AGENTS.md`),
+        item.includes(`Must create file: ${tempProjectRoot}/AGENTS.md`),
       ),
       init_prompt_blocks_trellis: turnInputs.some((item) =>
-        item.includes("不要生成 Trellis 文件"),
+        item.includes("Do not generate Trellis files"),
       ),
       init_prompt_blocks_system_prompt_file: turnInputs.some((item) =>
-        item.includes("不要创建或修改 `SYSTEM.md`"),
+        item.includes("Do not create or modify `SYSTEM.md`"),
       ),
       init_existing_agents_skips:
-        outputText.includes("AGENTS.md 已存在")
-        && outputText.includes("已跳过 /init，避免覆盖。")
-        && outputText.includes("路径 ")
-        && !outputText.includes("AGENTS.md already exists"),
+        outputText.includes("AGENTS.md already exists")
+        && outputText.includes("/init skipped to avoid overwrite.")
+        && outputText.includes("path "),
       init_generation_surface_is_human:
-        outputText.includes("正在生成项目指令")
+        outputText.includes("Generating project instructions")
         && !outputText.includes("[init] generating project instructions"),
       manual_handoff_reason: handoffReason,
       manual_handoff_to_stderr: handoffToStderr,
@@ -546,12 +546,12 @@ async function main(): Promise<void> {
       prompt_budget_ctx_ratio: 0.42,
       prompt_budget_estimated_tokens: 512,
       prompt_budget_target_tokens: 2048,
-      status_snapshot_has_header: outputText.includes("状态栏"),
+      status_snapshot_has_header: outputText.includes("Status bar"),
       status_snapshot_uses_human_segment_labels:
-        outputText.includes("模型 开启")
-        && outputText.includes("Token 开启")
-        && !outputText.includes("model 开启")
-        && !outputText.includes("tokens 开启"),
+        outputText.includes("Model on")
+        && outputText.includes("Token on")
+        && !outputText.includes("model on")
+        && !outputText.includes("tokens on"),
       status_surface_hides_machine_fields:
         !outputText.includes("[status]")
         && !outputText.includes("[context]")
@@ -575,19 +575,17 @@ async function main(): Promise<void> {
         && !outputText.includes("server inventory and instruction injection state")
         && !outputText.includes("project and global skill directories")
         && !outputText.includes("上下文窗口 tokens:")
-        && !outputText.includes("profile ")
         && !outputText.includes("auto ·")
-        && !outputText.includes("Token 窗口")
-        && !outputText.includes("自动压缩阈值")
-        && !outputText.includes("历史消息")
-        && !outputText.includes("项目指令来源")
-        && !outputText.includes("严格模式失败")
-        && !outputText.includes("调用方式")
-        && !outputText.includes("目录:")
-        && !outputText.includes("路径:")
-        && !outputText.includes("用户:")
-        && !outputText.includes("助手:")
-        && !outputText.includes("version ")
+        && !outputText.includes("token_window")
+        && !outputText.includes("auto_compact_threshold")
+        && !outputText.includes("history_messages")
+        && !outputText.includes("project_instruction_source")
+        && !outputText.includes("strict_failure")
+        && !outputText.includes("usage:")
+        && !outputText.includes("directory:")
+        && !outputText.includes("path:")
+        && !outputText.includes("user:")
+        && !outputText.includes("assistant:")
         && !outputText.includes("GA 行")
         && !outputText.includes("skill 卡")
         && !outputText.includes("Skills:")
@@ -600,24 +598,25 @@ async function main(): Promise<void> {
       status_layout_after_update: statusConfigAfter.layoutMode,
       status_tokens_segment_after_update: statusConfigAfter.segments.tokens,
       status_segment_update_notice_is_human:
-        outputText.includes("状态段 Token")
-        && outputText.includes("已关闭")
-        && !outputText.includes("状态段: Token")
-        && !outputText.includes("状态段: tokens"),
+        outputText.includes("Status segment updated")
+        && outputText.includes("segment Token")
+        && outputText.includes("disabled")
+        && !outputText.includes("segment: Token")
+        && !outputText.includes("segment: tokens"),
       plan_open_no_active_surface_is_human:
-        planOpenNoActiveText.includes("当前没有活跃计划文件")
-        && !planOpenNoActiveText.includes("● 当前没有活跃计划文件")
-        && planOpenNoActiveText.includes("• 请先使用 /plan <goal>。"),
+        planOpenNoActiveText.includes("No active plan file")
+        && !planOpenNoActiveText.includes("● No active plan file")
+        && planOpenNoActiveText.includes("• Use /plan <goal> first."),
       plan_open_success_surface_is_human:
-        planOpenSuccessText.includes("已打开计划文件")
-        && !planOpenSuccessText.includes("● 已打开计划文件")
-        && planOpenSuccessText.includes("• 计划文件 .grobot/plans/interactive-open.md")
+        planOpenSuccessText.includes("Plan file opened")
+        && !planOpenSuccessText.includes("● Plan file opened")
+        && planOpenSuccessText.includes("• plan file .grobot/plans/interactive-open.md")
         && !planOpenSuccessText.includes("Opened plan in editor"),
       status_menu_cancel_is_silent: cancelledMenuOutput.length === 0,
       status_menu_hint_is_reference_compact:
-        capturedSelectMenuHints.includes("↑/↓ 选择 · Enter 确认 · Esc 返回"),
+        capturedSelectMenuHints.includes("↑/↓ select · Enter confirm · Esc back"),
       history_search_hint_is_reference_fill:
-        capturedSelectMenuHints.includes("↑/↓ 选择 · Enter 填入 · Esc 返回"),
+        capturedSelectMenuHints.includes("↑/↓ select · Enter fill · Esc back"),
       interactive_menu_hints_omit_secondary_key_chords:
         capturedSelectMenuHints.every((hint) =>
           !hint.includes("Ctrl+n/p")
@@ -625,18 +624,18 @@ async function main(): Promise<void> {
           && !hint.includes("Enter/Space")
           && !hint.includes("Esc to cancel")
         ),
-      ask_status_no_pending_warned: outputText.includes("没有待确认问题。"),
+      ask_status_no_pending_warned: outputText.includes("No pending questions."),
       ask_status_has_clean_question:
-        outputText.includes("需要确认 · Profile") && outputText.includes("Choose profile"),
+        outputText.includes("Input needed · Profile") && outputText.includes("Choose profile"),
       ask_status_has_clean_options:
         outputText.includes("❯ 1  safe") && outputText.includes("6  fallback"),
       ask_status_has_menu_hint:
-        outputText.includes("Enter 确认") && outputText.includes("Esc 返回输入框"),
+        outputText.includes("Enter confirm") && outputText.includes("Esc back to input"),
       ask_status_hides_options_preview: !outputText.includes("options_preview: "),
       ask_status_hides_log_prefix: !outputText.includes("[ask-user]"),
       ask_status_hides_output_mode_full: !outputText.includes("ask_status_output_mode: full"),
       ask_status_hides_options_more: !outputText.includes("options_more: +1"),
-      ask_status_has_pending_total: outputText.includes("待确认：2 项"),
+      ask_status_has_pending_total: outputText.includes("Pending: 2 items"),
       ask_status_hides_followup_row: !outputText.includes("pending_followup_1: ask_q_contract_002"),
       ask_status_hides_reply_direct_log_hint:
         !outputText.includes("hint: reply directly in chat to answer active question"),
@@ -645,15 +644,15 @@ async function main(): Promise<void> {
       ask_queue_hint_hides_log_prefix:
         !buildAskUserQueueContinuationHint(1).includes("[ask-user]"),
       ask_queue_hint_mentions_followup_count:
-        buildAskUserQueueContinuationHint(2).includes("还有 2 个后续确认"),
+        buildAskUserQueueContinuationHint(2).includes("2 follow-up confirmations remain"),
       ask_status_compact_has_header:
-        askStatusCompactText.includes("需要确认 · Profile"),
+        askStatusCompactText.includes("Input needed · Profile"),
       ask_status_compact_hides_output_mode:
         !askStatusCompactText.includes("ask_status_output_mode: compact"),
       ask_status_compact_hides_detail_hint:
         !askStatusCompactText.includes("ask_status_detail_hint:"),
       ask_status_compact_has_pending_total:
-        askStatusCompactText.includes("待确认：2 项"),
+        askStatusCompactText.includes("Pending: 2 items"),
       ask_status_compact_hides_followup_rows:
         !askStatusCompactText.includes("pending_followup_1: "),
       ask_status_compact_hides_status_only_hint:
@@ -671,13 +670,13 @@ async function main(): Promise<void> {
       plan_suggestion_state_preserves_stored_latest:
         livePlanSuggestionState?.latestPlanStatus === "draft",
       plan_slash_suggestions_surface_direct_execute:
-        livePlanSuggestions.some((item) => item.description.includes("开始实现计划")),
+        livePlanSuggestions.some((item) => item.description.includes("reply Implement the plan")),
       plan_suggestion_state_invalidates_cache_on_file_change:
         changedPlanSuggestionState?.activePlanStatus !== "ready",
       plan_suggestion_state_after_file_change_uses_live_source:
         changedPlanSuggestionState?.activePlanStatusSource === "live_snapshot",
       plan_slash_suggestions_after_file_change_drops_execute_hint:
-        !changedPlanSuggestions.some((item) => item.description.includes("开始实现计划")),
+        !changedPlanSuggestions.some((item) => item.description.includes("Start implementation")),
       plan_execute_submit_transcript_suppressed:
         shouldSuppressRunStartSubmitTranscript({
           value: "Implement the plan.",

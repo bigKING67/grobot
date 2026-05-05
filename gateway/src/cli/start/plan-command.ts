@@ -32,7 +32,7 @@ export function parsePlanCommand(inputRaw: string): ParsedPlanCommand {
   const input = inputRaw.trim();
   const planMatch = input.match(/^\/plan(?:\s+([\s\S]*))?$/);
   if (!planMatch) {
-    return { kind: "invalid", reason: "命令必须以 /plan 开头" };
+    return { kind: "invalid", reason: "Command must start with /plan" };
   }
   const rest = (planMatch[1] ?? "").trim();
   if (!rest) {
@@ -45,14 +45,14 @@ export function parsePlanCommand(inputRaw: string): ParsedPlanCommand {
 
   if (PLAN_OPEN_ALIASES.has(head)) {
     if (tail.length > 0) {
-      return { kind: "invalid", reason: "用法 /plan open" };
+      return { kind: "invalid", reason: "Usage: /plan open" };
     }
     return { kind: "open" };
   }
   if (REMOVED_PLAN_SUBCOMMANDS.has(head)) {
     return {
       kind: "invalid",
-      reason: "不支持该 /plan 子命令。请使用 /plan、/plan <目标> 或 /plan open",
+      reason: "Unsupported /plan subcommand. Use /plan, /plan <goal>, or /plan open",
     };
   }
 

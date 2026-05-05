@@ -18,9 +18,9 @@ import type {
 export const MENU_POINTER = TERMINAL_SYMBOL.pointer;
 export const MODEL_PICKER_POINTER = "❯";
 export const MODEL_PICKER_CHECK = "✓";
-export const MODEL_PICKER_DEFAULT_HINT = "Enter 确认 · Esc 返回";
+export const MODEL_PICKER_DEFAULT_HINT = "Enter confirm · Esc back";
 export const MODEL_PICKER_DEFAULT_SUBTITLE =
-  "切换当前配置模型，后续会话沿用；自定义模型用 /model use <id>。";
+  "Switch the configured model for future sessions; use /model use <id> for custom models.";
 export const MENU_TWO_COLUMN_MIN_WIDTH = 64;
 export const MENU_DESCRIPTION_MIN_WIDTH = 22;
 export const MENU_DESCRIPTION_GAP = 2;
@@ -57,32 +57,32 @@ interface PreparedRenderMenu {
 
 function resolveMenuPrimaryAction(hintRaw: string): "select" | "apply" | "continue" | "fill" {
   const hint = hintRaw.toLowerCase();
-  if (hint.includes("apply") || hint.includes("应用")) {
+  if (hint.includes("apply")) {
     return "apply";
   }
-  if (hint.includes("continue") || hint.includes("继续")) {
+  if (hint.includes("continue")) {
     return "continue";
   }
-  if (hint.includes("fill") || hint.includes("填入")) {
+  if (hint.includes("fill")) {
     return "fill";
   }
   return "select";
 }
 
 export function buildCompactMenuHint(hintRaw?: string): string {
-  const fallback = "↑/↓ 选择 · Enter 确认 · Esc 返回";
+  const fallback = "↑/↓ select · Enter confirm · Esc back";
   if (!hintRaw || hintRaw.trim().length === 0) {
     return fallback;
   }
   const action = resolveMenuPrimaryAction(hintRaw);
   const actionLabel = action === "apply"
-    ? "应用"
+    ? "apply"
     : action === "continue"
-      ? "继续"
+      ? "continue"
       : action === "fill"
-        ? "填入"
-        : "确认";
-  return `↑/↓ 选择 · Enter ${actionLabel} · Esc 返回`;
+        ? "fill"
+        : "confirm";
+  return `↑/↓ select · Enter ${actionLabel} · Esc back`;
 }
 
 export function sanitizeMenuText(value: string | undefined, fallback = ""): string {

@@ -12,7 +12,7 @@ export function buildCompactNotice(
     title,
     sections: [{
       rows: [{
-        title: primary ?? "无更多信息",
+        title: primary ?? "No details",
         detailLines,
       }],
     }],

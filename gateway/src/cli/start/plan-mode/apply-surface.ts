@@ -18,7 +18,7 @@ import { terminalStyle } from "../../tui/theme/terminal-style";
 function compactPlanApprovalFingerprint(value: string | undefined): string {
   const normalized = value?.trim() ?? "";
   if (!normalized) {
-    return "<缺失>";
+    return "<missing>";
   }
   return normalized.slice(0, PLAN_APPROVAL_FINGERPRINT_CHARS);
 }
@@ -99,19 +99,19 @@ function buildHumanPlanPreviewLines(input: {
     extractPlanSectionBody(input.planContent, "Goal"),
   );
   if (goal) {
-    lines.push(`目标 ${goal}`);
+    lines.push(`Goal ${goal}`);
   }
   const scope = firstMeaningfulPlanSectionLine(
     extractPlanSectionBody(input.planContent, "Scope In"),
   );
   if (scope) {
-    lines.push(`范围 ${scope}`);
+    lines.push(`Scope ${scope}`);
   }
   const validation = firstMeaningfulPlanSectionLine(
     extractPlanSectionBody(input.planContent, "Validation"),
   );
   if (validation) {
-    lines.push(`验证 ${validation}`);
+    lines.push(`Validation ${validation}`);
   }
 
   if (lines.length <= 1) {
@@ -131,25 +131,25 @@ function buildHumanPlanPreviewLines(input: {
 function formatPlanApplyDiagnosticHint(diagnostic: string): string {
   switch (diagnostic.trim()) {
     case "PLAN_APPLY_NO_ACTIVE_PLAN":
-      return "当前会话还没有可执行计划；先创建或打开计划后再执行。";
+      return "No executable plan in this session; create or open a plan first.";
     case "PLAN_APPLY_INVALID_STATUS":
-      return "计划状态不允许执行；需要重新规划或选择仍待确认的计划。";
+      return "Plan status cannot be executed; replan or choose a plan still awaiting confirmation.";
     case "PLAN_ENTER_ACTIVE_PLAN_MISSING":
-      return "进入计划模式后未生成活动计划；请重新发起计划。";
+      return "Plan mode did not create an active plan; start planning again.";
     case "PLAN_PROGRESS_APPEND_FAILED":
-      return "计划备注没有写入成功；请打开计划文件确认状态。";
+      return "Plan progress was not written; open the plan file and check status.";
     case "PLAN_REVIEW_ACTIVE_PLAN_MISSING":
-      return "计划更新后未找到活动计划；请重新打开当前计划。";
+      return "No active plan after update; reopen the current plan.";
     case "PLAN_REVIEW_ENTRY_MISSING":
-      return "计划记录缺失，无法完成评审；请重新生成计划。";
+      return "Plan record missing; regenerate the plan before review.";
     case "PLAN_APPROVAL_FAILED":
-      return "计划确认元数据未写入成功；请重新确认计划。";
+      return "Plan approval metadata was not written; confirm the plan again.";
     case "PLAN_APPLY_STATUS_UPDATE_FAILED":
-      return "计划状态未能切换到执行中；请确认计划文件可写。";
+      return "Plan status could not switch to applying; confirm the plan file is writable.";
     case "PLAN_APPLY_APPROVAL_METADATA_MISSING":
-      return "缺少确认票据或计划快照；请重新确认计划后再执行。";
+      return "Approval ticket or plan snapshot missing; confirm the plan again before execution.";
     default:
-      return "计划执行准备未完成；开启详细 plan 日志可查看完整字段。";
+      return "Plan execution preparation did not finish; enable verbose plan logs for full fields.";
   }
 }
 
@@ -168,33 +168,33 @@ export function buildPlanApplyStateSurface(input: {
   diagnostic?: string;
 }): string {
   const detailLines: string[] = [];
-  let title = "计划执行准备失败";
-  let primary = "计划状态未更新。";
+  let title = "Plan execution preparation failed";
+  let primary = "Plan status was not updated.";
   switch (input.kind) {
     case "no_active":
-      title = "当前没有可执行的计划";
-      primary = '请先使用 "/plan <goal>" 写出计划。';
+      title = "No executable plan";
+      primary = 'Use "/plan <goal>" to write a plan first.';
       break;
     case "lock_recovered":
-      title = "已恢复计划执行锁";
-      primary = "执行锁已恢复";
+      title = "Plan execution lock recovered";
+      primary = "Execution lock recovered";
       break;
     case "already_applying":
-      title = "计划正在执行中";
-      primary = "请等待当前执行完成；需要停止时按 Esc。";
+      title = "Plan is already applying";
+      primary = "Wait for the current execution to finish; press Esc to stop.";
       break;
     case "invalid_status":
-      title = "当前计划不能执行";
-      primary = `状态 ${input.statusLabel ?? "未知"}`;
+      title = "Current plan cannot execute";
+      primary = `status ${input.statusLabel ?? "unknown"}`;
       break;
     case "internal_failure":
-      title = "计划执行准备失败";
-      primary = input.detail ?? "计划状态未更新。";
+      title = "Plan execution preparation failed";
+      primary = input.detail ?? "Plan status was not updated.";
       break;
   }
   if (input.workDir && input.planPath) {
     detailLines.push(
-      `计划文件 ${formatHumanPlanFilePath({
+      `plan file ${formatHumanPlanFilePath({
         workDir: input.workDir,
         planPath: input.planPath,
       })}`,
@@ -202,12 +202,12 @@ export function buildPlanApplyStateSurface(input: {
   }
   if (input.kind === "lock_recovered") {
     const staleText = Number.isFinite(input.staleMs) ? ` · stale ${String(input.staleMs)}ms` : "";
-    detailLines.push(`上次执行锁已过期，已安全恢复${staleText}。`);
+    detailLines.push(`Previous execution lock expired and was safely recovered${staleText}.`);
   } else if (input.kind === "invalid_status") {
-    detailLines.push('如需重新规划，请使用 "/plan <goal>" 开始新计划。');
+    detailLines.push('To replan, use "/plan <goal>" to start a new plan.');
   }
   if (input.diagnostic) {
-    detailLines.push(`详情 ${formatPlanApplyDiagnosticHint(input.diagnostic)}`);
+    detailLines.push(`details ${formatPlanApplyDiagnosticHint(input.diagnostic)}`);
   }
   return renderPlanSurface({
     title,
@@ -253,9 +253,9 @@ function renderApprovedPlanCard(input: {
     title: input.title,
     planContent: input.approvedPlanContent,
   });
-  const bodyLines = previewLines.length > 0 ? previewLines : ["已确认计划"];
-  const footer = `确认 ${compactPlanApprovalFingerprint(input.ticketId)} · sha256 ${compactPlanApprovalFingerprint(input.approvedHash)}`;
-  const titleLabel = "将要实现的计划";
+  const bodyLines = previewLines.length > 0 ? previewLines : ["Plan confirmed"];
+  const footer = `approved ${compactPlanApprovalFingerprint(input.ticketId)} · sha256 ${compactPlanApprovalFingerprint(input.approvedHash)}`;
+  const titleLabel = "Plan to implement";
   const innerWidth = Math.min(
     PLAN_APPROVAL_CARD_MAX_INNER_WIDTH,
     Math.max(
@@ -296,13 +296,13 @@ export function buildApprovedPlanExecutionSurface(input: {
   });
   return [
     renderPlanSurface({
-      title: "计划已确认",
+      title: "Plan confirmed",
       rows: [{
-        title: savedToHint ? `已确认 · ${savedToHint}` : "已确认",
+        title: savedToHint ? `confirmed · ${savedToHint}` : "confirmed",
       }],
     }),
     ...renderApprovedPlanCard(input),
-    "开始按已确认快照实现...",
+    "Starting implementation from the approved snapshot...",
     "",
   ].join("\n");
 }

@@ -471,31 +471,31 @@ export function resolvePlanQualityBenchmarkRecommendation(args: {
 }): PlanQualityBenchmarkRecommendation {
   if (args.semanticCorrelation === "high" && args.history.scoreTrend === "down") {
     return {
-      action: "检查 benchmark 基线映射（内部诊断）",
+      action: "Check benchmark baseline mapping (internal diagnostic)",
       reason: "semantic_correlation=high and benchmark_trend=down; verify baseline path mapping before score assertions",
     };
   }
   if (args.history.totalRuns < 2) {
     return {
-      action: "补充 benchmark 基线样本（内部诊断）",
+      action: "Add benchmark baseline samples (internal diagnostic)",
       reason: "benchmark_history_insufficient; run preset benchmark to establish baseline",
     };
   }
   if (args.health.level === "risk") {
     return {
-      action: "确认 benchmark 优胜者预期（内部诊断）",
+      action: "Confirm benchmark winner expectation (internal diagnostic)",
       reason: "benchmark_health=risk; enforce baseline winner and inspect degraded dimensions",
     };
   }
   if (args.health.level === "watch") {
     return {
-      action: "复核 benchmark 可读性与策略一致性（内部诊断）",
+      action: "Review benchmark readability and policy alignment (internal diagnostic)",
       reason: "benchmark_health=watch; validate candidate readability and policy alignment before next run",
     };
   }
   if (args.history.assertCount > 0 && args.history.assertPassCount < args.history.assertCount) {
     return {
-      action: "收紧 benchmark 断言预期（内部诊断）",
+      action: "Tighten benchmark assertion expectations (internal diagnostic)",
       reason: "benchmark_assert_pass_rate_below_100; tighten expected winner guard",
     };
   }

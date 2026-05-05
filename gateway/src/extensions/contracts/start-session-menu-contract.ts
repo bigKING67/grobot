@@ -19,7 +19,7 @@ const sessions: RunStartSessionSummary[] = [
   {
     id: "session-main",
     title: "Main Session",
-    summary: "当前主会话上下文",
+    summary: "Current main session context",
     sessionKey: "feishu:grobot:dm:menu-contract-user",
     updatedAt: "2026-04-14T10:30:00.000Z",
     active: true,
@@ -27,7 +27,7 @@ const sessions: RunStartSessionSummary[] = [
   {
     id: "session-branch",
     title: "Campaign Growth Plan",
-    summary: "品牌复盘并继续追踪转化漏斗",
+    summary: "Campaign review and conversion funnel follow-up",
     sessionKey: "feishu:grobot:dm:menu-contract-user:branch",
     updatedAt: "2026-04-14T09:30:00.000Z",
     active: false,
@@ -100,8 +100,8 @@ const checkpointSummaryText = buildCheckpointSummaryText("session-main", [
   {
     checkpointId: "checkpoint-a",
     createdAt: "2026-04-14T10:10:00.000Z",
-    userText: "用户提出需要恢复到精修前状态",
-    assistantText: "助手执行了检查点恢复前的总结",
+    userText: "User asked to restore the state before polish",
+    assistantText: "Assistant summarized context before restoring the checkpoint",
     historyBeforeCount: 12,
     historyAfterCount: 14,
     changedFilesCount: 2,
@@ -142,7 +142,7 @@ const payload = {
   resume_subtitle: resumeMenu.subtitle,
   rewind_hint: rewindMenu.hint,
   rewind_subtitle: rewindMenu.subtitle,
-  sessions_summary_visible: sessionsBranchDescription.includes("重点 品牌复盘并继续追踪转化漏斗"),
+  sessions_summary_visible: sessionsBranchDescription.includes("summary Campaign review and conversion funnel follow-up"),
   session_descriptions_omit_full_session_key:
     !sessionsBranchDescription.includes("feishu:grobot:dm:menu-contract-user:branch")
     && !switchBranchDescription.includes("feishu:grobot:dm:menu-contract-user:branch")
@@ -155,32 +155,32 @@ const payload = {
     && !switchBranchDescription.includes("id session-branch")
     && !findDescriptionById(resumeMenu.items, "session-branch").includes("id session-branch")
     && !rewindBranchDescription.includes("id session-branch")
-    && switchBranchDescription.includes("会话 session-branch")
-    && findDescriptionById(resumeMenu.items, "session-branch").includes("会话 session-branch")
-    && rewindBranchDescription.includes("会话 session-branch"),
+    && switchBranchDescription.includes("session session-branch")
+    && findDescriptionById(resumeMenu.items, "session-branch").includes("session session-branch")
+    && rewindBranchDescription.includes("session session-branch"),
   sessions_omits_raw_iso_timestamp: !sessionsBranchDescription.includes("T09:30:00.000Z"),
-  sessions_uses_compact_timestamp: sessionsBranchDescription.includes("更新 2026-04-14 09:30"),
+  sessions_uses_compact_timestamp: sessionsBranchDescription.includes("updated 2026-04-14 09:30"),
   sessions_descriptions_avoid_pipe_table_style:
     !sessionsBranchDescription.includes(" | ")
     && !switchBranchDescription.includes(" | ")
     && switchBranchDescription.includes(" · "),
   sessions_has_low_noise_subtitle:
-    sessionMenu.subtitle === "2 个会话 · 当前 Main Session",
+    sessionMenu.subtitle === "2 sessions · current Main Session",
   sessions_create_label_is_reference_compact:
-    sessionMenu.items.find((item) => item.id === SESSION_MENU_NEW_ID)?.label === "新建会话",
+    sessionMenu.items.find((item) => item.id === SESSION_MENU_NEW_ID)?.label === "New session",
   switch_keeps_explicit_create_label:
-    switchMenu.items.find((item) => item.id === SESSION_MENU_NEW_ID)?.label === "+ 新建并切换到新会话",
+    switchMenu.items.find((item) => item.id === SESSION_MENU_NEW_ID)?.label === "+ New session and switch",
   sessions_hub_uses_reference_labels:
-    sessionsHubMenu.items.some((item) => item.label === "新建会话")
-    && sessionsHubMenu.items.some((item) => item.label === "继续摘要")
-    && !sessionsHubMenu.items.some((item) => item.label.includes("并切换到")),
-  continue_current_skip_hint: continueActiveDescription.includes("当前会话 · 选择后跳过"),
-  resume_current_hint: resumeActiveDescription.includes("当前会话 · 已恢复"),
-  sessions_hint_is_reference_compact: sessionMenu.hint === "↑/↓ 选择 · Enter 确认 · Esc 返回",
-  switch_hint_is_reference_compact: switchMenu.hint === "↑/↓ 选择 · Enter 确认 · Esc 返回",
-  continue_hint_is_reference_continue: continueMenu.hint === "↑/↓ 选择 · Enter 继续 · Esc 返回",
-  resume_hint_is_reference_compact: resumeMenu.hint === "↑/↓ 选择 · Enter 确认 · Esc 返回",
-  rewind_hint_is_reference_compact: rewindMenu.hint === "↑/↓ 选择 · Enter 确认 · Esc 返回",
+    sessionsHubMenu.items.some((item) => item.label === "New session")
+    && sessionsHubMenu.items.some((item) => item.label === "Continue summary")
+    && !sessionsHubMenu.items.some((item) => item.label.includes("and switch")),
+  continue_current_skip_hint: continueActiveDescription.includes("current session · skip after select"),
+  resume_current_hint: resumeActiveDescription.includes("current session · resumed"),
+  sessions_hint_is_reference_compact: sessionMenu.hint === "↑/↓ select · Enter confirm · Esc back",
+  switch_hint_is_reference_compact: switchMenu.hint === "↑/↓ select · Enter confirm · Esc back",
+  continue_hint_is_reference_continue: continueMenu.hint === "↑/↓ select · Enter continue · Esc back",
+  resume_hint_is_reference_compact: resumeMenu.hint === "↑/↓ select · Enter confirm · Esc back",
+  rewind_hint_is_reference_compact: rewindMenu.hint === "↑/↓ select · Enter confirm · Esc back",
   session_hints_omit_secondary_key_chords: allHints.every((hint) =>
     !hint.includes("Ctrl+n/p")
     && !hint.includes("number to select directly")
@@ -197,48 +197,50 @@ const payload = {
   session_menu_ops_rewind_surface_avoids_legacy_marker:
     !sessionMenuOpsSource.includes("[rewind]"),
   session_menu_ops_rewind_file_filter_prompt_is_human:
-    sessionMenuOpsSource.includes("文件过滤（可选，逗号分隔）> ")
-    && !sessionMenuOpsSource.includes("[rewind] 文件过滤"),
+    sessionMenuOpsSource.includes("File filter (optional, comma separated)> ")
+    && !sessionMenuOpsSource.includes("[rewind] file filter"),
   session_menu_ops_rewind_checkpoint_description_is_reference_style:
-    sessionMenuOpsSource.includes("个文件 · 消息")
-    && sessionMenuOpsSource.includes("· 用户 ")
-    && !sessionMenuOpsSource.includes(" | 文件="),
+    sessionMenuOpsSource.includes("file")
+    && sessionMenuOpsSource.includes("· messages")
+    && sessionMenuOpsSource.includes("· user ")
+    && !sessionMenuOpsSource.includes(" | files="),
   session_ops_rewind_surface_avoids_legacy_marker:
     !sessionOpsSource.includes("[rewind]"),
   session_ops_overview_surface_is_reference_style:
     sessionOpsSource.includes("subtitle: active")
-    && sessionOpsSource.includes("重点 ${record.summary}")
+    && sessionOpsSource.includes("summary ${record.summary}")
     && sessionOpsSource.includes("formatSessionUpdatedAtForDisplay(record.updatedAt)")
     && !sessionOpsSource.includes("${record.id} | ${record.title}"),
   session_ops_overview_avoids_raw_session_table:
     !sessionOpsSource.includes("`${marker} ${record.id} · ${record.title} · ${record.updatedAt}\\n`")
-    && !sessionOpsSource.includes("⎿  摘要")
-    && !sessionOpsSource.includes("数量 ${String(sessions.length)}"),
+    && !sessionOpsSource.includes("⎿  summary")
+    && !sessionOpsSource.includes("count ${String(sessions.length)}"),
   rewind_store_summary_avoids_legacy_marker:
     !rewindStoreSource.includes("[rewind]"),
   rewind_store_summary_surface_is_reference_style:
-    checkpointSummaryText.includes("• 会话 session-main")
-    && checkpointSummaryText.includes("⎿  检查点 1")
-    && checkpointSummaryText.includes("2026-04-14 10:10 · 2 个文件 · 消息 12->14")
+    checkpointSummaryText.includes("• Session session-main")
+    && checkpointSummaryText.includes("⎿  checkpoints 1")
+    && checkpointSummaryText.includes("2026-04-14 10:10 · 2 files · messages 12->14")
     && !checkpointSummaryText.includes("2026-04-14T10:10:00.000Z")
-    && checkpointSummaryText.includes("⎿  用户 用户提出需要恢复到精修前状态")
-    && checkpointSummaryText.includes("⎿  助手 助手执行了检查点恢复前的总结")
-    && !checkpointSummaryText.includes("会话:")
-    && !checkpointSummaryText.includes("检查点:")
-    && !checkpointSummaryText.includes(" | 文件=")
-    && !checkpointSummaryText.includes("用户=")
-    && !checkpointSummaryText.includes("助手=")
-    && !rewindStoreSummarySource.includes(" | 文件=")
-    && !rewindStoreSummarySource.includes("用户="),
+    && checkpointSummaryText.includes("⎿  user User asked to restore the state before polish")
+    && checkpointSummaryText.includes("⎿  assistant Assistant summarized context before restoring the checkpoint")
+    && !checkpointSummaryText.includes("session:")
+    && !checkpointSummaryText.includes("checkpoint:")
+    && !checkpointSummaryText.includes(" | files=")
+    && !checkpointSummaryText.includes("user=")
+    && !checkpointSummaryText.includes("assistant=")
+    && !rewindStoreSummarySource.includes(" | files=")
+    && !rewindStoreSummarySource.includes("user="),
   rewind_store_summary_hides_raw_namespace:
-    scopedCheckpointSummaryText.includes("• 会话 session-branch")
+    scopedCheckpointSummaryText.includes("• Session session-branch")
     && !scopedCheckpointSummaryText.includes("feishu:grobot:dm:menu-contract-user"),
   startup_session_actions_rewind_picker_description_is_reference_style:
-    startupSessionActionsSource.includes(" 个文件 · 用户 ")
-    && startupSessionActionsSource.includes(" · 助手 ")
-    && !startupSessionActionsSource.includes(" | 文件=")
-    && !startupSessionActionsSource.includes(" | 用户=")
-    && !startupSessionActionsSource.includes(" | 助手="),
+    startupSessionActionsSource.includes("file")
+    && startupSessionActionsSource.includes(" · user ")
+    && startupSessionActionsSource.includes(" · assistant ")
+    && !startupSessionActionsSource.includes(" | files=")
+    && !startupSessionActionsSource.includes(" | user=")
+    && !startupSessionActionsSource.includes(" | assistant="),
   sessions_initial_index: sessionMenu.initialIndex,
   switch_initial_index: switchMenu.initialIndex,
   continue_initial_index: continueMenu.initialIndex,

@@ -160,7 +160,7 @@ const cclinePlain = stripAnsi(cclinePrompt);
 const payload = {
   wide_has_model: wideStatusLine.includes("kimi/kimi-k2-2026-04"),
   wide_has_project: wideStatusLine.includes("grobot"),
-  wide_has_ctx_percent: wideStatusLine.includes("上下文 剩余 37%"),
+  wide_has_ctx_percent: wideStatusLine.includes("context 37% left"),
   wide_has_token_counter: wideStatusLine.includes("5K window"),
   wide_has_short_session_id: wideStatusLine.includes(sessionShortId),
   wide_has_no_s_colon_prefix: wideStatusLine.includes(`s:${sessionShortId}`) === false,
@@ -170,31 +170,31 @@ const payload = {
   narrow_line_within_width: measureDisplayWidth(narrowStatusLine) <= 64,
   narrow_has_short_session_id: narrowStatusLine.includes(sessionShortId),
   cjk_line_within_width: measureDisplayWidth(cjkStatusLine) <= 48,
-  cjk_narrow_keeps_context_signal: cjkStatusLine.includes("ctx") && cjkStatusLine.includes("剩余"),
+  cjk_narrow_keeps_context_signal: cjkStatusLine.includes("ctx") && cjkStatusLine.includes("left"),
   tiny_line_within_width: measureDisplayWidth(tinyStatusLine) <= 48,
-  tiny_keeps_context_signal: tinyStatusLine.includes("ctx 剩余 37%"),
+  tiny_keeps_context_signal: tinyStatusLine.includes("ctx 37% left"),
   tiny_keeps_token_counter: tinyStatusLine.includes("5K win"),
   tiny_keeps_short_session_id: tinyStatusLine.includes(sessionShortId),
   tiny_not_session_only: tinyStatusLine !== sessionShortId,
   warning_has_separate_line: warningLines.length >= 2,
   warning_line_contains_human_label:
-    warningLine.includes("接近上限") || warningLine.includes("已到上限"),
+    warningLine.includes("near limit") || warningLine.includes("limit reached"),
   warning_status_line_unchanged:
     warningStatusLine.includes("context 94%") === false
     && warningStatusLine.includes("上下文 94%") === false,
   tokens_segment_toggle_effective:
     segmentToggleStatusLine.includes("5K window") === false
     && segmentToggleStatusLine.includes("5k window") === false,
-  plan_mode_badge_visible: planModeStatusLine.includes("计划模式"),
+  plan_mode_badge_visible: planModeStatusLine.includes("plan mode"),
   plan_mode_badge_leads_status:
-    stripAnsi(planModeStatusLine).startsWith("⏸ 计划模式"),
-  plan_mode_badge_kept_when_narrow: narrowPlanModeLine.includes("计划模式"),
+    stripAnsi(planModeStatusLine).startsWith("⏸ plan mode"),
+  plan_mode_badge_kept_when_narrow: narrowPlanModeLine.includes("plan mode"),
   plan_mode_badge_kept_when_status_disabled:
-    disabledStatusPlanModePrompt.includes("计划模式"),
+    disabledStatusPlanModePrompt.includes("plan mode"),
   plan_mode_narrow_line_within_width:
     measureDisplayWidth(narrowPlanModeLine) <= 48,
   ccline_uses_low_noise_text_labels:
-    cclinePlain.includes("context 剩余 100%")
+    cclinePlain.includes("context 100% left")
     && cclinePlain.includes("262K window")
     && cclinePlain.includes("kimi/kimi-k2.5"),
   ccline_avoids_emoji_status_labels:

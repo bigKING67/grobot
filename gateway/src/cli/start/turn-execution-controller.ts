@@ -36,9 +36,9 @@ export interface TurnExecutionController {
 
 function formatFallbackAssistantTurnSummary(code: number): string {
   if (code === 0) {
-    return "回合已完成。";
+    return "Turn completed.";
   }
-  return `回合执行未完成，退出码 ${String(code)}。`;
+  return `Turn did not finish, exit code ${String(code)}.`;
 }
 
 export function createTurnExecutionController(

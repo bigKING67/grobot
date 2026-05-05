@@ -99,9 +99,9 @@ async function run(): Promise<void> {
     check("non_tty_keeps_auto_selected_target", nonTtyAuto.targetSessionId === "session-legacy"),
     check(
       "non_tty_reports_auto_selected_notice",
-      nonTtyAutoPlain.includes("已自动选择启动会话")
-      && nonTtyAutoPlain.includes("会话 session-legacy")
-      && !nonTtyAutoPlain.includes("会话: session-legacy"),
+      nonTtyAutoPlain.includes("Startup session auto-selected")
+      && nonTtyAutoPlain.includes("session session-legacy")
+      && !nonTtyAutoPlain.includes("session: session-legacy"),
     ),
     check("non_tty_notice_avoids_legacy_marker", !nonTtyAutoText.includes("[session]")),
     check("no_disambiguation_keeps_target", noDisambiguation.targetSessionId === "session-legacy"),

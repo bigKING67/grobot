@@ -53,65 +53,65 @@ export interface ParsedHistoryCommand {
 }
 
 function buildModelUsageNotice(): string {
-  return buildSlashUsageNotice("模型命令", [
+  return buildSlashUsageNotice("Model command", [
     {
       command: "/model",
-      description: "打开模型选择器。",
+      description: "Open model picker.",
     },
   ]);
 }
 
 function buildStatusUsageNotice(): string {
-  return buildSlashUsageNotice("状态栏命令", [
+  return buildSlashUsageNotice("Status bar command", [
     {
       command: "/status",
-      description: "显示当前状态栏快照。",
+      description: "Show current status bar snapshot.",
     },
     {
-      command: "/status 当前",
-      description: "显示当前状态栏快照。",
+      command: "/status current",
+      description: "Show current status bar snapshot.",
     },
     {
-      command: "/status 布局 <自适应|完整|紧凑>",
-      description: "调整状态栏布局。",
+      command: "/status layout <adaptive|full|compact>",
+      description: "Change status bar layout.",
     },
     {
-      command: "/status 主题 <极简|双行|图标增强>",
-      description: "调整状态栏主题。",
+      command: "/status theme <plain|ccline|nerd_font>",
+      description: "Change status bar theme.",
     },
     {
-      command: "/status 状态段 <模型|项目|上下文|Token|会话> <开启|关闭>",
-      description: "开启或关闭指定状态段。",
+      command: "/status segment <model|project|context|tokens|session> <on|off>",
+      description: "Enable or disable a status segment.",
     },
   ]);
 }
 
 function buildStatusLayoutUsageNotice(): string {
-  return buildSlashUsageNotice("状态栏布局", [
+  return buildSlashUsageNotice("Status bar layout", [
     {
-      command: formatUsageLine("/status 布局 <自适应|完整|紧凑>"),
+      command: formatUsageLine("/status layout <adaptive|full|compact>"),
     },
   ]);
 }
 
 function buildStatusThemeUsageNotice(): string {
-  return buildSlashUsageNotice("状态栏主题", [
+  return buildSlashUsageNotice("Status bar theme", [
     {
-      command: formatUsageLine("/status 主题 <极简|双行|图标增强>"),
+      command: formatUsageLine("/status theme <plain|ccline|nerd_font>"),
     },
   ]);
 }
 
 function buildStatusSegmentUsageNotice(): string {
-  return buildSlashUsageNotice("状态栏状态段", [
+  return buildSlashUsageNotice("Status bar segment", [
     {
-      command: formatUsageLine("/status 状态段 <模型|项目|上下文|Token|会话> <开启|关闭>"),
+      command: formatUsageLine("/status segment <model|project|context|tokens|session> <on|off>"),
     },
   ]);
 }
 
 function buildResumeFindUsageNotice(): string {
-  return buildSlashUsageNotice("恢复会话查询", [
+  return buildSlashUsageNotice("Resume session query", [
     {
       command: formatUsageLine("/resume find <id|title|summary|updated-at>"),
     },
@@ -119,31 +119,31 @@ function buildResumeFindUsageNotice(): string {
 }
 
 function buildRewindSummaryUsageNotice(command: "/rewind" | "/checkpoint"): string {
-  return buildSlashUsageNotice("回退汇总命令", [
+  return buildSlashUsageNotice("Rewind summary command", [
     {
       command: formatUsageLine(`${command} summarize`),
-      description: "显示最近检查点摘要，不执行恢复。",
+      description: "Show recent checkpoint summary without restoring.",
     },
   ]);
 }
 
 function buildRewindNonInteractiveUsageNotice(command: "/rewind" | "/checkpoint"): string {
-  return buildSlashUsageNotice("回退命令", [
+  return buildSlashUsageNotice("Rewind command", [
     {
       command,
-      description: "打开回退菜单。",
+      description: "Open rewind menu.",
     },
     {
       command: `${command} summarize`,
-      description: "显示最近检查点摘要。",
+      description: "Show recent checkpoint summary.",
     },
   ]);
 }
 
 function buildRewindQueryUsageNotice(command: "/rewind" | "/checkpoint"): string {
-  return buildSlashUsageNotice("回退查询命令", [
+  return buildSlashUsageNotice("Rewind query command", [
     {
-      command: formatUsageLine(`${command} [find|search] <检查点 ID|文本> [both|conversation|code]`),
+      command: formatUsageLine(`${command} [find|search] <checkpoint id|text> [both|conversation|code]`),
     },
   ]);
 }
@@ -151,7 +151,7 @@ function buildRewindQueryUsageNotice(command: "/rewind" | "/checkpoint"): string
 export function parseModelCommand(inputRaw: string): ParsedModelCommand {
   const input = inputRaw.trim();
   if (!input.startsWith("/model")) {
-    return { kind: "invalid", reason: "命令必须以 /model 开头" };
+    return { kind: "invalid", reason: "Command must start with /model" };
   }
   const rest = input.slice("/model".length).trim();
   if (!rest) {
@@ -161,9 +161,9 @@ export function parseModelCommand(inputRaw: string): ParsedModelCommand {
   if (legacyMatch) {
     return {
       kind: "legacy_subcommand",
-      reason: buildSlashNotice("模型选择", [
-        "旧子命令已移除。",
-        "使用 /model 打开选择器（Enter 确认）。",
+      reason: buildSlashNotice("Model selection", [
+        "Legacy subcommands have been removed.",
+        "Use /model to open the picker (Enter confirm).",
       ]).trimEnd(),
     };
   }
@@ -176,7 +176,7 @@ export function parseModelCommand(inputRaw: string): ParsedModelCommand {
 export function parseStatusCommand(inputRaw: string): ParsedStatusCommand {
   const input = inputRaw.trim();
   if (!input.startsWith("/status")) {
-    return { kind: "invalid", reason: "命令必须以 /status 开头" };
+    return { kind: "invalid", reason: "Command must start with /status" };
   }
   const rest = input.slice("/status".length).trim();
   if (!rest || rest.toLowerCase() === "current" || rest === "当前") {
@@ -262,7 +262,7 @@ export function parseSessionMenuCommand(
 ): ParsedSessionMenuCommand {
   const input = inputRaw.trim();
   if (!input.startsWith(command)) {
-    return { kind: "invalid", reason: `命令必须以 ${command} 开头` };
+    return { kind: "invalid", reason: `Command must start with ${command}` };
   }
   const rest = input.slice(command.length).trim();
   if (!rest) {
@@ -271,9 +271,9 @@ export function parseSessionMenuCommand(
   if (isInteractiveTerminal()) {
     return {
       kind: "invalid",
-      reason: buildSlashNotice("会话命令已改为菜单选择", [
-        `${command} <id> 已移除。`,
-        `请使用 ${command} 打开菜单后再选择目标会话。`,
+      reason: buildSlashNotice("Session command moved to menu selection", [
+        `${command} <id> has been removed.`,
+        `Use ${command} to open the menu, then select the target session.`,
       ]).trimEnd(),
     };
   }
@@ -281,9 +281,9 @@ export function parseSessionMenuCommand(
   return {
     kind: "legacy_with_id",
     sessionId: sessionId.trim(),
-    reason: buildSlashNotice("会话命令兼容模式", [
-      `${command} <id> 已废弃；非交互场景保留兼容。`,
-      `建议改用 ${command} 菜单。`,
+    reason: buildSlashNotice("Session command compatibility mode", [
+      `${command} <id> is deprecated; non-interactive compatibility remains.`,
+      `Prefer the ${command} menu.`,
     ]).trimEnd(),
   };
 }
@@ -291,7 +291,7 @@ export function parseSessionMenuCommand(
 export function parseResumeCommand(inputRaw: string): ParsedResumeCommand {
   const input = inputRaw.trim();
   if (!input.startsWith("/resume")) {
-    return { kind: "invalid", reason: "命令必须以 /resume 开头" };
+    return { kind: "invalid", reason: "Command must start with /resume" };
   }
   const rest = input.slice("/resume".length).trim();
   if (!rest) {
@@ -324,9 +324,9 @@ export function parseResumeCommand(inputRaw: string): ParsedResumeCommand {
   return {
     kind: "legacy_with_id",
     sessionId: sessionId.trim(),
-    reason: buildSlashNotice("恢复会话", [
-      "/resume <id> 已废弃；非交互场景保留兼容。",
-      "建议改用 /resume 菜单。",
+    reason: buildSlashNotice("Resume session", [
+      "/resume <id> is deprecated; non-interactive compatibility remains.",
+      "Prefer the /resume menu.",
     ]).trimEnd(),
   };
 }
@@ -337,7 +337,7 @@ export function parseRewindCommand(
 ): ParsedRewindCommand {
   const input = inputRaw.trim();
   if (!input.startsWith(command)) {
-    return { kind: "invalid", reason: `命令必须以 ${command} 开头` };
+    return { kind: "invalid", reason: `Command must start with ${command}` };
   }
   const rest = input.slice(command.length).trim();
   if (!rest) {
@@ -419,7 +419,7 @@ export function parseSkillCreatorCommand(
 ): ParsedSkillCreatorCommand {
   const input = inputRaw.trim();
   if (!input.startsWith("/skill-creator")) {
-    return { kind: "invalid", reason: "命令必须以 /skill-creator 开头" };
+    return { kind: "invalid", reason: "Command must start with /skill-creator" };
   }
   const rest = input.slice("/skill-creator".length).trim();
   if (!rest) {
@@ -434,7 +434,7 @@ export function parseSkillCreatorCommand(
 export function parseHistoryCommand(inputRaw: string): ParsedHistoryCommand {
   const input = inputRaw.trim();
   if (!input.startsWith("/history")) {
-    return { kind: "invalid", reason: "命令必须以 /history 开头" };
+    return { kind: "invalid", reason: "Command must start with /history" };
   }
   const rest = input.slice("/history".length).trim();
   if (!rest) {

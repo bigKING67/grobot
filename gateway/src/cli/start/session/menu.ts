@@ -37,20 +37,20 @@ function formatSessionMenuDescription(input: {
   const parts: string[] = [];
   if (input.active) {
     if (input.mode === "continue") {
-      parts.push("当前会话 · 选择后跳过");
+      parts.push("current session · skip after select");
     } else if (input.mode === "resume") {
-      parts.push("当前会话 · 已恢复");
+      parts.push("current session · resumed");
     } else {
-      parts.push("当前会话");
+      parts.push("current session");
     }
   }
   if (input.mode !== "sessions") {
-    parts.push(`会话 ${input.sessionId}`);
+    parts.push(`session ${input.sessionId}`);
   }
-  parts.push(`更新 ${formatSessionMenuUpdatedAt(input.updatedAt)}`);
+  parts.push(`updated ${formatSessionMenuUpdatedAt(input.updatedAt)}`);
   const summary = input.summary.trim();
   if (summary.length > 0) {
-    parts.push(`重点 ${summary}`);
+    parts.push(`summary ${summary}`);
   }
   return parts.join(" · ");
 }
@@ -62,39 +62,39 @@ function formatSessionMenuUpdatedAt(value: string): string {
     const [, year, month, day, hour, minute] = isoMatch;
     return `${year}-${month}-${day} ${hour}:${minute}`;
   }
-  return normalized.length > 0 ? normalized : "未知";
+  return normalized.length > 0 ? normalized : "unknown";
 }
 
 function resolveSessionMenuTitle(mode: SessionMenuMode): string {
   if (mode === "continue") {
-    return "从会话继续";
+    return "Continue from session";
   }
   if (mode === "resume") {
-    return "恢复会话";
+    return "Resume session";
   }
   if (mode === "rewind") {
-    return "回退会话";
+    return "Rewind session";
   }
   if (mode === "sessions") {
-    return "会话管理";
+    return "Sessions";
   }
-  return "切换会话";
+  return "Switch session";
 }
 
 function resolveSessionMenuHint(mode: SessionMenuMode): string {
   if (mode === "continue") {
-    return "↑/↓ 选择 · Enter 继续 · Esc 返回";
+    return "↑/↓ select · Enter continue · Esc back";
   }
   if (mode === "resume") {
-    return "↑/↓ 选择 · Enter 确认 · Esc 返回";
+    return "↑/↓ select · Enter confirm · Esc back";
   }
   if (mode === "rewind") {
-    return "↑/↓ 选择 · Enter 确认 · Esc 返回";
+    return "↑/↓ select · Enter confirm · Esc back";
   }
   if (mode === "sessions") {
-    return "↑/↓ 选择 · Enter 确认 · Esc 返回";
+    return "↑/↓ select · Enter confirm · Esc back";
   }
-  return "↑/↓ 选择 · Enter 确认 · Esc 返回";
+  return "↑/↓ select · Enter confirm · Esc back";
 }
 
 function buildSessionMenuItems(input: {
@@ -105,10 +105,10 @@ function buildSessionMenuItems(input: {
   if (input.mode === "sessions" || input.mode === "switch") {
     items.push({
       id: SESSION_MENU_NEW_ID,
-      label: input.mode === "sessions" ? "新建会话" : "+ 新建并切换到新会话",
+      label: input.mode === "sessions" ? "New session" : "+ New session and switch",
       description: input.mode === "sessions"
-        ? "创建新的独立上下文。"
-        : "创建全新的独立会话上下文。",
+        ? "Create a separate context."
+        : "Create a new separate session context.",
     });
   }
   for (const session of input.sessions) {
@@ -137,19 +137,19 @@ function resolveSessionMenuSubtitle(input: {
   const count = input.sessions.length;
   const active = input.sessions.find((session) => session.active);
   if (input.mode === "sessions") {
-    const activeLabel = active ? `当前 ${active.title || active.id}` : "无当前会话";
-    return `${String(count)} 个会话 · ${activeLabel}`;
+    const activeLabel = active ? `current ${active.title || active.id}` : "no current session";
+    return `${String(count)} sessions · ${activeLabel}`;
   }
   if (input.mode === "continue") {
-    return `${String(count)} 个会话 · 选择摘要来源`;
+    return `${String(count)} sessions · choose summary source`;
   }
   if (input.mode === "resume") {
-    return `${String(count)} 个会话 · 选择恢复来源`;
+    return `${String(count)} sessions · choose resume source`;
   }
   if (input.mode === "rewind") {
-    return `${String(count)} 个会话 · 选择回退来源`;
+    return `${String(count)} sessions · choose rewind source`;
   }
-  return `${String(count)} 个会话 · 选择当前上下文`;
+  return `${String(count)} sessions · choose current context`;
 }
 
 function resolveSessionMenuInitialIndex(items: ReadonlyArray<TerminalSelectMenuItem>): number {
@@ -183,43 +183,43 @@ export function buildSessionsHubMenuViewModel(input: {
   const active = input.sessions.find((session) => session.active);
   const sessionCount = input.sessions.length;
   return {
-    title: "会话",
+    title: "Sessions",
     subtitle: active
-      ? `${String(sessionCount)} 个会话 · 当前 ${active.title || active.id}`
-      : `${String(sessionCount)} 个会话 · 尚无当前会话`,
-    hint: "↑/↓ 选择 · Enter 确认 · Esc 返回",
+      ? `${String(sessionCount)} sessions · current ${active.title || active.id}`
+      : `${String(sessionCount)} sessions · no current session`,
+    hint: "↑/↓ select · Enter confirm · Esc back",
     layout: "compact-vertical",
     visibleOptionCount: 6,
     items: [
       {
         id: "create",
-        label: "新建会话",
-        description: "创建新的独立上下文。",
+        label: "New session",
+        description: "Create a separate context.",
       },
       {
         id: "switch",
-        label: "切换会话",
-        description: "选择已有会话作为当前上下文。",
+        label: "Switch session",
+        description: "Use an existing session as the current context.",
       },
       {
         id: "resume",
-        label: "恢复会话",
-        description: "从完整历史恢复到选中会话。",
+        label: "Resume session",
+        description: "Restore full history from the selected session.",
       },
       {
         id: "rewind",
-        label: "回退会话",
-        description: "选择检查点恢复对话或代码。",
+        label: "Rewind session",
+        description: "Restore conversation or code from a checkpoint.",
       },
       {
         id: "continue",
-        label: "继续摘要",
-        description: "把旧会话摘要桥接到当前会话。",
+        label: "Continue summary",
+        description: "Bridge an old session summary into the current session.",
       },
       {
         id: "overview",
-        label: "会话概览",
-        description: "打印列表和元数据。",
+        label: "Session overview",
+        description: "Print list and metadata.",
       },
     ],
   };

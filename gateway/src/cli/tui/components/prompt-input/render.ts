@@ -39,7 +39,7 @@ const ANSI_INLINE_IMAGE_TOKEN_PLAIN = ANSI_BRAND;
 const ANSI_INLINE_IMAGE_TOKEN_NERD = ANSI_BRAND;
 const ANSI_INLINE_IMAGE_TOKEN_CCLINE = `\u001B[1m${ANSI_BRAND}`;
 const INPUT_CHROME_BODY_LEFT_PADDING = 0;
-const SHORTCUT_HINT_TEXT = "? 快捷键";
+const SHORTCUT_HINT_TEXT = "? shortcuts";
 
 export interface PromptInputRenderSnapshot {
   renderedLines: string[];

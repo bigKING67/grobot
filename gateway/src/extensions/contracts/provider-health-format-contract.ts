@@ -45,37 +45,37 @@ const text = formatProviderHealthSnapshot({
 const plain = text.replace(/\u001B\[[0-9;]*m/g, "");
 
 const payload = {
-  has_header: plain.includes("模型通道"),
-  has_session: plain.includes("会话 provider-health-contract"),
+  has_header: plain.includes("Model providers"),
+  has_session: plain.includes("session provider-health-contract"),
   hides_raw_session_namespace:
     !plain.includes("session feishu:grobot:dm")
     && !plain.includes("feishu:grobot:dm:provider-health-contract"),
-  has_sticky: plain.includes("会话固定通道 alpha"),
+  has_sticky: plain.includes("Sticky provider alpha"),
   hides_raw_sticky_label: !plain.includes("sticky alpha"),
-  has_alpha_closed: plain.includes("• alpha · 正常"),
-  has_beta_open: plain.includes("• beta · 熔断中"),
+  has_alpha_closed: plain.includes("• alpha · Healthy"),
+  has_beta_open: plain.includes("• beta · Open"),
   hides_raw_status_codes:
     !plain.includes("(CLOSED)")
     && !plain.includes("(OPEN)")
     && !plain.includes("(HALF_OPEN)"),
-  has_latency_field: plain.includes("延迟 112.3ms"),
-  has_error_rate_field: plain.includes("错误率 1.0%"),
-  has_rpm_field: plain.includes("每分钟 120"),
-  has_human_cooldown: plain.includes("冷却 30 秒"),
-  has_human_error_class: plain.includes("最近错误 请求超时"),
-  hides_raw_error_class: !plain.includes("最近错误 timeout"),
+  has_latency_field: plain.includes("latency 112.3ms"),
+  has_error_rate_field: plain.includes("error rate 1.0%"),
+  has_rpm_field: plain.includes("rate 120/min"),
+  has_human_cooldown: plain.includes("cooldown 30s"),
+  has_human_error_class: plain.includes("last error Request timed out"),
+  hides_raw_error_class: !plain.includes("last error timeout"),
   hides_raw_rpm_burst_labels:
-    !plain.includes("rpm 120")
-    && !plain.includes("burst 120"),
+    !plain.includes("requestsPerMinute 120")
+    && !plain.includes("burstSize 120"),
   uses_reference_detail_rows:
-    plain.includes("  ⎿  失败 0")
-    && plain.includes("  ⎿  并发 4 · 每分钟 120 · 突发 120")
-    && plain.includes("  ⎿  打开至"),
+    plain.includes("  ⎿  failures 0 · latency 112.3ms · error rate 1.0%")
+    && plain.includes("  ⎿  in-flight 4 · rate 120/min · burst-cap 120")
+    && plain.includes("  ⎿  open until"),
   avoids_machine_prefix:
     !plain.includes("[provider-health]")
-    && !plain.includes("状态=")
-    && !plain.includes("延迟EWMA_ms=")
-    && !plain.includes("错误率EWMA="),
+    && !plain.includes("status=")
+    && !plain.includes("ewma_latency_ms=")
+    && !plain.includes("ewma_error_rate="),
 };
 
 process.stdout.write(`${JSON.stringify(payload)}\n`);

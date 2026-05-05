@@ -28,6 +28,10 @@ export interface RunStartupSessionActionsInput {
   writeStdout(message: string): void;
 }
 
+function formatChangedFileCount(count: number): string {
+  return `${String(count)} ${count === 1 ? "file" : "files"}`;
+}
+
 export async function runStartupSessionActions(
   input: RunStartupSessionActionsInput,
 ): Promise<void> {
@@ -104,15 +108,15 @@ export async function runStartupSessionActions(
         stdinIsTTY: Boolean(process.stdin.isTTY),
         pickCheckpoint: async (candidates) => {
           const picked = await runTerminalSelectMenu({
-            title: "启动回退 Checkpoint",
-            subtitle: `会话 ${input.runtimeState.getActiveSessionId()}`,
-            hint: "↑/↓ 选择 · Enter 确认 · Esc 跳过",
+            title: "Startup rewind checkpoint",
+            subtitle: `session ${input.runtimeState.getActiveSessionId()}`,
+            hint: "↑/↓ select · Enter confirm · Esc skip",
             items: candidates.map((checkpoint) => ({
               id: checkpoint.checkpointId,
               label: checkpoint.checkpointId,
-              description: `${checkpoint.createdAt} · ${String(checkpoint.changedFilesCount)} 个文件 · 用户 ${formatStartupPickerPreview(
+              description: `${checkpoint.createdAt} · ${formatChangedFileCount(checkpoint.changedFilesCount)} · user ${formatStartupPickerPreview(
                 checkpoint.userText,
-              )} · 助手 ${formatStartupPickerPreview(checkpoint.assistantText)}`,
+              )} · assistant ${formatStartupPickerPreview(checkpoint.assistantText)}`,
             })),
           });
           if (picked.kind === "cancelled") {

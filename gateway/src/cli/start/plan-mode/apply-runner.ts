@@ -188,7 +188,7 @@ export async function runPlanApply(input: RunPlanApplyInput): Promise<number> {
           kind: "internal_failure",
           workDir: input.workDir,
           planPath: active.planPath,
-          detail: "计划评审记录更新失败。",
+          detail: "Plan review record update failed.",
           diagnostic: "PLAN_REVIEW_ENTRY_MISSING",
         }),
       );
@@ -232,7 +232,7 @@ export async function runPlanApply(input: RunPlanApplyInput): Promise<number> {
           kind: "internal_failure",
           workDir: input.workDir,
           planPath: active.planPath,
-          detail: "计划确认元数据写入失败。",
+          detail: "Plan approval metadata write failed.",
           diagnostic: "PLAN_APPROVAL_FAILED",
         }),
       );
@@ -266,7 +266,7 @@ export async function runPlanApply(input: RunPlanApplyInput): Promise<number> {
         kind: "internal_failure",
         workDir: input.workDir,
         planPath: active.planPath,
-        detail: "无法把计划状态切换为执行中。",
+        detail: "Cannot switch plan status to applying.",
         diagnostic: "PLAN_APPLY_STATUS_UPDATE_FAILED",
       }),
     );
@@ -282,7 +282,7 @@ export async function runPlanApply(input: RunPlanApplyInput): Promise<number> {
         kind: "internal_failure",
         workDir: input.workDir,
         planPath: active.planPath,
-        detail: "缺少确认票据或计划快照，无法执行。",
+        detail: "Approval ticket or plan snapshot missing; cannot execute.",
         diagnostic: "PLAN_APPLY_APPROVAL_METADATA_MISSING",
       }),
     );

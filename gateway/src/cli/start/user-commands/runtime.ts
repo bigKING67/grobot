@@ -28,7 +28,7 @@ export function listRunStartUserCommandSuggestions(homeDir: string): RunStartUse
   for (const record of records) {
     suggestions.push({
       command: `/${record.name}`,
-      description: record.description.trim() || "用户自定义命令",
+      description: record.description.trim() || "User command",
       enabled: record.enabled,
     });
   }
@@ -53,8 +53,8 @@ export function createRunStartUserCommandsRuntime(
       const normalizedInput = normalizeCommandsAliasInput(userInput);
       if (!normalizedInput) {
         input.writeStdout(buildCommandsSurface({
-          title: "无效命令入口",
-          details: ['输入 "/commands" 打开命令管理。'],
+          title: "Invalid command entry",
+          details: ['Type "/commands" to open command management.'],
         }));
         return;
       }
@@ -120,8 +120,8 @@ export function createRunStartUserCommandsRuntime(
         return;
       }
       input.writeStdout(buildCommandsSurface({
-        title: "不支持的命令动作",
-        details: [`动作: ${action}`, '使用 "/commands help" 查看可用动作。'],
+        title: "Unsupported command action",
+        details: [`action: ${action}`, 'Use "/commands help" to view available actions.'],
       }));
     },
     openManagementMenu: async (
@@ -153,10 +153,10 @@ export function createRunStartUserCommandsRuntime(
       }
       if (!record.enabled) {
         input.writeStdout(buildCommandsSurface({
-          title: "自定义命令已停用",
+          title: "User command disabled",
           details: [
-            `/${record.name} 当前不可调用。`,
-            `重新启用 /commands enable ${record.name}`,
+            `/${record.name} cannot be invoked right now.`,
+            `re-enable with /commands enable ${record.name}`,
           ],
         }));
         return true;

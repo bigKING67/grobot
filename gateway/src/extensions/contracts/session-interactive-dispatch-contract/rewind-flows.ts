@@ -173,8 +173,8 @@ export async function runRewindDispatchFlows() {
       "openSessionMenu:rewind",
     ),
     rewind_query_no_active_session_surface_is_human:
-      stripAnsi(rewindQueryNoActiveSessionTty.stdout).includes("当前会话不可用于回退")
-      && stripAnsi(rewindQueryNoActiveSessionTty.stdout).includes("使用 /rewind 打开菜单。"),
+      stripAnsi(rewindQueryNoActiveSessionTty.stdout).includes("Current session cannot rewind")
+      && stripAnsi(rewindQueryNoActiveSessionTty.stdout).includes("Use /rewind to open the menu."),
     rewind_query_no_quick_path_tty_warned: includesEvent(
       rewindQueryNoQuickPathTty.events,
       "writeStdout",
@@ -188,8 +188,8 @@ export async function runRewindDispatchFlows() {
       "openSessionMenu:rewind",
     ),
     rewind_query_no_quick_path_surface_is_human:
-      stripAnsi(rewindQueryNoQuickPathTty.stdout).includes("回退快速路径不可用")
-      && stripAnsi(rewindQueryNoQuickPathTty.stdout).includes("使用 /rewind 打开菜单。"),
+      stripAnsi(rewindQueryNoQuickPathTty.stdout).includes("Rewind quick path unavailable")
+      && stripAnsi(rewindQueryNoQuickPathTty.stdout).includes("Use /rewind to open the menu."),
     rewind_search_missing_tty_warned: includesEvent(rewindSearchMissingTty.events, "writeStdout"),
     rewind_search_missing_tty_dispatched: includesEvent(
       rewindSearchMissingTty.events,
@@ -200,12 +200,12 @@ export async function runRewindDispatchFlows() {
       "openSessionMenu:rewind",
     ),
     rewind_search_missing_tty_no_match_has_tip: rewindSearchMissingTty.stdout.includes(
-      "紧凑查询会忽略空格、\"_\" 和 \"-\"。",
+      'compact query ignores spaces, "_", an',
     ),
     rewind_search_missing_surface_is_human:
-      stripAnsi(rewindSearchMissingTty.stdout).includes("没有匹配的检查点")
-      && stripAnsi(rewindSearchMissingTty.stdout).includes("查询 missing")
-      && !stripAnsi(rewindSearchMissingTty.stdout).includes("查询: missing"),
+      stripAnsi(rewindSearchMissingTty.stdout).includes("No matching checkpoints")
+      && stripAnsi(rewindSearchMissingTty.stdout).includes("query missing")
+      && !stripAnsi(rewindSearchMissingTty.stdout).includes("query: missing"),
     rewind_query_multiple_tty_warned: includesEvent(rewindQueryMultipleTty.events, "writeStdout"),
     rewind_query_multiple_tty_dispatched: includesEvent(
       rewindQueryMultipleTty.events,
@@ -215,23 +215,23 @@ export async function runRewindDispatchFlows() {
       `${"/rewind"} legacy-a`,
     ),
     rewind_query_multiple_tty_includes_assistant_preview:
-      rewindQueryMultipleTty.stdout.includes("⎿  助手")
-      && !rewindQueryMultipleTty.stdout.includes("| 助手="),
+      rewindQueryMultipleTty.stdout.includes("⎿  assistant")
+      && !rewindQueryMultipleTty.stdout.includes("| assistant="),
     rewind_query_multiple_tty_uses_reference_detail_rows:
       rewindQueryMultipleTty.stdout.includes("  ⎿  ")
       && !rewindQueryMultipleTty.stdout.includes(" | "),
     rewind_query_multiple_tty_uses_compact_timestamp:
-      rewindQueryMultipleTty.stdout.includes("2026-04-19 08:00 · 1 个文件")
+      rewindQueryMultipleTty.stdout.includes("2026-04-19 08:00 · 1 file")
       && !rewindQueryMultipleTty.stdout.includes("2026-04-19T08:00:00.000Z"),
     rewind_query_multiple_surface_is_human:
-      stripAnsi(rewindQueryMultipleTty.stdout).includes("找到多个匹配的检查点")
-      && stripAnsi(rewindQueryMultipleTty.stdout).includes("使用 /rewind 明确选择一个。"),
+      stripAnsi(rewindQueryMultipleTty.stdout).includes("Multiple matching checkpoints found")
+      && stripAnsi(rewindQueryMultipleTty.stdout).includes("Use /rewind to choose one explicitly."),
     rewind_query_multiple_overflow_tty_includes_overflow_line: rewindQueryMultipleOverflowTty.stdout.includes(
-      "... 还有 1 项",
+      "... 1 more",
     ),
     rewind_query_multiple_overflow_tty_includes_quick_pick_header:
-      rewindQueryMultipleOverflowTty.stdout.includes("快速选择")
-      && !rewindQueryMultipleOverflowTty.stdout.includes("快速选择:"),
+      rewindQueryMultipleOverflowTty.stdout.includes("Quick picks")
+      && !rewindQueryMultipleOverflowTty.stdout.includes("Quick picks:"),
     rewind_warning_surfaces_avoid_legacy_marker: !rewindWarningStdout.includes("[rewind]"),
     rewind_query_multiple_tty_opened_menu: includesEvent(
       rewindQueryMultipleTty.events,
@@ -294,11 +294,11 @@ export async function runRewindDispatchFlows() {
       "openSessionMenu:rewind",
     ),
     rewind_search_separator_only_tty_no_match_message: rewindSearchSeparatorOnlyTty.stdout.includes(
-      "没有匹配的检查点",
-    ) && stripAnsi(rewindSearchSeparatorOnlyTty.stdout).includes("查询 ___")
-      && !stripAnsi(rewindSearchSeparatorOnlyTty.stdout).includes("查询: ___"),
+      "No matching checkpoints",
+    ) && stripAnsi(rewindSearchSeparatorOnlyTty.stdout).includes("query ___")
+      && !stripAnsi(rewindSearchSeparatorOnlyTty.stdout).includes("query: ___"),
     rewind_search_separator_only_tty_no_match_has_tip: rewindSearchSeparatorOnlyTty.stdout.includes(
-      "紧凑查询会忽略空格、\"_\" 和 \"-\"。",
+      'compact query ignores spaces, "_", an',
     ),
     rewind_find_mode_keyword_query_warned: includesEvent(
       rewindFindModeKeywordQueryTty.events,
@@ -309,11 +309,11 @@ export async function runRewindDispatchFlows() {
       "rewindSession",
     ),
     rewind_find_mode_keyword_query_no_match_message: rewindFindModeKeywordQueryTty.stdout.includes(
-      "没有匹配的检查点",
-    ) && stripAnsi(rewindFindModeKeywordQueryTty.stdout).includes("查询 code")
-      && !stripAnsi(rewindFindModeKeywordQueryTty.stdout).includes("查询: code"),
+      "No matching checkpoints",
+    ) && stripAnsi(rewindFindModeKeywordQueryTty.stdout).includes("query code")
+      && !stripAnsi(rewindFindModeKeywordQueryTty.stdout).includes("query: code"),
     rewind_find_mode_keyword_query_no_match_has_tip: rewindFindModeKeywordQueryTty.stdout.includes(
-      "紧凑查询会忽略空格、\"_\" 和 \"-\"。",
+      'compact query ignores spaces, "_", an',
     ),
     rewind_find_mode_keyword_query_opened_menu: includesEvent(
       rewindFindModeKeywordQueryTty.events,

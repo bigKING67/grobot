@@ -37,10 +37,10 @@ export function createPlanReadyApprovalRequester(input: {
         const isEmptyPlan = isEmptyPlanApprovalContent(currentPlanContent);
         const result = await withInputPaused(() =>
           runTerminalSelectMenu({
-            title: isEmptyPlan ? "退出计划模式?" : "准备开始实现？",
+            title: isEmptyPlan ? "Exit plan mode?" : "Ready to implement?",
             hint: isEmptyPlan
-              ? "Enter 确认 · Esc 返回输入框"
-              : "↑/↓ 选择 · Enter 确认 · Esc 返回输入框",
+              ? "Enter confirm · Esc back to input"
+              : "↑/↓ select · Enter confirm · Esc back to input",
             variant: "plan_approval",
             visibleOptionCount: 2,
             planApprovalMeta: {
@@ -55,25 +55,25 @@ export function createPlanReadyApprovalRequester(input: {
               ? [
                 {
                   id: "approve",
-                  label: "是，退出",
+                  label: "Yes, exit",
                 },
                 {
                   id: "keep_planning",
-                  label: "否，继续规划",
+                  label: "No, keep planning",
                 },
               ]
               : [
                 {
                   id: "approve",
-                  label: "确认，开始实现计划",
-                  description: "从这份计划开始实现。",
+                  label: "Confirm, implement plan",
+                  description: "Start implementation from this plan.",
                 },
                 {
                   id: "keep_planning",
-                  label: "继续完善计划",
-                  description: "Shift+Tab 可带反馈批准执行",
+                  label: "Refine plan",
+                  description: "Shift+Tab can approve with feedback",
                   input: {
-                    placeholder: "告诉 Grobot 需要调整什么",
+                    placeholder: "Tell Grobot what to adjust",
                     initialValue: draftFeedback,
                     showLabelWithValue: true,
                     labelValueSeparator: ": ",

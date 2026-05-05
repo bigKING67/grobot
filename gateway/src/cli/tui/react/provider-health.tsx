@@ -43,7 +43,7 @@ export function renderReactProviderHealthScreen(
     ? input.rows.map((row, index) => renderProviderRow(row, index))
     : [(
       <Text key="empty" tone="muted">
-        {input.emptyMessage ?? "暂无模型通道"}
+        {input.emptyMessage ?? "No model providers"}
       </Text>
     )];
   return renderStaticInk(

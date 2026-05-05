@@ -55,37 +55,37 @@ const longFailureSummary = renderRuntimeFailureSummary({
 
 const payload = {
   management_interactive_matches:
-    stripAnsi(managementInteractive) === "会话已中断 · 管理端已跳过当前输入\n\n",
+    stripAnsi(managementInteractive) === "Session interrupted · Manager skipped the current input\n\n",
   management_non_interactive_matches:
-    stripAnsi(managementNonInteractive) === "会话已中断 · 管理端已跳过当前请求\n",
+    stripAnsi(managementNonInteractive) === "Session interrupted · Manager skipped the current request\n",
   management_hides_raw_api_label:
     !stripAnsi(managementInteractive).includes("management API")
     && !stripAnsi(managementNonInteractive).includes("management API"),
   turn_interrupted_interactive_matches:
-    stripAnsi(turnInterruptedInteractive) === "回合已中断 · 可以继续输入新指令。\n\n",
+    stripAnsi(turnInterruptedInteractive) === "Turn interrupted · You can enter a new instruction.\n\n",
   turn_interrupted_non_interactive_matches:
-    stripAnsi(turnInterruptedNonInteractive) === "回合已中断\n",
+    stripAnsi(turnInterruptedNonInteractive) === "Turn interrupted\n",
   turn_interrupted_avoids_machine_prefix:
     !turnInterruptedInteractive.includes("[interrupt]")
     && !turnInterruptedNonInteractive.includes("[interrupt]"),
   open_circuit_interactive_is_human_surface:
-    stripAnsi(openCircuitInteractive) === "所有模型通道暂不可用 · 稍后重试，或用 /model 切换模型\n\n",
+    stripAnsi(openCircuitInteractive) === "All model providers unavailable · Retry later, or use /model to switch models\n\n",
   open_circuit_non_interactive_is_human_surface:
-    stripAnsi(openCircuitNonInteractive) === "所有模型通道暂不可用 · 请切换模型后再执行\n",
+    stripAnsi(openCircuitNonInteractive) === "All model providers unavailable · Switch models before retrying\n",
   open_circuit_avoids_machine_prefix:
     !openCircuitInteractive.includes("[runtime-route]")
     && !openCircuitNonInteractive.includes("[runtime-route]")
     && !openCircuitInteractive.includes("provider=")
     && !openCircuitNonInteractive.includes("provider="),
   failure_summary_is_human_surface:
-    stripAnsi(failureSummary).includes("回合执行失败 · beta · 运行时错误")
-    && stripAnsi(failureSummary).includes("⎿  尝试顺序 alpha -> beta -> gamma")
-    && stripAnsi(failureSummary).includes("⎿  失败通道 alpha · 请求超时, beta · 运行时错误"),
+    stripAnsi(failureSummary).includes("Turn failed · beta · Runtime error")
+    && stripAnsi(failureSummary).includes("⎿  Attempt order alpha -> beta -> gamma")
+    && stripAnsi(failureSummary).includes("⎿  Failed providers alpha · Request timed out, beta · Runtime error"),
   failure_summary_has_last_error_detail:
-    stripAnsi(failureSummary).includes("⎿  最近错误 服务执行失败"),
+    stripAnsi(failureSummary).includes("⎿  Last error Server failed"),
   failure_summary_uses_reference_detail_glyph:
-    stripAnsi(failureSummary).includes("  ⎿  最近错误")
-    && stripAnsi(failureSummary).includes("  ⎿  尝试顺序")
+    stripAnsi(failureSummary).includes("  ⎿  Last error")
+    && stripAnsi(failureSummary).includes("  ⎿  Attempt order")
     && !stripAnsi(failureSummary).includes("  已尝试:"),
   failure_summary_hides_raw_error_classes:
     !stripAnsi(failureSummary).includes("runtime_error")
@@ -97,11 +97,11 @@ const payload = {
     && !failureSummary.includes("provider="),
   turn_notices_use_compact_reference_style:
     !stripAnsi(turnInterruptedInteractive).includes("●")
-    && !stripAnsi(openCircuitInteractive).includes("当前没有可尝试的模型通道")
+    && !stripAnsi(openCircuitInteractive).includes("No model provider can be tried")
     && stripAnsi(failureSummary).split("\n").filter(Boolean).length <= 4,
   failure_summary_truncates_long_errors:
-    stripAnsi(longFailureSummary).includes("上游连接失败")
-    && stripAnsi(longFailureSummary).includes("… 还有 2 行")
+    stripAnsi(longFailureSummary).includes("Upstream connection failed")
+    && stripAnsi(longFailureSummary).includes("... 2 more lines")
     && !stripAnsi(longFailureSummary).includes("extra diagnostic line"),
   failure_summary_strips_ansi:
     !longFailureSummary.includes("\u001b[31m")

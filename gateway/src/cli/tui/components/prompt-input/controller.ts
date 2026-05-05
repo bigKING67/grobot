@@ -225,7 +225,7 @@ export async function runSessionInputLoop(
         triggerEscInterrupt,
       });
       if (inputResult.kind === "sigint") {
-        process.stdout.write("已中断\n");
+        process.stdout.write("Interrupted\n");
         break;
       }
       runningInputBuffer = "";

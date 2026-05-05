@@ -30,12 +30,12 @@ function providerHealthStatus(input: ProviderHealthStatusInput): ProviderHealthS
 function formatProviderHealthStatusLabel(status: ProviderHealthStatus): string {
   switch (status) {
     case "OPEN":
-      return "熔断中";
+      return "Open";
     case "HALF_OPEN":
-      return "半开";
+      return "Half-open";
     case "CLOSED":
     default:
-      return "正常";
+      return "Healthy";
   }
 }
 
@@ -52,17 +52,17 @@ function severityForStatus(status: ProviderHealthStatus): "ok" | "warning" | "er
 function formatOptionalNumber(value: number | undefined, digits: number): string {
   return typeof value === "number" && Number.isFinite(value)
     ? value.toFixed(digits)
-    : "无";
+    : "none";
 }
 
 function formatOptionalMetric(value: number | undefined, digits: number, suffix: string): string {
   const formatted = formatOptionalNumber(value, digits);
-  return formatted === "无" ? "无" : `${formatted}${suffix}`;
+  return formatted === "none" ? "none" : `${formatted}${suffix}`;
 }
 
 function formatOptionalRate(value: number | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value)) {
-    return "无";
+    return "none";
   }
   return `${(value * 100).toFixed(1)}%`;
 }
@@ -70,14 +70,14 @@ function formatOptionalRate(value: number | undefined): string {
 function formatSessionLabel(value: string): string {
   const normalized = compactSpaces(value);
   if (!normalized) {
-    return "当前会话";
+    return "current session";
   }
   const segments = normalized.split(":").filter((item) => item.length > 0);
-  return segments[segments.length - 1] ?? "当前会话";
+  return segments[segments.length - 1] ?? "current session";
 }
 
 function formatSeconds(value: number): string {
-  return `${String(value)} 秒`;
+  return `${String(value)}s`;
 }
 
 function pad2(value: number): string {
@@ -100,10 +100,10 @@ function formatOpenUntil(
 
 function formatStickyProviderLabel(value: string | undefined): string | undefined {
   const normalized = compactSpaces(value ?? "");
-  if (!normalized || normalized === "无") {
+  if (!normalized || normalized === "无" || normalized.toLowerCase() === "none") {
     return undefined;
   }
-  return `会话固定通道 ${normalized}`;
+  return `Sticky provider ${normalized}`;
 }
 
 export function buildProviderHealthViewModel(
@@ -140,17 +140,17 @@ export function buildProviderHealthViewModel(
     const detailLines = [
       compactSpaces(
         [
-          `失败 ${String(state?.consecutive_failures ?? 0)}`,
-          `延迟 ${formatOptionalMetric(state?.ewma_latency_ms, 1, "ms")}`,
-          `错误率 ${formatOptionalRate(state?.ewma_error_rate)}`,
+          `failures ${String(state?.consecutive_failures ?? 0)}`,
+          `latency ${formatOptionalMetric(state?.ewma_latency_ms, 1, "ms")}`,
+          `error rate ${formatOptionalRate(state?.ewma_error_rate)}`,
         ].join(" · "),
       ),
     ];
     const metricsLine = compactSpaces(
       [
-        `并发 ${String(provider?.maxInFlight ?? "无")}`,
-        `每分钟 ${String(provider?.requestsPerMinute ?? "无")}`,
-        `突发 ${String(provider?.burst ?? "无")}`,
+        `in-flight ${String(provider?.maxInFlight ?? "none")}`,
+        `rate ${String(provider?.requestsPerMinute ?? "none")}/min`,
+        `burst-cap ${String(provider?.burst ?? "none")}`,
       ].join(" · "),
     );
     if (
@@ -165,10 +165,10 @@ export function buildProviderHealthViewModel(
     }
     const openUntil = formatOpenUntil(state);
     if (openUntil) {
-      detailLines.push(`打开至 ${openUntil}`);
+      detailLines.push(`open until ${openUntil}`);
     }
     if (state?.last_error_class) {
-      detailLines.push(`最近错误 ${formatTuiErrorClassLabel(state.last_error_class)}`);
+      detailLines.push(`last error ${formatTuiErrorClassLabel(state.last_error_class)}`);
     }
     return {
       name,
@@ -179,17 +179,17 @@ export function buildProviderHealthViewModel(
     };
   });
   return {
-    title: "模型通道",
+    title: "Model providers",
     subtitle: [
-      `会话 ${formatSessionLabel(input.sessionKey)}`,
+      `session ${formatSessionLabel(input.sessionKey)}`,
       formatStickyProviderLabel(input.stickyProvider),
-      `阈值 ${String(input.failureThreshold)}`,
-      `冷却 ${formatSeconds(input.cooldownSecs)}`,
+      `threshold ${String(input.failureThreshold)}`,
+      `cooldown ${formatSeconds(input.cooldownSecs)}`,
     ].filter(Boolean).join(" · "),
     sessionKey: input.sessionKey,
-    stickyProvider: input.stickyProvider ?? "无",
+    stickyProvider: input.stickyProvider ?? "none",
     rows,
-    emptyMessage: rows.length === 0 ? "暂无模型通道" : undefined,
+    emptyMessage: rows.length === 0 ? "No model providers" : undefined,
   };
 }
 

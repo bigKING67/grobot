@@ -19,10 +19,10 @@ export function normalizeCommandName(raw: string): string {
 export function validateCommandName(nameRaw: string): string | undefined {
   const name = normalizeCommandName(nameRaw);
   if (!USER_COMMAND_NAME_PATTERN.test(name)) {
-    return "命令名不合法。仅允许 [a-z][a-z0-9_-]，长度 1-32。";
+    return "Invalid command name. Allowed pattern: [a-z][a-z0-9_-], length 1-32.";
   }
   if (RESERVED_SLASH_COMMAND_NAMES.has(name)) {
-    return `命令名 \`/${name}\` 与内置命令冲突，不能用于用户自定义命令。`;
+    return `Command name \`/${name}\` conflicts with a built-in command and cannot be used for user commands.`;
   }
   return undefined;
 }

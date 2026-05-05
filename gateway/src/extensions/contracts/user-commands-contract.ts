@@ -137,23 +137,23 @@ async function main(): Promise<void> {
     stdout_rows_count: stdoutRows.length,
     command_surface_avoids_legacy_marker: !stdoutText.includes("[commands]"),
     command_created_surface_is_human:
-      stdoutPlain.includes("已创建自定义命令")
+      stdoutPlain.includes("User command created")
       && stdoutPlain.includes("/shipit")
-      && stdoutPlain.includes("保存位置 ")
-      && stdoutPlain.includes("接下来可用 /commands set shipit <prompt> 更新模板")
+      && stdoutPlain.includes("saved at ")
+      && stdoutPlain.includes("next: /commands set shipit <prompt> to update the template")
       && !stdoutPlain.includes("[commands] 已创建"),
     command_disabled_surface_is_human:
-      stdoutPlain.includes("自定义命令已停用")
-      && stdoutPlain.includes("/shipit 当前不可调用。"),
+      stdoutPlain.includes("User command disabled")
+      && stdoutPlain.includes("/shipit"),
     command_list_surface_is_human:
-      stdoutPlain.includes("用户自定义命令")
-      && !stdoutPlain.includes("● 用户自定义命令")
-      && stdoutPlain.includes("常用入口")
-      && stdoutPlain.includes("• 命令目录 "),
+      stdoutPlain.includes("User commands")
+      && !stdoutPlain.includes("● User commands")
+      && stdoutPlain.includes("Common commands")
+      && stdoutPlain.includes("• Commands directory "),
     command_details_surface_is_human:
-      stdoutPlain.includes("提示词模板")
-      && stdoutPlain.includes("保存位置 ")
-      && stdoutPlain.includes("说明 "),
+      stdoutPlain.includes("Prompt template")
+      && stdoutPlain.includes("saved at ")
+      && stdoutPlain.includes("description "),
     command_surfaces_avoid_raw_labels:
       !stdoutPlain.includes("命令:")
       && !stdoutPlain.includes("文件:")
@@ -162,7 +162,7 @@ async function main(): Promise<void> {
       && !stdoutPlain.includes("下一步:")
       && !stdoutPlain.includes("使用:"),
     menu_hint_is_reference_compact:
-      menuHints.includes("↑/↓ 选择 · Enter 确认 · Esc 返回"),
+      menuHints.includes("↑/↓ select · Enter confirm · Esc back"),
     menu_hint_omits_secondary_key_chords:
       menuHints.every((hint) =>
         !hint.includes("Ctrl+n/p")

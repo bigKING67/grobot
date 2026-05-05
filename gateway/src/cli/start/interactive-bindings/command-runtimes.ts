@@ -28,13 +28,13 @@ export function createInteractiveCommandRuntimes(
   ): Promise<string | undefined> => {
     const requirementInput = await withInputPaused(() =>
       runTerminalLinePrompt({
-        prompt: "技能需求> ",
+        prompt: "Skill requirement> ",
       }),
     );
     if (requirementInput.kind === "cancelled") {
       input.output.writeStdout(
         buildSkillCreatorSurface({
-          title: "已取消技能创建",
+          title: "Skill creation cancelled",
         }),
       );
       return undefined;
@@ -43,7 +43,7 @@ export function createInteractiveCommandRuntimes(
     if (!requirement) {
       input.output.writeStdout(
         buildSkillCreatorSurface({
-          title: "需求为空，已取消技能创建",
+          title: "Empty requirement, skill creation cancelled",
         }),
       );
       return undefined;
@@ -58,8 +58,8 @@ export function createInteractiveCommandRuntimes(
     if (!normalizedRequirement) {
       input.output.writeStdout(
         buildSkillCreatorSurface({
-          title: "需要提供技能需求",
-          details: ["用法 /skill-creator [需求]"],
+          title: "Skill requirement required",
+          details: ["Usage /skill-creator [requirement]"],
         }),
       );
       return;

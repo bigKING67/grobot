@@ -88,11 +88,11 @@ export async function runStartPreTurnGate(input: {
     const askUserDisplay = input.interactiveMode
       ? input.options?.autoOpenAskUserPanel
         ? ""
-        : "需要你的输入 · Enter 打开选择\n\n"
+        : "Input needed · Enter to choose\n\n"
       : runnerInput.gaMechanismRuntime.buildAskUserDisplay(activeAskEnvelope);
     await input.recordTurn({
       userText: turnUserText,
-      assistantText: `需要确认：${activeAskEnvelope.question}`,
+      assistantText: `Confirmation needed: ${activeAskEnvelope.question}`,
       stickyProvider: runnerInput.getStickyProvider(),
       providerRuntimeStates: runnerInput.getProviderRuntimeStates(),
       onTurnRecorded: input.options?.onTurnRecorded,

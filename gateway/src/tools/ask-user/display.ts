@@ -6,8 +6,8 @@ const ASK_USER_OPTION_ITEM_CHAR_LIMIT = 48;
 const ASK_USER_DEFAULT_ANSWER_CHAR_LIMIT = 120;
 const ASK_USER_DISPLAY_OPTION_LIMIT = 6;
 const ASK_USER_PENDING_SUMMARY_LIMIT = 96;
-const ASK_USER_OTHER_OPTION_LABEL = "自定义";
-const ASK_USER_OTHER_OPTION_PLACEHOLDER = "输入自定义回复";
+const ASK_USER_OTHER_OPTION_LABEL = "Custom";
+const ASK_USER_OTHER_OPTION_PLACEHOLDER = "Type custom reply";
 
 function compactSingleLine(value: string, maxChars: number): string {
   const normalized = value.trim().replace(/\s+/g, " ");
@@ -49,7 +49,7 @@ function buildAskUserOptionDisplayText(envelope: AskUserEnvelope, index: number)
 }
 
 function buildAskUserDisplayHeader(envelope: AskUserEnvelope): string {
-  const header = compactSingleLine(envelope.header ?? "需要你选择", 72);
+  const header = compactSingleLine(envelope.header ?? "Choose an option", 72);
   if (
     typeof envelope.questionIndex === "number"
     && Number.isFinite(envelope.questionIndex)
@@ -101,7 +101,7 @@ export function buildAskUserOptionsPreview(
 export function buildAskUserDisplay(envelope: AskUserEnvelope): string {
   const header = buildAskUserDisplayHeader(envelope);
   const question = compactSingleLine(envelope.question, ASK_USER_LINE_CHAR_LIMIT);
-  const lines = [`需要确认 · ${header}`, `  ${question}`, ""];
+  const lines = [`Input needed · ${header}`, `  ${question}`, ""];
   if (envelope.options.length > 0) {
     const visibleStandardLimit = Math.max(0, ASK_USER_DISPLAY_OPTION_LIMIT - 1);
     const visibleOptions = envelope.options.slice(0, visibleStandardLimit);
@@ -116,18 +116,18 @@ export function buildAskUserDisplay(envelope: AskUserEnvelope): string {
     );
     const hiddenCount = Math.max(0, envelope.options.length - visibleOptions.length);
     if (hiddenCount > 0) {
-      lines.push(`    ... 还有 ${String(hiddenCount)} 项`);
+      lines.push(`    ... ${String(hiddenCount)} more`);
     }
     lines.push("");
-    lines.push("  Enter 打开选择菜单 · 数字直接回复 · 自定义输入。");
+    lines.push("  Enter open picker · number direct reply · Custom.");
   } else {
     const defaultOnTimeout = compactSingleLine(
       envelope.defaultOnTimeout,
       ASK_USER_DEFAULT_ANSWER_CHAR_LIMIT,
     );
-    lines.push("  请输入你的回复。");
+    lines.push("  Type your reply.");
     if (defaultOnTimeout) {
-      lines.push(`  默认：${defaultOnTimeout}`);
+      lines.push(`  Default: ${defaultOnTimeout}`);
     }
   }
   return `${lines.join("\n")}\n`;
@@ -135,12 +135,12 @@ export function buildAskUserDisplay(envelope: AskUserEnvelope): string {
 
 export function buildAskUserPendingSummary(envelope: AskUserEnvelope): string {
   if (envelope.options.length <= 0) {
-    return "直接输入回复";
+    return "Type reply";
   }
   const standardMaxOption = Math.min(envelope.options.length, 9);
   const numericHint = standardMaxOption > 1 ? `1-${String(standardMaxOption)}` : "1";
   return compactSingleLine(
-    `Enter 打开选择 · ${numericHint} 直选 · 自定义输入`,
+    `Enter open picker · ${numericHint} direct · Custom`,
     ASK_USER_PENDING_SUMMARY_LIMIT,
   );
 }

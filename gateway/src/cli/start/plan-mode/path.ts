@@ -21,7 +21,7 @@ export function formatHumanPlanFilePath(input: {
 }): string {
   const rawPath = input.planPath?.trim();
   if (!rawPath) {
-    return "不可用";
+    return "unavailable";
   }
   const resolvedPlanPath = resolvePath(rawPath);
   const relativePlanPath = relativePath(input.workDir, resolvedPlanPath);

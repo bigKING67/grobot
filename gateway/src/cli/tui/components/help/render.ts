@@ -22,15 +22,15 @@ const DEFAULT_HELP_COLUMNS = 96;
 const DEFAULT_SHORTCUTS: readonly HelpShortcutItem[] = [
   {
     key: "Ctrl+R",
-    description: "历史搜索并填入选中提示",
+    description: "Search history and fill the selected prompt",
   },
   {
     key: "Esc",
-    description: "中断运行中回合 / 计划空闲时退出",
+    description: "Interrupt a running turn / exit idle plan mode",
   },
   {
     key: "Ctrl+C",
-    description: "退出交互循环",
+    description: "Exit interactive loop",
   },
 ];
 
@@ -41,7 +41,7 @@ const PRIMARY_COMMAND_OVERVIEW = new Set([
   "/commands",
   "/model",
   "/plan",
-  "/exit、/quit",
+  "/exit, /quit",
 ]);
 
 const UTILITY_COMMAND_OVERVIEW = new Set([
@@ -53,19 +53,19 @@ const UTILITY_COMMAND_OVERVIEW = new Set([
 ]);
 
 const HELP_OVERVIEW_DESCRIPTIONS = new Map<string, string>([
-  ["/sessions", "管理会话"],
-  ["/resume [query]", "恢复历史会话"],
-  ["/rewind [query]", "回退到检查点"],
-  ["/commands", "浏览全部命令"],
-  ["/model", "切换模型"],
-  ["/plan", "进入或查看计划模式"],
-  ["/exit、/quit", "退出交互模式"],
-  ["/health", "查看模型通道状态"],
-  ["/context", "查看上下文组装状态"],
-  ["/memory", "查看持久记忆状态"],
-  ["/skills", "查看已配置技能"],
-  ["/mcp", "查看 MCP 服务状态"],
-  ["/status", "查看状态栏与运行状态"],
+  ["/sessions", "Manage sessions"],
+  ["/resume [query]", "Resume a historical session"],
+  ["/rewind [query]", "Rewind to a checkpoint"],
+  ["/commands", "Browse all commands"],
+  ["/model", "Switch model"],
+  ["/plan", "Enter or view plan mode"],
+  ["/exit, /quit", "Exit interactive mode"],
+  ["/health", "Show model provider health"],
+  ["/context", "Show context assembly status"],
+  ["/memory", "Show persistent memory status"],
+  ["/skills", "Show configured skills"],
+  ["/mcp", "Show MCP services"],
+  ["/status", "Show status bar and runtime status"],
 ]);
 
 function sanitizeLine(value: string): string {
@@ -120,10 +120,10 @@ function buildOverviewNotes(lines: readonly string[]): string[] {
   );
   return [
     ...(hasSessionCompatibility
-      ? ["兼容入口: /switch、/continue；优先用 /sessions、/resume、/rewind。"]
+      ? ["Compatibility: /switch and /continue are shortcuts."]
       : []),
     ...(hasCheckpointAlias
-      ? ["别名: /checkpoint -> /rewind。"]
+      ? ["Alias: /checkpoint -> /rewind."]
       : []),
   ];
 }
@@ -146,7 +146,7 @@ function compactHelpItems(input: {
     ...visible,
     {
       command: input.browseCommand,
-      description: input.browseDescription ?? `浏览全部命令（还有 ${String(hiddenCount)} 条）`,
+      description: input.browseDescription ?? `Browse all commands (${String(hiddenCount)} hidden)`,
     },
   ];
 }
@@ -178,7 +178,7 @@ function buildUtilityHelpItems(
     items,
     overviewCommands: UTILITY_COMMAND_OVERVIEW,
     browseCommand: "/status",
-    browseDescription: "查看状态栏与更多运行状态",
+    browseDescription: "Show status bar and more runtime status",
     maxItems: 6,
   }));
 }
@@ -201,22 +201,22 @@ export function buildInteractiveHelpViewModel(
   return {
     title: "Help",
     subtitle:
-      "Grobot 在终端里处理项目上下文、会话、计划、工具和记忆。",
-    shortcutsTitle: "快捷键",
+      "Grobot manages project context, sessions, plans, tools, and memory in the terminal.",
+    shortcutsTitle: "Shortcuts",
     shortcuts: DEFAULT_SHORTCUTS,
     sections: [
       {
-        title: "命令",
+        title: "Commands",
         items: buildPrimaryHelpItems(primaryItems),
       },
       {
-        title: "状态与工具",
+        title: "Status and tools",
         items: buildUtilityHelpItems(utilityItems),
       },
     ],
-    notesTitle: "说明",
+    notesTitle: "Notes",
     notes: buildOverviewNotes(compatibilityNotes),
-    footer: "/sessions 管理会话 · /status 查看状态 · /help 显示帮助",
+    footer: "/sessions manage sessions · /status show status · /help show help",
     terminalColumns: resolveTerminalColumns(input.terminalColumns),
     interactiveMode: input.interactiveMode,
   };

@@ -133,7 +133,7 @@ export async function runDispatchCase(
     getPendingAskQueueSize: () => pendingAskCount,
     getPendingAskPromptSummary: () =>
       pendingAskCount > 0
-        ? "Enter 打开选择 · 1-2 直接回复"
+        ? "Enter open picker · 1-2 direct"
         : undefined,
     showPendingAskQueue: (limit) => {
       events.push(`showPendingAskQueue:${typeof limit === "number" ? String(limit) : "default"}`);
@@ -265,7 +265,7 @@ export async function runDispatchCase(
     },
     promptSkillCreatorRequirement: async () => {
       events.push("promptSkillCreatorRequirement");
-      return "补齐技能需求";
+      return "Fill in skill requirement";
     },
     runSkillCreator: async (requirement) => {
       events.push(`runSkillCreator:${requirement}`);

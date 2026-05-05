@@ -143,13 +143,13 @@ function buildQuestionnaireTitle(input: {
   queue: readonly AskUserEnvelope[];
   index: number;
 }): string {
-  const header = compactSingleLine(input.envelope.header ?? "需要你选择", ASK_USER_INTERACTION_TITLE_LIMIT);
+  const header = compactSingleLine(input.envelope.header ?? "Choose an option", ASK_USER_INTERACTION_TITLE_LIMIT);
   const total = resolveEnvelopeTotal(input.queue, input.envelope);
   const number = resolveEnvelopeDisplayNumber(input.envelope, input.index);
   if (total > 1) {
-    return compactSingleLine(`需要确认 · ${header} · ${String(number)}/${String(total)}`, ASK_USER_INTERACTION_TITLE_LIMIT);
+    return compactSingleLine(`Input needed · ${header} · ${String(number)}/${String(total)}`, ASK_USER_INTERACTION_TITLE_LIMIT);
   }
-  return compactSingleLine(`需要确认 · ${header}`, ASK_USER_INTERACTION_TITLE_LIMIT);
+  return compactSingleLine(`Input needed · ${header}`, ASK_USER_INTERACTION_TITLE_LIMIT);
 }
 
 function buildNavigationTabs(
@@ -169,7 +169,7 @@ function buildNavigationTabs(
   if (queue.length > 1) {
     tabs.push({
       index: queue.length,
-      label: "提交",
+      label: "Submit",
       status: state.mode === "review" ? "current" : "submit",
     });
   }
@@ -177,8 +177,8 @@ function buildNavigationTabs(
 }
 
 function formatQuestionnaireTab(tab: AskUserQuestionnaireTab): string {
-  if (tab.label === "提交") {
-    return tab.status === "current" ? "[✓ 提交]" : "✓ 提交";
+  if (tab.label === "Submit") {
+    return tab.status === "current" ? "[✓ Submit]" : "✓ Submit";
   }
   if (tab.status === "current") {
     return `[□ ${tab.label}]`;
@@ -198,11 +198,11 @@ function buildNavigationText(tabs: readonly AskUserQuestionnaireTab[]): string {
 
 function buildQuestionnaireHint(envelope: AskUserEnvelope): string {
   if (envelope.optionsDetailed.length <= 0) {
-    return "输入回复 · Enter 提交 · Esc 返回输入框";
+    return "Type reply · Enter submit · Esc back to input";
   }
   const maxDirect = Math.min(envelope.optionsDetailed.length, 9);
   const numberHint = maxDirect > 1 ? `1-${String(maxDirect)}` : "1";
-  return `↑/↓ 选择 · ${numberHint} 直选 · 自定义输入 · Enter 确认 · Esc 返回输入框`;
+  return `↑/↓ select · ${numberHint} direct · Custom · Enter confirm · Esc back to input`;
 }
 
 function buildQueueHint(input: {
@@ -210,13 +210,13 @@ function buildQueueHint(input: {
   index: number;
 }): string {
   if (input.queue.length <= 1) {
-    return "待确认：1 项";
+    return "Pending: 1 item";
   }
   const remaining = Math.max(0, input.queue.length - input.index - 1);
   if (remaining > 0) {
-    return `待确认：${String(input.queue.length)} 项 · 选择后继续下一题 · 后续 ${String(remaining)} 项`;
+    return `Pending: ${String(input.queue.length)} items · continue to next after select · ${String(remaining)} remaining`;
   }
-  return `待确认：${String(input.queue.length)} 项 · 这是最后一题`;
+  return `Pending: ${String(input.queue.length)} items · this is the last one`;
 }
 
 function buildOptionItems(input: {
@@ -411,8 +411,8 @@ export function buildAskUserQuestionnaireView(input: {
   if (input.queue.length <= 0) {
     return {
       kind: "empty",
-      title: "没有待确认问题",
-      hint: "返回输入框继续对话",
+      title: "No pending questions",
+      hint: "Back to input to continue",
     };
   }
   const currentIndex = clampIndex(state.currentQuestionIndex, input.queue.length);
@@ -447,10 +447,10 @@ export function buildAskUserQuestionnaireView(input: {
     });
     return {
       kind: "review",
-      title: "检查答案",
+      title: "Review answers",
       navigationText,
       reviewItems,
-      hint: "Enter 提交 · Esc 返回输入框",
+      hint: "Enter submit · Esc back to input",
       totalCount: input.queue.length,
       answeredCount,
       unansweredCount: Math.max(0, input.queue.length - answeredCount),
@@ -460,8 +460,8 @@ export function buildAskUserQuestionnaireView(input: {
   if (!envelope) {
     return {
       kind: "empty",
-      title: "没有待确认问题",
-      hint: "返回输入框继续对话",
+      title: "No pending questions",
+      hint: "Back to input to continue",
     };
   }
   const optionItems = buildOptionItems({
@@ -572,8 +572,8 @@ export function buildAskUserReviewMenuDescriptor(input: {
   const totalCount = input.queue.length;
   const items: AskUserSelectMenuItemDescriptor[] = [{
     id: "__submit",
-    label: "提交答案",
-    description: `已回答 ${String(answeredCount)}/${String(totalCount)}`,
+    label: "Submit answers",
+    description: `Answered ${String(answeredCount)}/${String(totalCount)}`,
   }];
   for (let index = 0; index < input.queue.length; index += 1) {
     const envelope = input.queue[index];
@@ -586,22 +586,22 @@ export function buildAskUserReviewMenuDescriptor(input: {
         envelope,
         answer: answerRaw,
       }) ?? ASK_USER_SECRET_DISPLAY_VALUE
-      : "<未回答>";
+      : "<unanswered>";
     items.push({
       id: `edit:${String(index)}`,
-      label: `修改 ${String(index + 1)}. ${resolveEnvelopeHeader(envelope, index)}`,
+      label: `Edit ${String(index + 1)}. ${resolveEnvelopeHeader(envelope, index)}`,
       description: compactSingleLine(answer, ASK_USER_INTERACTION_OPTION_DESCRIPTION_LIMIT),
     });
   }
   items.push({
     id: "__cancel",
-    label: "取消",
-    description: "返回输入框，问题仍保留",
+    label: "Cancel",
+    description: "Back to input; questions stay pending",
   });
-  return {
-    title: "检查答案",
-    subtitle: `已回答 ${String(answeredCount)}/${String(totalCount)} · 确认后继续当前任务`,
-    hint: "↑/↓ 选择 · Enter 确认 · Esc 返回输入框",
+    return {
+    title: "Review answers",
+    subtitle: `Answered ${String(answeredCount)}/${String(totalCount)} · continue after confirm`,
+    hint: "↑/↓ select · Enter confirm · Esc back to input",
     items,
     initialIndex: 0,
     visibleOptionCount: Math.min(ASK_USER_INTERACTION_VISIBLE_OPTION_LIMIT, items.length),
@@ -623,10 +623,10 @@ export function buildAskUserQueueDisplay(input: {
       lines.push("");
     }
     if (view.unansweredCount > 0) {
-      lines.push(`  还有 ${String(view.unansweredCount)} 项未回答。`);
+      lines.push(`  ${String(view.unansweredCount)} items unanswered.`);
     }
     for (const item of view.reviewItems) {
-      const answer = item.answer?.trim() || "<未回答>";
+      const answer = item.answer?.trim() || "<unanswered>";
       lines.push(`  - ${item.question}`);
       lines.push(`    ${answer}`);
     }
@@ -645,9 +645,9 @@ export function buildAskUserQueueDisplay(input: {
       lines.push(`  ${marker} ${String(item.optionIndex + 1)}  ${compactSingleLine(`${item.label}${description}`, ASK_USER_INTERACTION_QUESTION_LIMIT)}`);
     }
   } else {
-    lines.push("  请输入你的回复。");
+    lines.push("  Type your reply.");
     if (view.defaultAnswer && view.defaultAnswer.trim().length > 0) {
-      lines.push(`  默认：${compactSingleLine(view.defaultAnswer, ASK_USER_INTERACTION_QUESTION_LIMIT)}`);
+      lines.push(`  Default: ${compactSingleLine(view.defaultAnswer, ASK_USER_INTERACTION_QUESTION_LIMIT)}`);
     }
   }
   lines.push("");

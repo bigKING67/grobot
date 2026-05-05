@@ -41,11 +41,11 @@ function formatStartupResumeHints(matches: readonly StartupResumeSessionSummary[
     .slice(0, STARTUP_RESUME_HINT_LIMIT)
     .flatMap((session) => [
       session.id,
-      `${session.updatedAt} · 标题 ${formatStartupResumePreview(session.title)}`,
-      `摘要 ${formatStartupResumePreview(session.summary)}`,
+      `${session.updatedAt} · title ${formatStartupResumePreview(session.title)}`,
+      `summary ${formatStartupResumePreview(session.summary)}`,
     ]);
   if (matches.length > STARTUP_RESUME_HINT_LIMIT) {
-    rows.push(`... 还有 ${String(matches.length - STARTUP_RESUME_HINT_LIMIT)} 项`);
+    rows.push(`... ${String(matches.length - STARTUP_RESUME_HINT_LIMIT)} more`);
   }
   return rows.join("\n");
 }
@@ -130,14 +130,14 @@ export function resolveStartupResumeTarget(
         requiresDisambiguation: true,
         disambiguationCandidates: matches,
         notice: renderStartupResumeNotice({
-          title: "找到多个可恢复会话",
-          primary: `查询 ${queryRaw}`,
+          title: "Multiple resumable sessions found",
+          primary: `query ${queryRaw}`,
           detailLines: [
-            `匹配 ${String(matches.length)} 个会话`,
+            `${String(matches.length)} sessions matched`,
             ...hints.split("\n"),
           ],
           footerLines: [
-            "提示：使用 --resume <session-id> 可确定恢复目标。",
+            "Hint: use --resume <session-id> to choose a target.",
           ],
         }),
       };
@@ -146,20 +146,20 @@ export function resolveStartupResumeTarget(
       return {
         targetSessionId: fallbackTargetSessionId,
         notice: buildStartupResumeNotice(
-          "未匹配到可恢复会话",
+          "No resumable session matched",
           [
-            `查询 ${queryRaw}`,
-            `已回退到最近可恢复会话 ${fallbackTargetSessionId}`,
+            `query ${queryRaw}`,
+            `Fell back to latest resumable session ${fallbackTargetSessionId}`,
           ],
         ),
       };
     }
     return {
       notice: buildStartupResumeNotice(
-        "未匹配到可恢复会话",
+        "No resumable session matched",
         [
-          `查询 ${queryRaw}`,
-          "没有可恢复会话。",
+          `query ${queryRaw}`,
+          "No resumable sessions.",
         ],
       ),
     };
@@ -172,8 +172,8 @@ export function resolveStartupResumeTarget(
   }
   return {
     notice: buildStartupResumeNotice(
-      "启动恢复不可用",
-      ["已请求启动恢复，但没有可恢复会话。"],
+      "Startup resume unavailable",
+      ["Startup resume was requested, but no resumable sessions exist."],
     ),
   };
 }

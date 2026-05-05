@@ -22,7 +22,7 @@ export function createPendingAskRuntime(
     const expired = input.gaMechanismRuntime.purgeExpiredPendingAsk(sessionKey);
     if (notify && expired.length > 0) {
       input.output.writeStdout(
-        `已移除 ${String(expired.length)} 个过期待确认问题。\n\n`,
+        `Removed ${String(expired.length)} expired pending questions.\n\n`,
       );
     }
     return expired.length;
@@ -55,7 +55,7 @@ export function createPendingAskRuntime(
     const sessionKey = input.runtimeState.getSessionKey();
     const active = input.gaMechanismRuntime.getPendingAsk(sessionKey);
     if (!active) {
-      input.output.writeStdout("没有待确认问题。\n\n");
+      input.output.writeStdout("No pending questions.\n\n");
       return undefined;
     }
     const queue = input.gaMechanismRuntime.listPendingAsk(sessionKey);
@@ -92,12 +92,12 @@ export function createPendingAskRuntime(
     const sessionKey = input.runtimeState.getSessionKey();
     const queue = input.gaMechanismRuntime.listPendingAsk(sessionKey);
     if (queue.length === 0) {
-      input.output.writeStdout("没有待确认问题。\n\n");
+      input.output.writeStdout("No pending questions.\n\n");
       return;
     }
     const active = queue[0];
     if (!active) {
-      input.output.writeStdout("没有待确认问题。\n\n");
+      input.output.writeStdout("No pending questions.\n\n");
       return;
     }
     const defaultAnswer = resolveDefaultAskAnswer(active.defaultOnTimeout);
@@ -107,11 +107,11 @@ export function createPendingAskRuntime(
         state: createAskUserQuestionnaireState(),
       }).trimEnd(),
     ];
-    if (!lines[0]?.includes("待确认：")) {
-      lines.push(`  待确认：${String(queue.length)} 项`);
+    if (!lines[0]?.includes("Pending:")) {
+      lines.push(`  Pending: ${String(queue.length)} items`);
     }
-    if (defaultAnswer && !lines[0]?.includes("默认：")) {
-      lines.push(`  默认：${compactSingleLine(defaultAnswer, 120)}`);
+    if (defaultAnswer && !lines[0]?.includes("Default:")) {
+      lines.push(`  Default: ${compactSingleLine(defaultAnswer, 120)}`);
     }
     lines.push("");
     input.output.writeStdout(`${lines.join("\n")}\n`);

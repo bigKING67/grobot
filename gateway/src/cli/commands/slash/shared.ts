@@ -8,7 +8,7 @@ export interface SlashUsageEntry {
 }
 
 export function formatUsageLine(value: string): string {
-  return `用法 ${value}`;
+  return `Usage ${value}`;
 }
 
 export function buildSlashNotice(
@@ -23,7 +23,7 @@ export function buildSlashNotice(
     title,
     sections: [{
       rows: [{
-        title: primary ?? "无更多信息",
+        title: primary ?? "No details",
         detailLines,
       }],
     }],
@@ -38,7 +38,7 @@ export function buildSlashUsageNotice(
   return renderInfoPanel({
     title,
     sections: [{
-      title: "可用入口",
+      title: "Available entries",
       rows: entries.map((entry) => ({
         title: entry.command,
         detailLines: entry.description ? [entry.description] : [],

@@ -89,15 +89,15 @@ function buildModelPickerContextLine(input: {
       ? Math.max(0, Math.floor(meta.totalModelCount))
       : input.viewportTotalCount;
   const parts = [
-    providerName.length > 0 ? `通道 ${providerName}` : "",
-    totalModelCount > 0 ? `${String(totalModelCount)} 个模型` : "",
-    "写入当前配置",
+    providerName.length > 0 ? `provider ${providerName}` : "",
+    totalModelCount > 0 ? `${String(totalModelCount)} models` : "",
+    "writes current config",
   ].filter((part) => part.length > 0);
   return parts.join(" · ");
 }
 
 function buildModelPickerHiddenCountLine(hiddenCount: number): string {
-  return `还有 ${String(hiddenCount)} 个模型…`;
+  return `${String(hiddenCount)} more models...`;
 }
 
 function renderModelPickerLabel(input: {
@@ -156,7 +156,7 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
     hideIndexes,
   });
   const hint = sanitizeMenuText(input.menu.hint, MODEL_PICKER_DEFAULT_HINT);
-  const title = sanitizeMenuText(input.menu.title, "选择");
+  const title = sanitizeMenuText(input.menu.title, "Select");
   const subtitle = sanitizeMenuText(input.menu.subtitle, MODEL_PICKER_DEFAULT_SUBTITLE);
   const dividerWidth = Math.max(44, Math.min(MODEL_PICKER_DIVIDER_MAX_WIDTH, columns));
 
@@ -248,9 +248,9 @@ function renderAskUserMenu(input: RenderTerminalSelectMenuInput): string {
     hasDescriptionColumn,
     hideIndexes,
   });
-  const title = sanitizeMenuText(input.menu.title, "需要确认");
+  const title = sanitizeMenuText(input.menu.title, "Confirmation needed");
   const subtitle = sanitizeMenuText(input.menu.subtitle);
-  const hint = sanitizeMenuText(input.menu.hint, "↑/↓ 选择 · Enter 确认 · Esc 返回输入框");
+  const hint = sanitizeMenuText(input.menu.hint, "↑/↓ select · Enter confirm · Esc back to input");
   const lines: string[] = [];
 
   lines.push(theme.color("brand", "─".repeat(dividerWidth)));
@@ -317,23 +317,23 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
   const surfaceWidth = Math.max(48, Math.min(PLAN_APPROVAL_SURFACE_MAX_WIDTH, columns - 4));
   const dividerWidth = Math.max(48, Math.min(PLAN_APPROVAL_DIVIDER_MAX_WIDTH, columns));
   const viewport = resolveRenderViewport(input.menu);
-  const title = sanitizeMenuText(input.menu.title, "准备开始实现？");
+  const title = sanitizeMenuText(input.menu.title, "Ready to implement?");
   const agentName = sanitizeMenuText(input.menu.planApprovalMeta?.agentName, "Grobot");
   const editorName = sanitizeMenuText(input.menu.planApprovalMeta?.editorName, "editor");
   const planContent = input.menu.planApprovalMeta?.planContent ?? "";
   const planPath = sanitizeTerminalDisplayText(input.menu.planApprovalMeta?.planPath ?? "").trim();
-  const hintBase = sanitizeMenuText(input.menu.hint, "↑/↓ 选择 · Enter 确认 · Esc 返回输入框");
+  const hintBase = sanitizeMenuText(input.menu.hint, "↑/↓ select · Enter confirm · Esc back to input");
   const isEmptyPlanApproval =
     input.menu.planApprovalMeta?.emptyPlan === true || planContent.trim().length === 0;
   if (isEmptyPlanApproval) {
     const emptyTitle = input.menu.planApprovalMeta?.emptyPlan === true
-      ? "退出计划模式?"
-      : sanitizeMenuText(input.menu.title, "退出计划模式?");
+      ? "Exit plan mode?"
+      : sanitizeMenuText(input.menu.title, "Exit plan mode?");
     const lines: string[] = [];
     const optionLabelBudget = Math.max(12, surfaceWidth - 4);
     lines.push(theme.color("planMode", "─".repeat(dividerWidth)));
     lines.push(`  ${theme.bold(truncateDisplayWidth(emptyTitle, surfaceWidth))}`);
-    lines.push(`  ${truncateDisplayWidth(`${agentName} 将退出计划模式`, surfaceWidth)}`);
+    lines.push(`  ${truncateDisplayWidth(`${agentName} will exit plan mode`, surfaceWidth)}`);
     lines.push("");
     for (let index = 0; index < input.menu.items.length; index += 1) {
       const item = input.menu.items[index]!;
@@ -354,26 +354,26 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
     return renderLineStack(lines, theme);
   }
 
-  const subtitle = sanitizeMenuText(input.menu.subtitle, "执行前请确认计划。");
+  const subtitle = sanitizeMenuText(input.menu.subtitle, "Confirm the plan before execution.");
   const editHint = planPath.length > 0
-    ? `Ctrl-G 编辑计划 · ${editorName} · ${planPath}`
-    : `Ctrl-G 编辑计划 · ${editorName}`;
+    ? `Ctrl-G edit plan · ${editorName} · ${planPath}`
+    : `Ctrl-G edit plan · ${editorName}`;
   const editHintWithSaveState = input.menu.planApprovalMeta?.planEdited
-    ? `✓ 计划已保存 · ${editHint}`
+    ? `✓ Plan saved · ${editHint}`
     : editHint;
-  const planLines = planContent.length > 0 ? planContent.split(/\r?\n/) : ["未找到计划。"];
+  const planLines = planContent.length > 0 ? planContent.split(/\r?\n/) : ["Plan not found."];
   const optionLabelBudget = Math.max(12, surfaceWidth - 4);
   const lines: string[] = [];
   const sectionDivider = theme.color("muted", PLAN_APPROVAL_PLAN_DIVIDER.repeat(surfaceWidth));
 
   lines.push(theme.color("planMode", "─".repeat(dividerWidth)));
   if (planPath.length > 0) {
-    lines.push(theme.color("muted", `  ${truncateDisplayWidth(`计划文件 ${planPath}`, surfaceWidth)}`));
+    lines.push(theme.color("muted", `  ${truncateDisplayWidth(`Plan file ${planPath}`, surfaceWidth)}`));
   }
   lines.push(`  ${theme.bold(truncateDisplayWidth(title, surfaceWidth))}`);
   lines.push(theme.color("muted", `  ${truncateDisplayWidth(subtitle, surfaceWidth)}`));
   lines.push(sectionDivider);
-  lines.push(`  ${agentName} 的计划：`);
+  lines.push(`  ${agentName}'s plan:`);
   lines.push("");
   for (const rawLine of planLines) {
     const sanitizedLine = sanitizeTerminalDisplayText(rawLine).trimEnd();
@@ -386,7 +386,7 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
   lines.push("");
 
   lines.push(theme.color("planMode", "─".repeat(dividerWidth)));
-  lines.push(theme.color("muted", "  是否开始执行？"));
+  lines.push(theme.color("muted", "  Start execution?"));
   lines.push("");
 
   for (let index = 0; index < input.menu.items.length; index += 1) {
@@ -396,7 +396,7 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
     const labelRaw = resolveInputOptionDisplayText({
       item,
       isActive,
-      fallbackPlaceholder: "输入反馈",
+      fallbackPlaceholder: "Type feedback",
       fallbackSeparator: ": ",
     });
     const label = truncateDisplayWidth(labelRaw, optionLabelBudget);

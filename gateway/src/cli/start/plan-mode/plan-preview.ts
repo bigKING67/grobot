@@ -79,15 +79,15 @@ export function buildPlanDraftStatusDisplay(input: {
     : undefined;
   const detailLines = [
     ...(displayPath ? [displayPath] : []),
-    "Grobot 正在整理实现计划。",
-    "确认最终计划前，计划模式只会读取和规划。",
-    '直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。',
+    "Grobot is drafting the implementation plan.",
+    "Before final confirmation, plan mode only reads and plans.",
+    'Type more details to refine it, or use "/plan open" to edit the draft.',
   ];
   return renderPlanSurface({
-    title: "计划草稿",
+    title: "Plan draft",
     rows: [
       {
-        title: "草稿已创建",
+        title: "Draft created",
         detailLines,
       },
     ],
@@ -115,19 +115,19 @@ export function buildCurrentPlanDisplay(input: {
   }
   const editorName = compactSpaces(input.editorName ?? "");
   const editHint = editorName.length > 0
-    ? `使用 "/plan open" 在 ${editorName} 中编辑此计划`
-    : '使用 "/plan open" 编辑此计划';
+    ? `Use "/plan open" to edit this plan in ${editorName}`
+    : 'Use "/plan open" to edit this plan';
   const planFileDetailLines = [
-    ...(input.statusLabel ? [`状态 ${input.statusLabel}`] : []),
+    ...(input.statusLabel ? [`status ${input.statusLabel}`] : []),
     ...(input.statusDetailLines ?? []),
   ];
   return [
     renderInfoPanel({
-      title: "当前计划",
+      title: "Current plan",
       titleTone: "planMode",
       sections: [{
         rows: [{
-          title: `计划文件 ${displayPath}`,
+          title: `plan file ${displayPath}`,
           detailLines: planFileDetailLines.length > 0 ? planFileDetailLines : undefined,
         }],
       }],
@@ -159,10 +159,10 @@ export function buildPlanSavedToHint(input: {
   if (!input.planPath) {
     return undefined;
   }
-  return `计划已保存: ${formatHumanPlanFilePath({
+  return `Plan saved: ${formatHumanPlanFilePath({
     workDir: input.workDir,
     planPath: input.planPath,
-  })} · /plan open 编辑`;
+  })} · /plan open to edit`;
 }
 
 function buildExitPlanModeSurface(input: {
@@ -175,20 +175,20 @@ function buildExitPlanModeSurface(input: {
   });
   return [
     renderInfoPanel({
-      title: "退出计划模式?",
+      title: "Exit plan mode?",
       titleTone: "planMode",
       sections: [{
         rows: [{
-          title: `计划文件 ${displayPath}`,
-          detailLines: ["Grobot 将退出计划模式"],
+          title: `plan file ${displayPath}`,
+          detailLines: ["Grobot will exit plan mode"],
         }],
       }],
     }),
     "",
-    "❯ 是，退出",
-    "  否，继续规划",
+    "❯ Yes, exit",
+    "  No, keep planning",
     "",
-    `编辑: /plan open · ${displayPath}`,
+    `Edit: /plan open · ${displayPath}`,
     "",
   ].join("\n");
 }
@@ -212,29 +212,29 @@ export function buildReadyToCodeSurface(input: {
   const divider = buildPlanApprovalDivider(planContent);
   return [
     renderInfoPanel({
-      title: "准备开始实现？",
+      title: "Ready to implement?",
       titleTone: "planMode",
       sections: [{
         rows: [{
-          title: `计划文件 ${displayPath}`,
-          detailLines: ["执行前请确认计划。"],
+          title: `plan file ${displayPath}`,
+          detailLines: ["Confirm the plan before execution."],
         }],
       }],
     }),
     "",
     divider,
-    "Grobot 的计划：",
+    "Grobot plan:",
     "",
     planContent,
     divider,
     "",
     "─".repeat(Math.max(24, measureDisplayWidth(divider))),
-    "是否开始执行？",
+    "Start implementation?",
     "",
-    "❯ 确认，开始实现计划",
-    "  继续完善计划",
+    "❯ Confirm, implement plan",
+    "  Refine plan",
     "",
-    `编辑: /plan open · ${displayPath}`,
+    `Edit: /plan open · ${displayPath}`,
     "",
   ].join("\n");
 }

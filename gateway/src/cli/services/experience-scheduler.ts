@@ -349,11 +349,11 @@ function buildTaskPrompt(taskId: string, prompt: string, reportPath: string): st
     `[Scheduled Task] ${taskId}`,
     `[Report Path] ${reportPath}`,
     "",
-    "先读 scheduled_task_sop 了解执行流程，然后执行以下任务：",
+    "Read scheduled_task_sop first, then run this task:",
     "",
     prompt,
     "",
-    `完成后将执行报告写入 ${reportPath}。`,
+    `Write the execution report to ${reportPath}.`,
   ].join("\n");
 }
 

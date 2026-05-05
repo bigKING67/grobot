@@ -590,43 +590,43 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     const runtimeHealthRow = formatRuntimeHealthSummary(runtimeHealth, runtimeBinaryPath);
     const probeRow = formatProbeSummary(providerProbe.probeResult);
     process.stdout.write(renderInfoPanel({
-      title: "Grobot 状态",
-      subtitle: "默认显示可操作摘要；完整机器快照用 grobot status --json。",
+      title: "Grobot status",
+      subtitle: "Default view shows an actionable summary; use grobot status --json for the full machine snapshot.",
       sections: [{
         rows: [
           {
-            title: "运行正常",
+            title: "Running normally",
             detailLines: [
-              `引擎 ${humanizeMachineToken(CLI_PRODUCT_ENGINE)}`,
-              `项目 ${projectName}`,
-              `目录 ${workDir}`,
-              `配置 ${humanizeConfigSource(configSource)}`,
+              `engine ${humanizeMachineToken(CLI_PRODUCT_ENGINE)}`,
+              `project ${projectName}`,
+              `directory ${workDir}`,
+              `config ${humanizeConfigSource(configSource)}`,
             ],
           },
           {
-            title: `模型 ${displayValue(modelName)}`,
+            title: `Model ${displayValue(modelName)}`,
             detailLines: [
-              `通道 ${displayValue(providerName)}`,
-              `配置 ${humanizeStatusSource(projectProviderSnapshot?.source, configSource)}`,
-              `接口 ${displayValue(baseUrl)}`,
-              `密钥 ${displayValue(maskedApiKey)}`,
+              `provider ${displayValue(providerName)}`,
+              `config ${humanizeStatusSource(projectProviderSnapshot?.source, configSource)}`,
+              `endpoint ${displayValue(baseUrl)}`,
+              `api key ${displayValue(maskedApiKey)}`,
             ],
           },
           formatRouteSummary(routeDecision),
           {
-            title: `执行 Gateway ${executionPlane.gatewayImpl} · Runtime ${executionPlane.runtimeImpl}`,
+            title: `Execution Gateway ${executionPlane.gatewayImpl} · Runtime ${executionPlane.runtimeImpl}`,
             detailLines: [
-              `来源 Gateway ${humanizeExecutionSource(executionPlane.gatewayImplSource)} · Runtime ${humanizeExecutionSource(executionPlane.runtimeImplSource)}`,
-              `影子执行 ${enabledText(executionPlane.shadowMode)}`,
+              `source Gateway ${humanizeExecutionSource(executionPlane.gatewayImplSource)} · Runtime ${humanizeExecutionSource(executionPlane.runtimeImplSource)}`,
+              `shadow execution ${enabledText(executionPlane.shadowMode)}`,
             ],
           },
           {
-            title: `上下文 ${enabledText(contextEngineConfig.enabled)}`,
+            title: `Context ${enabledText(contextEngineConfig.enabled)}`,
             detailLines: [
-              `窗口 ${String(contextEngineEffectiveWindowTokens)}`,
-              `目标 ${String(contextEngineTokenBudget.targetTokenLimit)}`,
-              `自动压缩 ${String(contextEngineTokenBudget.autoCompactTokenLimit)}`,
-              `策略 ${humanizeMachineToken(contextEngineConfig.profile)}`,
+              `window ${String(contextEngineEffectiveWindowTokens)}`,
+              `target ${String(contextEngineTokenBudget.targetTokenLimit)}`,
+              `auto compact ${String(contextEngineTokenBudget.autoCompactTokenLimit)}`,
+              `strategy ${humanizeMachineToken(contextEngineConfig.profile)}`,
             ],
           },
           ...(runtimeHealthRow ? [runtimeHealthRow] : []),
@@ -634,7 +634,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         ],
       }],
       footerLines: [
-        "完整机器快照 grobot status --json",
+        "Full machine snapshot: grobot status --json",
       ],
     }));
     return providerProbe.exitCode;

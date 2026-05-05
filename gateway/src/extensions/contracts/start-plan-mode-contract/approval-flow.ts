@@ -463,34 +463,43 @@ export async function runApprovalAndControlFlow(workDir: string) {
       reason: "custom_reason_with_underscores",
     }),
   );
+  const cleanApprovalStdout = stripAnsi(approvalStdout);
+  const cleanFeedbackStdout = stripAnsi(feedbackStdout);
+  const cleanNormalInterruptStdout = stripAnsi(normalInterruptStdout);
+  const cleanIdleInterruptStdout = stripAnsi(idleInterruptStdout);
+  const cleanEmptyCancelStdout = stripAnsi(emptyCancelStdout);
+  const cleanActiveCancelOutput = stripAnsi(activeCancelOutput);
+  const cleanNoActiveApplyStderr = stripAnsi(noActiveApplyStderr);
+  const cleanApplyingApplyOutput = stripAnsi(applyingApplyOutput);
+  const cleanDiscardedApplyStderr = stripAnsi(discardedApplyStderr);
 
   return {
     ready_approval_cancel_returns_input_without_status_surface:
       cancelApprovalRunResult === 0
       && cancelApprovalRuntimeState.getPlanMode() === "plan_only"
-      && !cancelApprovalOutput.includes("已继续留在计划模式")
-      && !cancelApprovalOutput.includes("准备开始实现？"),
+      && !cancelApprovalOutput.includes("Still in plan mode")
+      && !cancelApprovalOutput.includes("Ready to implement?"),
     ready_approval_empty_exit_leaves_plan_mode:
       exitApprovalRunResult === 0
       && exitApprovalRuntimeState.getPlanMode() === "normal",
     ready_approval_empty_exit_does_not_apply:
       exitApprovalExecuteInputs.every((item) => !item.includes("[Approved Plan Execution]")),
     ready_approval_empty_exit_is_quiet:
-      !exitApprovalOutput.includes("准备开始实现？")
-      && !exitApprovalOutput.includes("计划已确认")
-      && !exitApprovalOutput.includes("已继续留在计划模式"),
+      !exitApprovalOutput.includes("Ready to implement?")
+      && !exitApprovalOutput.includes("Plan confirmed")
+      && !exitApprovalOutput.includes("Still in plan mode"),
     ready_approval_yes_executes_plan:
       approvalRunResult === 0
       && approvalExecuteInputs.length === 2
       && approvalExecuteInputs[1]?.includes("[Approved Plan Execution]"),
     ready_approval_yes_skips_text_fallback:
-      approvalStdout.includes("计划已确认")
-      && !approvalStdout.includes("准备开始实现？"),
+      cleanApprovalStdout.includes("Plan confirmed")
+      && !cleanApprovalStdout.includes("Ready to implement?"),
     ready_approval_yes_matches_exit_plan_reference:
-      approvalStdout.includes("计划已确认")
-      && !approvalStdout.includes("● 计划已确认")
-      && approvalStdout.includes("• 已确认 · 计划已保存: .grobot/plans/")
-      && approvalStdout.includes("/plan open 编辑"),
+      cleanApprovalStdout.includes("Plan confirmed")
+      && !cleanApprovalStdout.includes("● Plan confirmed")
+      && cleanApprovalStdout.includes("• confirmed · Plan saved: .grobot/plans/")
+      && cleanApprovalStdout.includes("/plan open to edit"),
     ready_approval_yes_exits_plan_mode:
       approvalRuntimeState.getPlanMode() === "normal",
     ready_approval_yes_with_feedback_adds_instruction:
@@ -506,70 +515,70 @@ export async function runApprovalAndControlFlow(workDir: string) {
       && feedbackExecuteInputs.includes("make validation stricter"),
     ready_approval_feedback_keeps_plan_mode:
       feedbackRuntimeState.getPlanMode() === "plan_only"
-      && feedbackStdout.includes("已添加计划反馈，继续保持计划模式"),
+      && cleanFeedbackStdout.includes("Plan feedback added; staying in plan mode"),
     plan_interrupt_command_normal_mode_is_human:
       normalInterruptHandled.handled
       && normalInterruptHandled.code === 0
-      && stripAnsi(normalInterruptStdout).includes("当前不在计划模式")
-      && stripAnsi(normalInterruptStdout).includes("没有可中断的计划回合。")
-      && stripAnsi(normalInterruptStdout).includes("• 没有可中断的计划回合。")
-      && !stripAnsi(normalInterruptStdout).includes("PLAN_INTERRUPT_NOT_PLAN_MODE")
-      && !stripAnsi(normalInterruptStdout).includes("诊断:")
+      && cleanNormalInterruptStdout.includes("Not in plan mode")
+      && cleanNormalInterruptStdout.includes("No plan turn to interrupt.")
+      && cleanNormalInterruptStdout.includes("• No plan turn to interrupt.")
+      && !cleanNormalInterruptStdout.includes("PLAN_INTERRUPT_NOT_PLAN_MODE")
+      && !cleanNormalInterruptStdout.includes("diagnostic")
       && !normalInterruptStdout.includes("[plan-interrupt]"),
     plan_interrupt_idle_plan_mode_is_human:
       idleInterruptResult.code === "PLAN_INTERRUPT_NOT_RUNNING"
       && idleInterruptResult.accepted === false
       && idleInterruptResult.phase === "idle"
-      && stripAnsi(idleInterruptStdout).includes("当前没有运行中的计划回合")
-      && stripAnsi(idleInterruptStdout).includes("如果想退出计划模式，可按 Esc 或使用 /exit。")
-      && stripAnsi(idleInterruptStdout).includes("• 如果想退出计划模式，可按 Esc 或使用 /exit。")
-      && !stripAnsi(idleInterruptStdout).includes("PLAN_INTERRUPT_NOT_RUNNING")
-      && !stripAnsi(idleInterruptStdout).includes("诊断:")
+      && cleanIdleInterruptStdout.includes("No running plan turn")
+      && cleanIdleInterruptStdout.includes("To exit plan mode, press Esc or use /exit.")
+      && cleanIdleInterruptStdout.includes("• To exit plan mode, press Esc or use /exit.")
+      && !cleanIdleInterruptStdout.includes("PLAN_INTERRUPT_NOT_RUNNING")
+      && !cleanIdleInterruptStdout.includes("diagnostic")
       && !idleInterruptStdout.includes("[plan-interrupt]"),
     plan_interrupt_ignored_reason_is_human:
-      ignoredInterruptSurface.includes("中断请求未生效")
-      && ignoredInterruptSurface.includes("阶段 计划回合结束时")
-      && ignoredInterruptSurface.includes("原因 回合已完成，无法再回退")
+      ignoredInterruptSurface.includes("Interrupt request ignored")
+      && ignoredInterruptSurface.includes("stage plan turn finalize")
+      && ignoredInterruptSurface.includes("reason turn already completed")
       && !ignoredInterruptSurface.includes("turn_completed_before_abort")
       && !ignoredInterruptSurface.includes("PLAN_INTERRUPT_OK"),
     plan_interrupt_reason_fallback_avoids_raw_token:
-      fallbackInterruptSurface.includes("阶段 after plan state persist")
-      && fallbackInterruptSurface.includes("原因 custom reason with underscores")
+      fallbackInterruptSurface.includes("stage after plan state persist")
+      && fallbackInterruptSurface.includes("reason custom reason with underscores")
       && !fallbackInterruptSurface.includes("custom_reason_with_underscores")
       && !fallbackInterruptSurface.includes("after-plan-state-persist"),
     plan_cancel_empty_surface_is_human:
       emptyCancelResult === 0
       && emptyCancelRuntimeState.getPlanMode() === "normal"
-      && stripAnsi(emptyCancelStdout).includes("当前没有可取消的计划")
-      && stripAnsi(emptyCancelStdout).includes('使用 "/plan <goal>" 开始新计划')
+      && cleanEmptyCancelStdout.includes("No plan to cancel")
+      && cleanEmptyCancelStdout.includes('use "/plan <goal>" to start a new plan')
       && !emptyCancelStdout.includes("[plan]")
       && !emptyCancelStdout.includes("plan_id="),
     plan_cancel_active_surface_is_human:
       activeCancelResult === 0
       && activeCancelRuntimeState.getPlanMode() === "normal"
-      && stripAnsi(activeCancelOutput).includes("已取消计划")
+      && cleanActiveCancelOutput.includes("Plan cancelled")
       && !activeCancelOutput.includes("[plan]")
       && !activeCancelOutput.includes("plan_id="),
     plan_apply_no_active_surface_is_human:
       noActiveApplyResult === 1
-      && stripAnsi(noActiveApplyStderr).includes("当前没有可执行的计划")
-      && stripAnsi(noActiveApplyStderr).includes('请先使用 "/plan <goal>" 写出计划。')
-      && stripAnsi(noActiveApplyStderr).includes("当前会话还没有可执行计划")
-      && !stripAnsi(noActiveApplyStderr).includes("PLAN_APPLY_NO_ACTIVE_PLAN")
+      && cleanNoActiveApplyStderr.includes("No executable plan")
+      && cleanNoActiveApplyStderr.includes('Use "/plan <goal>" to write a plan first.')
+      && cleanNoActiveApplyStderr.includes("No executable plan in this session")
+      && !cleanNoActiveApplyStderr.includes("PLAN_APPLY_NO_ACTIVE_PLAN")
       && !noActiveApplyStderr.includes("[plan]")
       && !noActiveApplyStderr.includes("plan_id="),
     plan_apply_already_applying_surface_is_human:
       applyingApplyResult === 0
-      && stripAnsi(applyingApplyOutput).includes("计划正在执行中")
-      && stripAnsi(applyingApplyOutput).includes("请等待当前执行完成；需要停止时按 Esc。")
+      && cleanApplyingApplyOutput.includes("Plan is already applying")
+      && cleanApplyingApplyOutput.includes("Wait for the current execution to finish; press Esc to stop.")
       && !applyingApplyOutput.includes("[plan]")
       && !applyingApplyOutput.includes("plan_id="),
     plan_apply_invalid_status_surface_is_human:
       discardedApplyResult === 1
-      && stripAnsi(discardedApplyStderr).includes("当前计划不能执行")
-      && stripAnsi(discardedApplyStderr).includes("状态 已取消")
-      && stripAnsi(discardedApplyStderr).includes("计划状态不允许执行")
-      && !stripAnsi(discardedApplyStderr).includes("PLAN_APPLY_INVALID_STATUS")
+      && cleanDiscardedApplyStderr.includes("Current plan cannot execute")
+      && cleanDiscardedApplyStderr.includes("status cancelled")
+      && cleanDiscardedApplyStderr.includes("Plan status cannot be executed")
+      && !cleanDiscardedApplyStderr.includes("PLAN_APPLY_INVALID_STATUS")
       && !discardedApplyStderr.includes("[plan]")
       && !discardedApplyStderr.includes("plan_id="),
   };

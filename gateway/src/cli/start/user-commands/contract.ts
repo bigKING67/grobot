@@ -6,7 +6,7 @@ import { runTerminalSelectMenu } from "../../tui/components/select-menu/controll
 export const USER_COMMAND_SCHEMA_VERSION = 1;
 export const USER_COMMAND_NAME_PATTERN = /^[a-z][a-z0-9_-]{0,31}$/;
 export const USER_COMMAND_DEFAULT_PROMPT =
-  "请在这里编写命令提示词。可使用 {{args}} 占位符接收调用参数。";
+  "Write the command prompt here. Use {{args}} as a placeholder for invocation arguments.";
 
 export const RESERVED_SLASH_COMMAND_NAMES = new Set<string>([
   "commands",

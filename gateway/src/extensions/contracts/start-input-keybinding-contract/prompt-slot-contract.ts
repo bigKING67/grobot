@@ -81,7 +81,7 @@ export function runPromptSlotChecks(): ContractPayload {
     },
   });
   const runtimeFooterDraftNoStatus = resolveSessionInputFooterLines({
-    footerLines: ["? 快捷键"],
+    footerLines: ["? shortcuts"],
     inputGraphemeLength: 2,
     promptSlot: {
       hasStatusLine: false,
@@ -162,7 +162,7 @@ export function runPromptSlotChecks(): ContractPayload {
     prompt_slot_runtime_short_fullscreen_replaces_status_with_hint:
       runtimeFooterShortFullscreen.promptSlotState.bottomSlot.kind === "idle_hint"
       && runtimeFooterShortFullscreen.footerLines.length === 1
-      && stripAnsi(runtimeFooterShortFullscreen.footerLines[0] ?? "") === "? 快捷键",
+      && stripAnsi(runtimeFooterShortFullscreen.footerLines[0] ?? "") === "? shortcuts",
     prompt_slot_runtime_short_fullscreen_draft_hides_footer:
       runtimeFooterShortFullscreenDraft.promptSlotState.bottomSlot.kind === "none"
       && runtimeFooterShortFullscreenDraft.footerLines.length === 0,

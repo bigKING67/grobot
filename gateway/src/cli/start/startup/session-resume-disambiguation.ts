@@ -50,11 +50,11 @@ export async function resolveStartupResumeDisambiguation(
   ) {
     messages.push(
       renderInfoPanel({
-        title: "已自动选择启动会话",
+        title: "Startup session auto-selected",
         sections: [{
           rows: [{
-            title: `会话 ${targetSessionId}`,
-            detailLines: ["非交互启动无法打开选择器，已使用首个匹配项。"],
+            title: `session ${targetSessionId}`,
+            detailLines: ["Non-interactive startup cannot open a picker; using the first match."],
           }],
         }],
       }),

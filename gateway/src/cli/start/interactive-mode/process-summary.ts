@@ -90,12 +90,12 @@ export function resolveProcessResultCode(result: "ok" | "error" | "interrupted")
 
 export function renderProcessSummaryLabel(result: "ok" | "error" | "interrupted"): string {
   if (result === "error") {
-    return "执行失败";
+    return "Failed";
   }
   if (result === "interrupted") {
-    return "已中断";
+    return "Interrupted";
   }
-  return "执行完成";
+  return "Completed";
 }
 
 export function resolveProcessSummaryDetail(): ProcessSummaryDetail {

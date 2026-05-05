@@ -23,7 +23,7 @@ async function readMenuTextInput(
   const value = result.value.trim();
   if (!options?.optional && value.length === 0) {
     input.writeStdout(buildCommandsSurface({
-      title: "输入为空，已取消操作",
+      title: "Empty input; action cancelled",
     }));
     return undefined;
   }
@@ -43,44 +43,44 @@ export async function openUserCommandsManagementMenu(input: {
   }
   const menu = await input.withInputPaused(() =>
     input.runSelectMenu({
-      title: "命令管理",
-      subtitle: "管理 ~/.grobot/commands",
-      hint: "↑/↓ 选择 · Enter 确认 · Esc 返回",
+      title: "Command manager",
+      subtitle: "Manage ~/.grobot/commands",
+      hint: "↑/↓ select · Enter confirm · Esc back",
       items: [
         {
           id: "list",
-          label: "列出命令",
-          description: "显示所有用户自定义命令。",
+          label: "List commands",
+          description: "Show all user commands.",
         },
         {
           id: "new",
-          label: "创建命令",
-          description: "创建 /<name>，可附带提示词模板。",
+          label: "Create command",
+          description: "Create /<name>, optionally with a prompt template.",
         },
         {
           id: "set",
-          label: "更新模板",
-          description: "更新已有命令的提示词模板。",
+          label: "Update template",
+          description: "Update an existing command prompt template.",
         },
         {
           id: "show",
-          label: "查看详情",
-          description: "查看命令状态、位置和模板摘要。",
+          label: "Show details",
+          description: "Show command status, path, and template summary.",
         },
         {
           id: "enable",
-          label: "启用命令",
-          description: "允许在 slash 输入中调用该命令。",
+          label: "Enable command",
+          description: "Allow this command in slash input.",
         },
         {
           id: "disable",
-          label: "停用命令",
-          description: "保留命令文件，但阻止调用。",
+          label: "Disable command",
+          description: "Keep the command file but block invocation.",
         },
         {
           id: "delete",
-          label: "删除命令",
-          description: "删除命令 json 文件。",
+          label: "Delete command",
+          description: "Delete the command JSON file.",
         },
       ],
     }),
@@ -93,11 +93,11 @@ export async function openUserCommandsManagementMenu(input: {
     return;
   }
   if (menu.item.id === "new") {
-    const name = await readMenuTextInput(input, input.withInputPaused, "命令名> ");
+    const name = await readMenuTextInput(input, input.withInputPaused, "Command name> ");
     if (!name) {
       return;
     }
-    const prompt = await readMenuTextInput(input, input.withInputPaused, "模板（可选）> ", { optional: true });
+    const prompt = await readMenuTextInput(input, input.withInputPaused, "Template (optional)> ", { optional: true });
     if (typeof prompt === "undefined") {
       return;
     }
@@ -105,11 +105,11 @@ export async function openUserCommandsManagementMenu(input: {
     return;
   }
   if (menu.item.id === "set") {
-    const name = await readMenuTextInput(input, input.withInputPaused, "目标命令> ");
+    const name = await readMenuTextInput(input, input.withInputPaused, "Target command> ");
     if (!name) {
       return;
     }
-    const prompt = await readMenuTextInput(input, input.withInputPaused, "新模板> ");
+    const prompt = await readMenuTextInput(input, input.withInputPaused, "New template> ");
     if (!prompt) {
       return;
     }
@@ -117,7 +117,7 @@ export async function openUserCommandsManagementMenu(input: {
     return;
   }
   if (menu.item.id === "show") {
-    const name = await readMenuTextInput(input, input.withInputPaused, "目标命令> ");
+    const name = await readMenuTextInput(input, input.withInputPaused, "Target command> ");
     if (!name) {
       return;
     }
@@ -125,7 +125,7 @@ export async function openUserCommandsManagementMenu(input: {
     return;
   }
   if (menu.item.id === "enable") {
-    const name = await readMenuTextInput(input, input.withInputPaused, "目标命令> ");
+    const name = await readMenuTextInput(input, input.withInputPaused, "Target command> ");
     if (!name) {
       return;
     }
@@ -133,7 +133,7 @@ export async function openUserCommandsManagementMenu(input: {
     return;
   }
   if (menu.item.id === "disable") {
-    const name = await readMenuTextInput(input, input.withInputPaused, "目标命令> ");
+    const name = await readMenuTextInput(input, input.withInputPaused, "Target command> ");
     if (!name) {
       return;
     }
@@ -141,7 +141,7 @@ export async function openUserCommandsManagementMenu(input: {
     return;
   }
   if (menu.item.id === "delete") {
-    const name = await readMenuTextInput(input, input.withInputPaused, "目标命令> ");
+    const name = await readMenuTextInput(input, input.withInputPaused, "Target command> ");
     if (!name) {
       return;
     }

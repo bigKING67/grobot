@@ -12,7 +12,7 @@ export type PlanLifecycleStatus =
 export type SessionPlanPhase = "drafting" | "awaiting_decision" | "applying";
 
 export const PLAN_EXECUTION_REPLY = "Implement the plan.";
-export const PLAN_DIRECT_REFINE_ACTION = "继续完善当前计划（直接输入补充内容）";
+export const PLAN_DIRECT_REFINE_ACTION = "Refine current plan (type more details)";
 
 export function derivePlanPhaseFromStatus(
   status: PlanLifecycleStatus | undefined,
@@ -45,58 +45,58 @@ export function resolvePlanStatusRecommendation(input: {
   const planPhase = derivePlanPhaseFromStatus(input.status);
   if (input.planQualityGuardLevel === "critical") {
     const guardReason = typeof input.planQualityGuardReason === "string" && input.planQualityGuardReason.trim().length > 0
-      ? `；原因：${input.planQualityGuardReason.trim()}`
+      ? `; reason: ${input.planQualityGuardReason.trim()}`
       : "";
     const topHint = typeof input.planQualityTopHint === "string" && input.planQualityTopHint.trim().length > 0
-      ? `；优先处理：${input.planQualityTopHint.trim()}`
+      ? `; prioritize: ${input.planQualityTopHint.trim()}`
       : "";
     return {
       action: PLAN_DIRECT_REFINE_ACTION,
-      reason: `计划质量门禁已阻止执行，先补齐计划细节${guardReason}${topHint}`,
+      reason: `Plan quality gate blocked execution; add concrete plan details first${guardReason}${topHint}`,
     };
   }
   if (typeof input.planQualityScore === "number" && input.planQualityScore < 70) {
     const topHint = typeof input.planQualityTopHint === "string" && input.planQualityTopHint.trim().length > 0
-      ? `，优先处理：${input.planQualityTopHint.trim()}`
+      ? `; prioritize: ${input.planQualityTopHint.trim()}`
       : "";
     return {
       action: PLAN_DIRECT_REFINE_ACTION,
-      reason: `计划质量分仅 ${String(input.planQualityScore)}，建议先补齐计划细节${topHint}`,
+      reason: `Plan quality score is only ${String(input.planQualityScore)}; add concrete plan details first${topHint}`,
     };
   }
   if (input.mode === "plan_only") {
     if (planPhase === "applying") {
       return {
         action: "/plan",
-        reason: "执行正在进行中，可用 /plan 查看当前状态",
+        reason: "Implementation is running; use /plan to view current status",
       };
     }
     if (planPhase === "drafting" || planPhase === undefined) {
       return {
         action: PLAN_DIRECT_REFINE_ACTION,
-        reason: "当前计划仍在整理阶段；直接补充内容即可继续完善，直到进入待决策态",
+        reason: "The plan is still drafting; type more details to refine it until it is ready",
       };
     }
     return {
       action: PLAN_EXECUTION_REPLY,
-      reason: "当前计划已进入待决策态；直接回复“开始实现计划”或选择确认项即可开始执行",
+      reason: "The plan is ready; reply Implement the plan. or confirm to start implementation",
     };
   }
   if (input.status === "applied") {
     return {
       action: "/plan <goal>",
-      reason: "当前计划已执行完成，可开启新目标继续规划",
+      reason: "The current plan is complete; start a new goal to plan next",
     };
   }
   if (input.status === "apply_failed") {
     return {
       action: "/plan <goal>",
-      reason: "上一次执行失败，建议结合失败结果重新规划后再执行",
+      reason: "The last implementation failed; replan with the failure result before retrying",
     };
   }
   return {
     action: "/plan <goal>",
-    reason: "当前无活跃 plan",
+    reason: "No active plan",
   };
 }
 
@@ -151,19 +151,19 @@ export function resolvePlanStatusRecommendationActionId(actionRaw: string): Plan
 export function resolvePlanStatusRecommendationLabel(actionRaw: string): string {
   const actionId = resolvePlanStatusRecommendationActionId(actionRaw);
   if (actionId === "view_status") {
-    return "查看计划状态";
+    return "View plan status";
   }
   if (actionId === "open_file") {
-    return "打开计划文件";
+    return "Open plan file";
   }
   if (actionId === "execute") {
-    return "开始实现";
+    return "Start implementation";
   }
   if (actionId === "refine") {
-    return "继续完善计划";
+    return "Refine plan";
   }
   if (actionId === "enter") {
-    return "创建/完善计划";
+    return "Create/refine plan";
   }
-  return "计划操作";
+  return "Plan action";
 }

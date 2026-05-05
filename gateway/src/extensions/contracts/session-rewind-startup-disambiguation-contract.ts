@@ -101,9 +101,9 @@ async function run(): Promise<void> {
     check("non_tty_keeps_auto_selected_target", nonTtyAuto.targetCheckpointId === "legacy-a"),
     check(
       "non_tty_reports_auto_selected_notice",
-      nonTtyAutoPlain.includes("已自动选择启动检查点")
-      && nonTtyAutoPlain.includes("检查点 legacy-a")
-      && !nonTtyAutoPlain.includes("检查点: legacy-a"),
+      nonTtyAutoPlain.includes("Startup checkpoint auto-selected")
+      && nonTtyAutoPlain.includes("checkpoint legacy-a")
+      && !nonTtyAutoPlain.includes("checkpoint: legacy-a"),
     ),
     check("non_tty_notice_avoids_legacy_marker", !nonTtyAutoText.includes("[rewind]")),
     check("no_disambiguation_keeps_target", noDisambiguation.targetCheckpointId === "legacy-a"),

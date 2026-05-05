@@ -23,50 +23,50 @@ interface ShortcutHelpEntry {
 type ShortcutHelpColumn = readonly ShortcutHelpEntry[];
 
 const SHORTCUT_HELP_DISCOVERY_ROWS: ShortcutHelpColumn = [
-  ["/", "命令"],
-  ["/model", "模型"],
-  ["/plan", "计划"],
-  ["/status", "状态"],
-  ["/history", "历史"],
+  ["/", "commands"],
+  ["/model", "model"],
+  ["/plan", "plan"],
+  ["/status", "status"],
+  ["/history", "history"],
 ].map(([keyLabel, description]) => ({ keyLabel, description }));
 
 const SHORTCUT_HELP_EDITING_ROWS: ShortcutHelpColumn = [
-  ["Shift+Enter", "换行"],
-  ["Esc", "返回/清空"],
-  ["Tab", "应用建议"],
-  ["Ctrl+R", "历史搜索"],
-  ["Ctrl+V", "粘贴图片"],
+  ["Shift+Enter", "newline"],
+  ["Esc", "back/clear"],
+  ["Tab", "apply suggestion"],
+  ["Ctrl+R", "history search"],
+  ["Ctrl+V", "paste image"],
 ].map(([keyLabel, description]) => ({ keyLabel, description }));
 
 const SHORTCUT_HELP_SESSION_ROWS: ShortcutHelpColumn = [
-  ["Enter", "发送"],
-  ["Up/Down", "选择"],
-  ["Left/Right", "移动光标"],
-  ["Ctrl+C", "退出"],
-  ["?", "隐藏"],
+  ["Enter", "send"],
+  ["Up/Down", "select"],
+  ["Left/Right", "move cursor"],
+  ["Ctrl+C", "exit"],
+  ["?", "hide"],
 ].map(([keyLabel, description]) => ({ keyLabel, description }));
 
 const SHORTCUT_OVERLAY_MEDIUM_ROWS: ShortcutHelpColumn = [
-  ["/", "命令"],
-  ["Shift+Enter", "换行"],
-  ["/model", "模型"],
-  ["Esc", "返回/清空"],
-  ["/plan", "计划"],
-  ["Tab", "应用建议"],
-  ["Ctrl+R", "历史搜索"],
-  ["Ctrl+V", "粘贴图片"],
-  ["Ctrl+C", "退出"],
-  ["?", "隐藏"],
+  ["/", "commands"],
+  ["Shift+Enter", "newline"],
+  ["/model", "model"],
+  ["Esc", "back/clear"],
+  ["/plan", "plan"],
+  ["Tab", "apply suggestion"],
+  ["Ctrl+R", "history search"],
+  ["Ctrl+V", "paste image"],
+  ["Ctrl+C", "exit"],
+  ["?", "hide"],
 ].map(([keyLabel, description]) => ({ keyLabel, description }));
 
 const SHORTCUT_OVERLAY_COMPACT_ROWS: ShortcutHelpColumn = [
-  ["/", "命令"],
-  ["Shift+Enter", "换行"],
-  ["Esc", "返回"],
-  ["Tab", "应用"],
-  ["Ctrl+R", "历史"],
-  ["Ctrl+C", "退出"],
-  ["?", "隐藏"],
+  ["/", "commands"],
+  ["Shift+Enter", "newline"],
+  ["Esc", "back"],
+  ["Tab", "apply"],
+  ["Ctrl+R", "history"],
+  ["Ctrl+C", "exit"],
+  ["?", "hide"],
 ].map(([keyLabel, description]) => ({ keyLabel, description }));
 
 const FOOTER_HINT_MIN_COLUMNS = 64;
@@ -80,7 +80,7 @@ const SHORTCUT_OVERLAY_KEY_COLUMN_WIDTH = 11;
 const SHORTCUT_OVERLAY_KEY_GAP = "  ";
 const SHORTCUT_OVERLAY_COLUMN_GAP = "  ";
 const SHORTCUT_OVERLAY_FALLBACK_COLUMN_WIDTH = 27;
-const PENDING_ASK_DEFAULT_ACTION_HINT = "Enter 打开选择";
+const PENDING_ASK_DEFAULT_ACTION_HINT = "Enter open picker";
 const QUEUED_INPUT_PREVIEW_MAX_WIDTH = 24;
 
 function resolveTerminalColumns(columns: number | undefined): number {
@@ -119,7 +119,7 @@ function buildPendingAskLine(input: BottomPanePromptInput): string | undefined {
   }
   const summary = compactSpaces(input.pendingAskSummary ?? "");
   const actionHint = resolvePendingAskActionHint(summary);
-  const baseLine = `需要确认 ${String(pendingAskCount)} 项 · ${actionHint}`;
+  const baseLine = `Pending ${String(pendingAskCount)} · ${actionHint}`;
   const terminalColumns = resolveTerminalColumns(input.terminalColumns);
   if (terminalColumns > 0) {
     return truncateDisplayWidth(baseLine, terminalColumns);
@@ -136,7 +136,7 @@ function buildQueuedInputLine(input: BottomPanePromptInput): string | undefined 
   const previewSuffix = preview.length > 0
     ? ` · ${truncateDisplayWidth(preview, QUEUED_INPUT_PREVIEW_MAX_WIDTH)}`
     : "";
-  const baseLine = `已排队 ${String(queuedInputCount)} 条${previewSuffix}`;
+  const baseLine = `Queued ${String(queuedInputCount)}${previewSuffix}`;
   const terminalColumns = resolveTerminalColumns(input.terminalColumns);
   if (terminalColumns > 0) {
     return truncateDisplayWidth(baseLine, terminalColumns);
@@ -157,9 +157,9 @@ function resolvePendingAskActionHint(summary: string): string {
     || normalized.includes("[ask-user]");
   const looksLikeActionHint =
     normalized.includes("enter/?")
-    || normalized.includes("enter 打开")
+    || normalized.includes("enter open")
     || normalized.startsWith("enter ")
-    || summary.startsWith("输入回复");
+    || summary.toLowerCase().startsWith("type reply");
   const looksLikeQuestion = !looksLikeActionHint && /[?？]/.test(summary);
   if (looksLikeDiagnostic || looksLikeQuestion) {
     return PENDING_ASK_DEFAULT_ACTION_HINT;
@@ -174,7 +174,7 @@ function buildInputHintLine(input: {
   if (statusLine.length > 0) {
     return undefined;
   }
-  return "? 快捷键";
+  return "? shortcuts";
 }
 
 function fitFooterLine(input: {
@@ -409,7 +409,7 @@ export function renderBottomPaneFooter(input: BottomPanePromptInput): string {
 
   if (mode === "running") {
     pushLine(BOTTOM_PANE_STYLE.activityLine(fitFooterLine({
-      line: parts.activityLine ?? (input.planMode ? "~ 正在规划" : "~ 正在处理"),
+      line: parts.activityLine ?? (input.planMode ? "~ planning" : "~ working"),
       terminalColumns: input.terminalColumns,
     })));
     if (renderSecondaryStatus) {

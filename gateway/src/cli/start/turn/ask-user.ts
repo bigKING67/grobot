@@ -6,7 +6,7 @@ export function buildAskUserQueueContinuationHint(queuedExtra: number): string {
   if (queuedExtra <= 0) {
     return "";
   }
-  return `还有 ${String(queuedExtra)} 个后续确认，继续选择或直接回复即可。\n`;
+  return `${String(queuedExtra)} follow-up confirmations remain. Keep choosing or reply directly.\n`;
 }
 
 function normalizeRuntimeAskUserId(input: {

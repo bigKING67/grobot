@@ -32,12 +32,12 @@ export async function runPendingAskDispatchFlows() {
       "openStatusMenu",
     ),
     pending_ask_blocked_status_hint_has_reply_guidance:
-      pendingAskBlockedStatus.stdout.includes("请先回复后再执行其他命令"),
+      pendingAskBlockedStatus.stdout.includes("Reply first before running other commands."),
     pending_ask_blocked_status_hint_has_prompt_summary:
-      pendingAskBlockedStatus.stdout.includes("Enter 打开选择")
+      pendingAskBlockedStatus.stdout.includes("Enter open picker")
       && !pendingAskBlockedStatus.stdout.includes("question="),
     pending_ask_blocked_status_hint_has_short_menu_hint:
-      pendingAskBlockedStatus.stdout.includes("Enter 打开选择"),
+      pendingAskBlockedStatus.stdout.includes("Enter open picker"),
     pending_ask_help_allowed: includesEvent(pendingAskAllowHelp.events, "showHelp"),
     pending_ask_help_blocked_warned: includesEvent(pendingAskAllowHelp.events, "writeStdout"),
     pending_ask_interrupt_allowed: includesEvent(
@@ -57,15 +57,15 @@ export async function runPendingAskDispatchFlows() {
       "openSessionMenu:rewind",
     ),
     pending_ask_ask_allowed:
-      stripAnsi(pendingAskAllowAsk.stdout).includes("未知命令")
-      && !stripAnsi(pendingAskAllowAsk.stdout).includes("● 未知命令"),
+      stripAnsi(pendingAskAllowAsk.stdout).includes("Unknown command")
+      && !stripAnsi(pendingAskAllowAsk.stdout).includes("● Unknown command"),
     pending_ask_ask_invalid_args_warned: includesEvent(
       pendingAskAllowAskInvalidArgs.events,
       "writeStdout",
     ),
     pending_ask_ask_invalid_args_dispatched:
-      stripAnsi(pendingAskAllowAskInvalidArgs.stdout).includes("未知命令")
-      && !stripAnsi(pendingAskAllowAskInvalidArgs.stdout).includes("● 未知命令"),
+      stripAnsi(pendingAskAllowAskInvalidArgs.stdout).includes("Unknown command")
+      && !stripAnsi(pendingAskAllowAskInvalidArgs.stdout).includes("● Unknown command"),
     pending_ask_plain_text_runs_turn: includesEvent(
       pendingAskPlainAnswer.events,
       "runTurn:继续执行快速方案",
@@ -103,6 +103,6 @@ export async function runPendingAskDispatchFlows() {
       "writeStdout",
     ),
     pending_ask_burst_third_mentions_suppressed_count:
-      pendingAskBlockedBurstThird.stdout.includes("已折叠 1 条重复提示"),
+      pendingAskBlockedBurstThird.stdout.includes("1 duplicate notices collapsed."),
   };
 }

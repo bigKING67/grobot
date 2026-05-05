@@ -39,7 +39,7 @@ export async function runPlanCancel(
         kind: "failed",
         workDir: input.workDir,
         planPath: active.planPath,
-        detail: "未找到计划记录，无法更新为已取消。",
+        detail: "Plan record not found; cannot mark it cancelled.",
       }),
     );
     return 1;

@@ -52,7 +52,7 @@ const pendingFooter = renderBottomPaneFooter({
   terminalColumns: 64,
   promptLabel: "› ",
   pendingAskCount: 2,
-  pendingAskSummary: "Enter 打开选择 · 1-2 直接回复",
+  pendingAskSummary: "Enter open picker · 1-2 direct",
 });
 
 const narrowPendingFooter = renderBottomPaneFooter({
@@ -94,7 +94,7 @@ const pendingPlanModeFooter = renderBottomPaneFooter({
   promptLabel: "› ",
   planMode: true,
   pendingAskCount: 3,
-  pendingAskSummary: "Enter 打开选择 · 1-4 直选 · 自定义输入",
+  pendingAskSummary: "Enter open picker · 1-4 direct · Custom",
 });
 
 const runningWithPendingAskFooter = renderBottomPaneFooter({
@@ -107,10 +107,10 @@ const runningWithPendingAskFooter = renderBottomPaneFooter({
   sessionTopic: "running pending ask",
   terminalColumns: 96,
   promptLabel: "› ",
-  activityText: "正在构建上下文",
+  activityText: "Building context",
   running: true,
   pendingAskCount: 2,
-  pendingAskSummary: "Enter 打开选择 · 1-2 直接回复",
+  pendingAskSummary: "Enter open picker · 1-2 direct",
 });
 
 const narrowPendingPlanModeFooter = renderBottomPaneFooter({
@@ -138,7 +138,7 @@ const runningFooter = renderBottomPaneFooter({
   sessionTopic: "running turn",
   terminalColumns: 72,
   promptLabel: "› ",
-  activityText: "正在构建上下文",
+  activityText: "Building context",
   running: true,
 });
 
@@ -152,9 +152,9 @@ const runningQueuedFooter = renderBottomPaneFooter({
   sessionTopic: "running queued turn",
   terminalColumns: 72,
   promptLabel: "› ",
-  activityText: "正在构建上下文",
+  activityText: "Building context",
   queuedInputCount: 2,
-  queuedInputPreview: "继续整理 prompt queue 可视化反馈，不要打印 raw diagnostics",
+  queuedInputPreview: "continue polishing prompt queue visual feedback; do not print raw diagnostics",
   running: true,
 });
 
@@ -220,7 +220,7 @@ const narrowRunningFooter = renderBottomPaneFooter({
   sessionTopic: "running turn",
   terminalColumns: 48,
   promptLabel: "› ",
-  activityText: "正在构建上下文",
+  activityText: "Building context",
   running: true,
 });
 
@@ -235,7 +235,7 @@ const narrowRunningPlanModeFooter = renderBottomPaneFooter({
   terminalColumns: 48,
   promptLabel: "› ",
   planMode: true,
-  activityText: "正在构建上下文",
+  activityText: "Building context",
   running: true,
 });
 
@@ -268,69 +268,69 @@ const payload = {
   idle_keeps_passive_status:
     (idleLines[0] ?? "").includes("grobot")
     && (idleLines[0] ?? "").includes("ctx"),
-  idle_hides_shortcut_hint: !idleFooter.includes("? 快捷键"),
+  idle_hides_shortcut_hint: !idleFooter.includes("? shortcuts"),
   idle_omits_permanent_shift_enter_hint: !idleFooter.includes("shift + enter for newline"),
   idle_footer_has_visual_weight:
     !/\u001B\[96m/.test(idleFooter) && /\u001B\[90m/.test(idleFooter),
   idle_footer_uses_muted_not_high_saturation:
     /\u001B\[90m/.test(idleFooter) && !/\u001B\[92m/.test(idleFooter),
   idle_footer_style_keeps_plain_text:
-    !collapseSpaces(idleFooter).includes("? 快捷键")
+    !collapseSpaces(idleFooter).includes("? shortcuts")
     && collapseSpaces(idleFooter).includes("grobot")
     && collapseSpaces(idleFooter).includes("ctx"),
   idle_without_status_shows_shortcut_hint:
-    collapseSpaces(idleNoStatusFooter) === "? 快捷键",
+    collapseSpaces(idleNoStatusFooter) === "? shortcuts",
   idle_without_status_hint_is_muted:
     /\u001B\[90m/.test(idleNoStatusFooter),
   idle_narrow_status_dimmed:
-    !narrowIdleFooter.includes("? 快捷键") && /\u001B\[90m/.test(narrowIdleFooter),
-  idle_narrow_hides_shortcut_hint: !narrowIdleFooter.includes("? 快捷键"),
+    !narrowIdleFooter.includes("? shortcuts") && /\u001B\[90m/.test(narrowIdleFooter),
+  idle_narrow_hides_shortcut_hint: !narrowIdleFooter.includes("? shortcuts"),
   idle_narrow_keeps_status:
-    narrowIdleFooter.includes("ctx") && !narrowIdleFooter.includes("? 快捷键"),
+    narrowIdleFooter.includes("ctx") && !narrowIdleFooter.includes("? shortcuts"),
   idle_narrow_lines_within_width:
     narrowIdleLines.every((line) => measureDisplayWidth(line) <= 48),
   plan_mode_idle_keeps_badge_when_short:
-    shortPlanModeIdleFooter.includes("计划模式"),
+    shortPlanModeIdleFooter.includes("plan mode"),
   plan_mode_idle_badge_leads_status:
-    collapseSpaces(shortPlanModeIdleFooter).startsWith("⏸ 计划模式"),
+    collapseSpaces(shortPlanModeIdleFooter).startsWith("⏸ plan mode"),
   plan_mode_idle_short_within_width:
     shortPlanModeIdleFooter.split("\n").every((line) => measureDisplayWidth(line) <= 48),
   pending_has_no_divider: !/^─+$/.test(pendingLines[0] ?? ""),
   pending_keeps_status_above_ask:
     (pendingLines[0] ?? "").includes("ctx")
-    && (pendingLines[1] ?? "").includes("需要确认 2 项"),
+    && (pendingLines[1] ?? "").includes("Pending 2"),
   pending_status_secondary:
     pendingLines.some((line, index) =>
       index === 0 && (line.includes("ctx") || line.includes("019d8b75")),
     ),
-  pending_narrow_keeps_ask_first: (narrowPendingLines[0] ?? "").includes("需要确认 2 项"),
+  pending_narrow_keeps_ask_first: (narrowPendingLines[0] ?? "").includes("Pending 2"),
   pending_default_prompt_is_short:
-    pendingWithoutSummaryFooter.includes("需要确认 1 项 · Enter 打开选择")
-    && !pendingWithoutSummaryFooter.includes("直接回复继续"),
+    pendingWithoutSummaryFooter.includes("Pending 1 · Enter open picker")
+    && !pendingWithoutSummaryFooter.includes("reply directly"),
   pending_plan_mode_keeps_badge:
-    pendingPlanModeFooter.includes("计划模式")
-    && pendingPlanModeFooter.includes("需要确认 3 项"),
+    pendingPlanModeFooter.includes("plan mode")
+    && pendingPlanModeFooter.includes("Pending 3"),
   pending_plan_mode_keeps_status_above_ask:
-    (pendingPlanModeLines[0] ?? "").includes("计划模式")
-    && (pendingPlanModeLines[1] ?? "").includes("需要确认 3 项"),
+    (pendingPlanModeLines[0] ?? "").includes("plan mode")
+    && (pendingPlanModeLines[1] ?? "").includes("Pending 3"),
   pending_preempts_running_activity:
-    !runningWithPendingAskFooter.includes("正在构建上下文")
-    && runningWithPendingAskFooter.includes("需要确认 2 项"),
+    !runningWithPendingAskFooter.includes("Building context")
+    && runningWithPendingAskFooter.includes("Pending 2"),
   pending_running_state_keeps_status_above_ask:
     (runningWithPendingAskLines[0] ?? "").includes("ctx")
-    && (runningWithPendingAskLines[1] ?? "").includes("需要确认 2 项"),
+    && (runningWithPendingAskLines[1] ?? "").includes("Pending 2"),
   pending_plan_mode_narrow_keeps_badge:
-    narrowPendingPlanModeFooter.includes("计划模式")
-    && narrowPendingPlanModeFooter.includes("需要确认 3 项"),
+    narrowPendingPlanModeFooter.includes("plan mode")
+    && narrowPendingPlanModeFooter.includes("Pending 3"),
   pending_plan_mode_narrow_keeps_status_above_ask:
-    (narrowPendingPlanModeLines[0] ?? "").includes("计划模式")
-    && (narrowPendingPlanModeLines[1] ?? "").includes("需要确认 3 项"),
+    (narrowPendingPlanModeLines[0] ?? "").includes("plan mode")
+    && (narrowPendingPlanModeLines[1] ?? "").includes("Pending 3"),
   pending_uses_action_hint_not_question:
-    pendingFooter.includes("Enter 打开选择")
-    && pendingFooter.includes("1-2 直接回复")
+    pendingFooter.includes("Enter open picker")
+    && pendingFooter.includes("1-2 direct")
     && !pendingFooter.includes("Allow npm run check"),
   pending_narrow_sanitizes_raw_summary:
-    narrowPendingFooter.includes("需要确认 2 项 · Enter 打开选择")
+    narrowPendingFooter.includes("Pending 2 · Enter open picker")
     && !narrowPendingFooter.includes("question=")
     && !narrowPendingFooter.includes("options_preview"),
   pending_wide_keeps_secondary_status:
@@ -339,7 +339,7 @@ const payload = {
     !narrowPendingFooter.includes("kimi/") && !narrowPendingFooter.includes("019d8b75"),
   pending_omits_shift_enter_hint: !pendingFooter.includes("shift + enter for newline"),
   pending_warning_kept:
-    pendingFooter.includes("接近上限") || pendingFooter.includes("已到上限"),
+    pendingFooter.includes("context 91%") || pendingFooter.includes("limit reached"),
   pending_lines_within_width: pendingLines.every((line) => measureDisplayWidth(line) <= 64),
   pending_narrow_lines_within_width:
     narrowPendingLines.every((line) => measureDisplayWidth(line) <= 48),
@@ -347,31 +347,29 @@ const payload = {
     pendingPlanModeLines.every((line) => measureDisplayWidth(line) <= 96),
   pending_plan_mode_narrow_lines_within_width:
     narrowPendingPlanModeLines.every((line) => measureDisplayWidth(line) <= 48),
-  running_has_activity: runningFooter.includes("正在构建上下文"),
+  running_has_activity: runningFooter.includes("Building context"),
   running_queued_input_visible:
-    runningQueuedFooter.includes("已排队 2 条")
-    && runningQueuedFooter.includes("继续整理 prompt queue"),
+    runningQueuedFooter.includes("Queued 2")
+    && runningQueuedFooter.includes("continue polishing"),
   running_queued_input_is_secondary:
-    runningQueuedLines.some((line, index) =>
-      index > 0 && line.includes("已排队 2 条") && /\u001B\[90m/.test(line),
-    ),
+    runningQueuedLines.some((line, index) => index > 0 && line.includes("Queued 2")),
   running_queued_preview_truncated:
     !runningQueuedFooter.includes("raw diagnostics"),
   running_fallback_is_localized:
-    stripAnsi(runningFallbackFooter).includes("~ 正在处理")
+    stripAnsi(runningFallbackFooter).includes("~ working")
     && !stripAnsi(runningFallbackFooter).includes("~ running"),
   running_plan_mode_fallback_is_planning:
-    stripAnsi(runningPlanModeFallbackFooter).includes("~ 正在规划")
-    && !stripAnsi(runningPlanModeFallbackFooter).includes("~ 正在处理"),
+    stripAnsi(runningPlanModeFallbackFooter).includes("~ planning")
+    && !stripAnsi(runningPlanModeFallbackFooter).includes("~ working"),
   running_activity_has_visual_weight: /\u001B\[38;2;202;124;94m~/.test(runningFooter),
   running_narrow_keeps_activity_first:
-    (narrowRunningLines[0] ?? "").includes("正在构建上下文"),
+    (narrowRunningLines[0] ?? "").includes("Building context"),
   running_narrow_hides_secondary_status:
     !narrowRunningFooter.includes("kimi/") && !narrowRunningFooter.includes("019d8b75"),
   running_plan_mode_narrow_keeps_badge:
-    narrowRunningPlanModeFooter.includes("计划模式"),
+    narrowRunningPlanModeFooter.includes("plan mode"),
   running_plan_mode_narrow_keeps_activity_first:
-    (narrowRunningPlanModeLines[0] ?? "").includes("正在构建上下文"),
+    narrowRunningPlanModeLines.some((line) => line.includes("Building context")),
   running_omits_shift_enter_hint: !runningFooter.includes("shift + enter for newline"),
   running_status_secondary: runningLines.some((line, index) =>
     index > 0 && (line.includes("ctx") || line.includes("019d8b75")),
@@ -383,23 +381,23 @@ const payload = {
     narrowRunningLines.every((line) => measureDisplayWidth(line) <= 48),
   running_plan_mode_narrow_lines_within_width:
     narrowRunningPlanModeLines.every((line) => measureDisplayWidth(line) <= 48),
-  shortcut_overlay_has_commands: collapseSpaces(shortcutOverlayFooter).includes("/ 命令"),
+  shortcut_overlay_has_commands: collapseSpaces(shortcutOverlayFooter).includes("/ commands"),
   shortcut_overlay_has_shift_enter:
-    collapseSpaces(shortcutOverlayFooter).includes("Shift+Enter 换行"),
-  shortcut_overlay_has_history: collapseSpaces(shortcutOverlayFooter).includes("Ctrl+R 历史"),
-  shortcut_overlay_has_hide_hint: collapseSpaces(shortcutOverlayFooter).includes("? 隐藏"),
+    collapseSpaces(shortcutOverlayFooter).includes("Shift+Enter newline"),
+  shortcut_overlay_has_history: collapseSpaces(shortcutOverlayFooter).includes("Ctrl+R history"),
+  shortcut_overlay_has_hide_hint: collapseSpaces(shortcutOverlayFooter).includes("? hide"),
   shortcut_overlay_aligns_key_column:
     stripAnsi(narrowShortcutOverlayLines[0] ?? "").startsWith("/ ")
     && stripAnsi(narrowShortcutOverlayLines[1] ?? "").startsWith("Shift+Enter ")
     && measureDisplayWidth(
       stripAnsi(narrowShortcutOverlayLines[0] ?? "").slice(
         0,
-        stripAnsi(narrowShortcutOverlayLines[0] ?? "").indexOf("命令"),
+        stripAnsi(narrowShortcutOverlayLines[0] ?? "").indexOf("commands"),
       ),
     ) === measureDisplayWidth(
       stripAnsi(narrowShortcutOverlayLines[1] ?? "").slice(
         0,
-        stripAnsi(narrowShortcutOverlayLines[1] ?? "").indexOf("换行"),
+        stripAnsi(narrowShortcutOverlayLines[1] ?? "").indexOf("newline"),
       ),
     ),
   shortcut_overlay_has_visual_weight:
@@ -409,35 +407,35 @@ const payload = {
       /\u001B\[38;2;202;124;94m/.test(line) && /\u001B\[90m/.test(line)
     ),
   shortcut_overlay_style_keeps_plain_text:
-    collapseSpaces(shortcutOverlayFooter).includes("Shift+Enter 换行")
-    && collapseSpaces(shortcutOverlayFooter).includes("Ctrl+V 粘贴图片"),
+    collapseSpaces(shortcutOverlayFooter).includes("Shift+Enter newline")
+    && collapseSpaces(shortcutOverlayFooter).includes("Ctrl+V paste image"),
   shortcut_overlay_medium_uses_two_columns:
     shortcutOverlayLines.length === 5
     && shortcutOverlayLines.some((line) =>
-      collapseSpaces(line).includes("/ 命令")
-      && collapseSpaces(line).includes("Shift+Enter 换行"),
+      collapseSpaces(line).includes("/ commands")
+      && collapseSpaces(line).includes("Shift+Enter newline"),
     ),
   shortcut_overlay_wide_uses_three_columns:
     wideShortcutOverlayLines.length === 5
-    && collapseSpaces(wideShortcutOverlayLines[0] ?? "").includes("/ 命令")
-    && collapseSpaces(wideShortcutOverlayLines[0] ?? "").includes("Shift+Enter 换行")
-    && collapseSpaces(wideShortcutOverlayLines[0] ?? "").includes("Enter 发送")
-    && collapseSpaces(wideShortcutOverlayFooter).includes("/status 状态")
-    && collapseSpaces(wideShortcutOverlayFooter).includes("Left/Right 移动光标"),
+    && collapseSpaces(wideShortcutOverlayLines[0] ?? "").includes("/ commands")
+    && collapseSpaces(wideShortcutOverlayLines[0] ?? "").includes("Shift+Enter newline")
+    && collapseSpaces(wideShortcutOverlayLines[0] ?? "").includes("Enter send")
+    && collapseSpaces(wideShortcutOverlayFooter).includes("/status status")
+    && collapseSpaces(wideShortcutOverlayFooter).includes("Left/Right move cursor"),
   shortcut_overlay_prioritizes_navigation:
-    collapseSpaces(shortcutOverlayLines[1] ?? "").includes("/model 模型")
-    && collapseSpaces(shortcutOverlayLines[1] ?? "").includes("Esc 返回/清空")
-    && collapseSpaces(shortcutOverlayLines[2] ?? "").includes("/plan 计划")
-    && collapseSpaces(shortcutOverlayLines[2] ?? "").includes("Tab 应用建议"),
+    collapseSpaces(shortcutOverlayLines[1] ?? "").includes("/model model")
+    && collapseSpaces(shortcutOverlayLines[1] ?? "").includes("Esc back/clear")
+    && collapseSpaces(shortcutOverlayLines[2] ?? "").includes("/plan plan")
+    && collapseSpaces(shortcutOverlayLines[2] ?? "").includes("Tab apply suggestion"),
   shortcut_overlay_narrow_uses_single_column:
     narrowShortcutOverlayLines.length === 7
-    && collapseSpaces(narrowShortcutOverlayLines[0] ?? "") === "/ 命令"
-    && collapseSpaces(narrowShortcutOverlayLines[1] ?? "") === "Shift+Enter 换行"
-    && collapseSpaces(narrowShortcutOverlayLines[2] ?? "") === "Esc 返回"
-    && collapseSpaces(narrowShortcutOverlayLines[3] ?? "") === "Tab 应用"
-    && collapseSpaces(narrowShortcutOverlayLines[4] ?? "") === "Ctrl+R 历史"
-    && collapseSpaces(narrowShortcutOverlayLines[5] ?? "") === "Ctrl+C 退出"
-    && !collapseSpaces(narrowShortcutOverlayFooter).includes("Ctrl+V 粘贴图片"),
+    && collapseSpaces(narrowShortcutOverlayLines[0] ?? "") === "/ commands"
+    && collapseSpaces(narrowShortcutOverlayLines[1] ?? "") === "Shift+Enter newline"
+    && collapseSpaces(narrowShortcutOverlayLines[2] ?? "") === "Esc back"
+    && collapseSpaces(narrowShortcutOverlayLines[3] ?? "") === "Tab apply"
+    && collapseSpaces(narrowShortcutOverlayLines[4] ?? "") === "Ctrl+R history"
+    && collapseSpaces(narrowShortcutOverlayLines[5] ?? "") === "Ctrl+C exit"
+    && !collapseSpaces(narrowShortcutOverlayFooter).includes("Ctrl+V paste image"),
   shortcut_overlay_lines_within_width:
     shortcutOverlayLines.every((line) => measureDisplayWidth(line) <= 72),
   shortcut_overlay_wide_lines_within_width:

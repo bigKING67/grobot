@@ -32,7 +32,7 @@ export function createUserCommandActions(input: {
     const normalized = normalizeAndValidateCommandName(nameRaw);
     if (!normalized.ok) {
       runtimeInput.writeStdout(buildCommandsSurface({
-        title: "命令名不可用",
+        title: "Command name unavailable",
         details: [normalized.error],
       }));
       return undefined;
@@ -44,7 +44,7 @@ export function createUserCommandActions(input: {
     const normalized = normalizeAndValidateCommandName(nameRaw);
     if (!normalized.ok) {
       runtimeInput.writeStdout(buildCommandsSurface({
-        title: "命令名不可用",
+        title: "Command name unavailable",
         details: [normalized.error],
       }));
       return;
@@ -52,7 +52,7 @@ export function createUserCommandActions(input: {
     const name = normalized.name;
     if (store.readCommandByName(name)) {
       runtimeInput.writeStdout(buildCommandsSurface({
-        title: "自定义命令已存在",
+        title: "User command already exists",
         details: [`/${name}`],
       }));
       return;
@@ -71,11 +71,11 @@ export function createUserCommandActions(input: {
     });
     runtimeInput.writeStdout(
       buildCommandsSurface({
-        title: "已创建自定义命令",
+        title: "User command created",
         details: [
           `/${name}`,
-          `保存位置 ${store.commandFilePath(name)}`,
-          `接下来可用 /commands set ${name} <prompt> 更新模板`,
+          `saved at ${store.commandFilePath(name)}`,
+          `next: /commands set ${name} <prompt> to update the template`,
         ],
       }),
     );
@@ -89,7 +89,7 @@ export function createUserCommandActions(input: {
     const record = store.readCommandByName(name);
     if (!record) {
       runtimeInput.writeStdout(buildCommandsSurface({
-        title: "未找到自定义命令",
+        title: "User command not found",
         details: [`/${name}`],
       }));
       return;
@@ -97,7 +97,7 @@ export function createUserCommandActions(input: {
     const prompt = promptRaw.trim();
     if (!prompt) {
       runtimeInput.writeStdout(buildCommandsSurface({
-        title: "提示词模板不能为空",
+        title: "Prompt template cannot be empty",
         details: [`/commands set ${name} <prompt>`],
       }));
       return;
@@ -108,8 +108,8 @@ export function createUserCommandActions(input: {
       updated_at: nowIsoUtc(),
     });
     runtimeInput.writeStdout(buildCommandsSurface({
-      title: "已更新自定义命令",
-      details: [`/${name} 的提示词模板已更新。`],
+      title: "User command updated",
+      details: [`/${name} prompt template updated.`],
     }));
   };
 
@@ -121,7 +121,7 @@ export function createUserCommandActions(input: {
     const record = store.readCommandByName(name);
     if (!record) {
       runtimeInput.writeStdout(buildCommandsSurface({
-        title: "未找到自定义命令",
+        title: "User command not found",
         details: [`/${name}`],
       }));
       return;
@@ -132,7 +132,7 @@ export function createUserCommandActions(input: {
       updated_at: nowIsoUtc(),
     });
     runtimeInput.writeStdout(buildCommandsSurface({
-      title: `已${enabled ? "启用" : "停用"}自定义命令`,
+      title: `User command ${enabled ? "enabled" : "disabled"}`,
       details: [`/${name}`],
     }));
   };
@@ -145,7 +145,7 @@ export function createUserCommandActions(input: {
     const record = store.readCommandByName(name);
     if (!record) {
       runtimeInput.writeStdout(buildCommandsSurface({
-        title: "未找到自定义命令",
+        title: "User command not found",
         details: [`/${name}`],
       }));
       return;
@@ -160,13 +160,13 @@ export function createUserCommandActions(input: {
     }
     if (!store.deleteCommandFile(name)) {
       runtimeInput.writeStdout(buildCommandsSurface({
-        title: "未找到自定义命令",
+        title: "User command not found",
         details: [`/${name}`],
       }));
       return;
     }
     runtimeInput.writeStdout(buildCommandsSurface({
-      title: "已删除自定义命令",
+      title: "User command deleted",
       details: [`/${name}`],
     }));
   };

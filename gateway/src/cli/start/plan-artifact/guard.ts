@@ -105,48 +105,48 @@ export function evaluatePlanQualityGuard(args: {
     return {
       level: "critical",
       regressionStreak,
-      reason: "存在阻断项，需先解除阻断再审批/执行",
+      reason: "Blocking items exist; resolve them before approval/execution",
     };
   }
   if (args.quality.score < policy.thresholds.critical_score) {
     return {
       level: "critical",
       regressionStreak,
-      reason: `质量分仅 ${String(args.quality.score)}，低于安全阈值 ${String(policy.thresholds.critical_score)}`,
+      reason: `Quality score ${String(args.quality.score)} is below safety threshold ${String(policy.thresholds.critical_score)}`,
     };
   }
   if (regressionStreak >= policy.thresholds.critical_regression_streak) {
     return {
       level: "critical",
       regressionStreak,
-      reason: `质量已连续 ${String(regressionStreak)} 轮明显下降（阈值 ${String(policy.thresholds.critical_regression_streak)}）`,
+      reason: `Quality dropped for ${String(regressionStreak)} consecutive rounds (threshold ${String(policy.thresholds.critical_regression_streak)})`,
     };
   }
   if (severeDrop) {
     return {
       level: "critical",
       regressionStreak,
-      reason: `较上轮显著下降 ${String(Math.abs(delta ?? 0))} 分（阈值 ${String(policy.thresholds.severe_drop_delta)}）`,
+      reason: `Quality dropped ${String(Math.abs(delta ?? 0))} points from previous round (threshold ${String(policy.thresholds.severe_drop_delta)})`,
     };
   }
   if (args.quality.score < policy.thresholds.watch_score) {
     return {
       level: "watch",
       regressionStreak,
-      reason: `质量分 ${String(args.quality.score)} 低于目标阈值 ${String(policy.thresholds.watch_score)}`,
+      reason: `Quality score ${String(args.quality.score)} is below target threshold ${String(policy.thresholds.watch_score)}`,
     };
   }
   if (policy.thresholds.watch_on_trend_down && args.trend.trend === "down") {
     return {
       level: "watch",
       regressionStreak,
-      reason: "较上轮出现质量下降，建议先补关键细节",
+      reason: "Quality dropped from previous round; add key details first",
     };
   }
   return {
     level: "healthy",
     regressionStreak,
-    reason: "质量稳定，可继续推进审批与执行",
+    reason: "Quality is stable; approval and execution may continue",
   };
 }
 

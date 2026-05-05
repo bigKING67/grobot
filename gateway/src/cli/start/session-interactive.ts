@@ -146,11 +146,11 @@ function consumePendingAskBlockedNotice(input: {
   pendingAskBlockNoticeState.lastShownAtMs = now;
   pendingAskBlockNoticeState.suppressedCount = 0;
   const compactSuffix = suppressed > 0
-    ? ` 已折叠 ${String(suppressed)} 条重复提示。`
+    ? ` ${String(suppressed)} duplicate notices collapsed.`
     : "";
   const summary = input.promptSummary?.trim();
-  const summaryText = summary ? ` · ${summary}` : " · Enter 打开选择";
-  return `当前有待确认问题${summaryText}。请先回复后再执行其他命令。${compactSuffix}\n\n`;
+  const summaryText = summary ? ` · ${summary}` : " · Enter to choose";
+  return `Pending question${summaryText}. Reply first before running other commands.${compactSuffix}\n\n`;
 }
 
 function parseSlashCommandName(userInput: string): string | undefined {
@@ -214,12 +214,12 @@ export async function dispatchSessionInteractiveInput(
   if (isRemovedAskCommand(userInput)) {
     handlers.writeStdout(
       renderInfoPanel({
-        title: "未知命令",
+        title: "Unknown command",
         sections: [{
           rows: [{
-            title: "/ask 已停用。",
+            title: "/ask is disabled.",
             detailLines: [
-              "ask-user 现在直接在对话里回复，不再提供状态命令。",
+              "ask-user now expects direct replies in the conversation; no status command is provided.",
             ],
           }],
         }],

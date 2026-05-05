@@ -170,10 +170,10 @@ export function createRunStartPlanMode(
   ): void => {
     writeStdout(
       [
-        "计划模式只读；直接输入需求即可继续完善计划。",
-        "可执行计划需要明确范围、里程碑、验证命令/预期结果和回滚步骤。",
-        "使用 /plan open 查看计划文件。",
-        "确认后回复“开始实现计划”即可执行。",
+        "Plan mode is read-only; type more details to keep refining the plan.",
+        "An executable plan needs clear scope, milestones, validation commands/expected results, and rollback steps.",
+        "Use /plan open to view the plan file.",
+        "After confirmation, reply Implement the plan. to execute.",
         "",
       ].join("\n"),
     );
@@ -298,7 +298,7 @@ export function createRunStartPlanMode(
           input.writeStderr(
             buildPlanApplyStateSurface({
               kind: "internal_failure",
-              detail: "进入计划模式后没有生成活动计划。",
+              detail: "No active plan was created after entering plan mode.",
               diagnostic: "PLAN_ENTER_ACTIVE_PLAN_MISSING",
             }),
           );
@@ -325,7 +325,7 @@ export function createRunStartPlanMode(
             kind: "internal_failure",
             workDir: input.workDir,
             planPath: meta.active_plan_path,
-            detail: "无法写入计划进度备注。",
+            detail: "Failed to write plan progress notes.",
             diagnostic: "PLAN_PROGRESS_APPEND_FAILED",
           }),
         );
@@ -356,7 +356,7 @@ export function createRunStartPlanMode(
           source: "cli",
           detail: "message_mode_execution_skipped",
         });
-        writeStdout("计划备注已保存。\n\n");
+        writeStdout("Plan notes saved.\n\n");
         return 0;
       }
       const historyLengthBeforeExecution =
@@ -370,9 +370,9 @@ export function createRunStartPlanMode(
       });
       if (options?.showWorkingNotice) {
         writeStdout(renderPlanSurface({
-          title: "正在规划...",
+          title: "Planning...",
           rows: [{
-            title: "模型正在生成计划草稿。",
+            title: "The model is drafting the plan.",
           }],
         }));
       }
@@ -430,8 +430,8 @@ export function createRunStartPlanMode(
             detail: `${detailParts.join(" ")} degraded=true`,
           });
           const hint =
-            failureDecision.hint ?? "请检查 semantic index 和检索配置。";
-          writeStdout(`计划上下文已降级 · 草稿已保留。${hint}\n\n`);
+            failureDecision.hint ?? "Check the semantic index and retrieval settings.";
+          writeStdout(`Plan context degraded · draft kept. ${hint}\n\n`);
           return 0;
         }
         const detailParts = [
@@ -507,7 +507,7 @@ export function createRunStartPlanMode(
             kind: "internal_failure",
             workDir: input.workDir,
             planPath: meta.active_plan_path,
-            detail: "计划更新后活动计划消失，无法继续评审。",
+            detail: "The active plan disappeared after the update, so review cannot continue.",
             diagnostic: "PLAN_REVIEW_ACTIVE_PLAN_MISSING",
           }),
         );
@@ -521,7 +521,7 @@ export function createRunStartPlanMode(
             kind: "internal_failure",
             workDir: input.workDir,
             planPath: meta.active_plan_path,
-            detail: "未找到计划记录，无法完成评审。",
+            detail: "No plan record was found, so review cannot finish.",
             diagnostic: "PLAN_REVIEW_ENTRY_MISSING",
           }),
         );
@@ -567,7 +567,7 @@ export function createRunStartPlanMode(
         if (approvalDecision.action === "keep_planning") {
           const feedback = approvalDecision.feedback?.trim();
           if (feedback) {
-            writeStdout("已添加计划反馈，继续保持计划模式...\n\n");
+            writeStdout("Plan feedback added; staying in plan mode...\n\n");
             return runPlanTurn(feedback, options);
           }
           if (approvalDecision.silent !== true) {

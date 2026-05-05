@@ -201,13 +201,13 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
     const searchActive = menuSearchMode || menuSearchQuery.trim().length > 0;
     const baseSubtitle = input.subtitle?.trim();
     const searchSubtitle = searchActive
-      ? `过滤 ${String(visibleItemIndices.length)}/${String(input.items.length)}${menuSearchQuery.trim().length > 0 ? `: "${menuSearchQuery}"` : ""}`
+      ? `Filter ${String(visibleItemIndices.length)}/${String(input.items.length)}${menuSearchQuery.trim().length > 0 ? `: "${menuSearchQuery}"` : ""}`
       : undefined;
     const subtitle = [baseSubtitle, searchSubtitle]
       .filter((value): value is string => typeof value === "string" && value.length > 0)
       .join(" · ");
     const searchHint = searchActive
-      ? "Ctrl+f 或 / 切换过滤 · Ctrl+u 清空 · Esc 退出过滤"
+      ? "Ctrl+f or / toggle filter · Ctrl+u clear · Esc exit filter"
       : undefined;
     const hint = [input.hint?.trim(), searchHint]
       .filter((value): value is string => typeof value === "string" && value.length > 0)

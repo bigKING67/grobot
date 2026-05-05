@@ -79,24 +79,24 @@ function formatCompactPlanFailureReason(input: {
 }): string {
   const providerName = input.failureDecision.providerName?.trim();
   const errorClass = input.failureDecision.errorClass?.trim();
-  const errorLabel = errorClass ? `（${formatCompactErrorClass(errorClass)}）` : "";
+  const errorLabel = errorClass ? ` (${formatCompactErrorClass(errorClass)})` : "";
   if (input.failureDecision.reason === "provider_runtime_failure" && providerName) {
-    return `通道 ${providerName} 不可用${errorLabel}。`;
+    return `Provider ${providerName} is unavailable${errorLabel}.`;
   }
   if (providerName) {
-    return `运行时在 ${providerName} 失败${errorLabel}。`;
+    return `Runtime failed on ${providerName}${errorLabel}.`;
   }
-  return `运行时退出码 ${String(input.exitCode)}。`;
+  return `Runtime exit code ${String(input.exitCode)}.`;
 }
 
 function formatCompactErrorClass(errorClass: string): string {
   switch (errorClass) {
     case "upstream_connect_failed":
-      return "上游连接失败";
+      return "upstream connection failed";
     case "timeout":
-      return "请求超时";
+      return "request timeout";
     case "rate_limited":
-      return "请求限流";
+      return "rate limited";
     default:
       return errorClass.replace(/_/g, " ");
   }
@@ -105,11 +105,11 @@ function formatCompactErrorClass(errorClass: string): string {
 function formatCompactDiagnosticHint(context: "failure" | "review" | "quality_guard"): string {
   switch (context) {
     case "failure":
-      return "详细日志可查看通道、退出码和策略字段。";
+      return "Verbose logs include provider, exit code, and policy fields.";
     case "review":
-      return "详细日志可查看完整评审发现。";
+      return "Verbose logs include full review findings.";
     case "quality_guard":
-      return "详细日志可查看质量门禁模式、级别和来源。";
+      return "Verbose logs include quality gate mode, level, and source.";
   }
 }
 
@@ -121,23 +121,23 @@ function buildCompactPlanFailureSurface(input: {
   failureDecision: PlanFailureDecision;
 }): string {
   const isApplying = input.phase === "applying";
-  const title = isApplying ? "计划实现失败" : "计划更新失败";
+  const title = isApplying ? "Plan implementation failed" : "Plan update failed";
   const savedToHint = buildPlanSavedToHint({
     workDir: input.workDir,
     planPath: input.planPath,
   });
   const stateLine = isApplying
-    ? "计划仍可用。修复问题后，再回复“开始实现计划”。"
-    : '计划草稿已保留，计划模式仍处于开启状态。直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。';
+    ? "The plan is still available. Fix the issue, then reply Implement the plan."
+    : 'Plan draft kept and plan mode remains active. Type more details to refine it, or use "/plan open" to edit the draft.';
   const nextLine = input.failureDecision.reason === "provider_runtime_failure"
-    ? "接下来 修复模型通道配置，或切换到可用模型后重试。"
-    : "接下来 先定位运行时失败，再重试计划步骤。";
+    ? "Next: fix model provider config or switch to an available model, then retry."
+    : "Next: diagnose the runtime failure, then retry the plan step.";
   const detailLines: string[] = [];
   if (savedToHint) {
     detailLines.push(savedToHint);
   }
   detailLines.push(
-    `原因 ${formatCompactPlanFailureReason({
+    `reason ${formatCompactPlanFailureReason({
       exitCode: input.exitCode,
       failureDecision: input.failureDecision,
     })}`,
@@ -149,7 +149,7 @@ function buildCompactPlanFailureSurface(input: {
     title,
     rows: [
       {
-        title: "运行时未完成",
+        title: "Runtime did not finish",
         detailLines,
       },
     ],
@@ -163,27 +163,27 @@ function formatCompactPlanReviewFinding(finding: {
   const section = finding.section ? `${finding.section}: ` : "";
   switch (finding.code) {
     case "placeholder_detected":
-      return `${section}将占位符替换为具体细节。`;
+      return `${section}Replace placeholders with concrete details.`;
     case "validation_missing_command":
-      return `${section}增加真实命令或明确的手工验证步骤。`;
+      return `${section}Add real commands or explicit manual validation steps.`;
     case "validation_missing_expected_result":
-      return `${section}写明预期验证结果。`;
+      return `${section}State the expected validation result.`;
     case "risk_missing_item":
-      return `${section}写出具体失败模式。`;
+      return `${section}Add concrete failure modes.`;
     case "risk_too_vague":
-      return `${section}把风险写具体，不要只写泛化描述。`;
+      return `${section}Make risks specific; avoid generic descriptions.`;
     case "rollback_missing_item":
-      return `${section}增加可执行的回滚或恢复步骤。`;
+      return `${section}Add executable rollback or recovery steps.`;
     case "rollback_too_vague":
-      return `${section}把回滚动作写成可执行步骤。`;
+      return `${section}Turn rollback actions into executable steps.`;
     case "goal_too_vague":
-      return `${section}把目标写到可验证。`;
+      return `${section}Make the goal verifiable.`;
     case "scope_in_missing_items":
-      return `${section}列出明确纳入范围的文件或模块。`;
+      return `${section}List files or modules explicitly in scope.`;
     case "scope_out_missing_items":
-      return `${section}列出明确不做的边界。`;
+      return `${section}List explicit out-of-scope boundaries.`;
     default:
-      return `${section}${finding.code.replace(/_/g, " ")}。`;
+      return `${section}${finding.code.replace(/_/g, " ")}.`;
   }
 }
 
@@ -216,25 +216,25 @@ function buildCompactPlanReviewFailureSurface(input: {
   blocked: boolean;
   findings: readonly { code: string; section?: string; message: string }[];
 }): string {
-  const headline = input.blocked ? "计划确认被阻止" : "计划还没准备好";
+  const headline = input.blocked ? "Plan confirmation blocked" : "Plan is not ready";
   const orderedFindings = [...input.findings].sort((left, right) =>
     compactPlanReviewFindingPriority(left.code) - compactPlanReviewFindingPriority(right.code),
   );
   const fixes = orderedFindings
     .slice(0, 4)
-    .map((finding) => `修复 ${formatCompactPlanReviewFinding(finding)}`);
+    .map((finding) => `Fix ${formatCompactPlanReviewFinding(finding)}`);
   const omitted = input.findings.length > fixes.length
-    ? [`还有 ${String(input.findings.length - fixes.length)} 条发现已在精简模式隐藏。`]
+    ? [`${String(input.findings.length - fixes.length)} more findings hidden in compact mode.`]
     : [];
   return renderPlanSurface({
     title: headline,
     rows: [
       {
-        title: "执行前计划需要更具体的范围、验证和回滚细节。",
+        title: "Plan needs more concrete scope, validation, and rollback details before execution.",
         detailLines: [
           ...fixes,
           ...omitted,
-          "接下来 继续完善计划，然后再回复“开始实现计划”。",
+          "Next: refine the plan, then reply Implement the plan.",
           formatCompactDiagnosticHint("review"),
         ],
       },
@@ -298,12 +298,12 @@ export function writePlanQualityGuardBlockedSurface(input: {
   if (input.compactFailureSurface) {
     input.writeStderr(
       renderPlanSurface({
-        title: "计划质量门禁阻止执行",
+        title: "Plan quality gate blocked execution",
         rows: [
           {
-            title: `原因 ${input.guardReason}`,
+            title: `reason ${input.guardReason}`,
             detailLines: [
-              "接下来 继续完善计划，直到质量门禁不再阻断。",
+              "Next: refine the plan until the quality gate no longer blocks.",
               formatCompactDiagnosticHint("quality_guard"),
             ],
           },

@@ -143,22 +143,22 @@ function run(): void {
     ),
     check(
       "rewind_multiple_query_notice_contains_tip",
-      (rewindMultipleMatches.notice ?? "").includes("可确定回退目标"),
+      (rewindMultipleMatches.notice ?? "").includes("Hint: use --rewind <checkpoint-id> to choose a rewind target."),
     ),
     check(
       "rewind_multiple_query_notice_is_human_surface",
-      startupRewindWarningPlain.includes("找到多个启动检查点")
-      && startupRewindWarningPlain.includes("• 查询 legacy")
-      && startupRewindWarningPlain.includes("  ⎿  匹配 2 个检查点")
-      && !startupRewindWarningPlain.includes("查询:")
-      && !startupRewindWarningPlain.includes("匹配:"),
+      startupRewindWarningPlain.includes("Multiple startup checkpoints found")
+      && startupRewindWarningPlain.includes("• query legacy")
+      && startupRewindWarningPlain.includes("  ⎿  2 checkpoints matched")
+      && !startupRewindWarningPlain.includes("query:")
+      && !startupRewindWarningPlain.includes("checkpoints matched:"),
     ),
     check(
       "rewind_multiple_query_notice_uses_reference_detail_rows",
       startupRewindWarningPlain.includes("  ⎿  legacy-a")
-      && startupRewindWarningPlain.includes("  ⎿  2026-04-24T09:50:00.000Z · 1 个文件")
-      && startupRewindWarningPlain.includes("  ⎿  助手 assistant alpha")
-      && !startupRewindWarningPlain.includes(" | 文件="),
+      && startupRewindWarningPlain.includes("  ⎿  2026-04-24T09:50:00.000Z · 1 file")
+      && startupRewindWarningPlain.includes("  ⎿  assistant assistant alpha")
+      && !startupRewindWarningPlain.includes(" | files="),
     ),
     check("rewind_startup_notices_avoid_legacy_title_bullet", !startupRewindWarningPlain.includes("●")),
     check(
@@ -168,17 +168,17 @@ function run(): void {
     check("rewind_no_match_fallback_targets_latest", rewindNoMatchFallback.targetCheckpointId === "latest"),
     check(
       "rewind_no_match_fallback_has_notice",
-      (rewindNoMatchFallback.notice ?? "").includes("已回退到最近检查点"),
+      (rewindNoMatchFallback.notice ?? "").includes("Fell back to latest checkpoint"),
     ),
     check(
       "rewind_no_match_without_fallback_has_notice",
-      (rewindNoMatchNoFallback.notice ?? "").includes("没有可用检查点"),
+      (rewindNoMatchNoFallback.notice ?? "").includes("No checkpoints available."),
     ),
     check("rewind_strict_exact_targeted", rewindStrictExact.targetCheckpointId === "legacy-a"),
     check("rewind_strict_no_match_skips_target", typeof rewindStrictNoMatch.targetCheckpointId === "undefined"),
     check(
       "rewind_strict_no_match_has_skip_notice",
-      (rewindStrictNoMatch.notice ?? "").includes("已跳过回退"),
+      (rewindStrictNoMatch.notice ?? "").includes("Rewind skipped."),
     ),
     check(
       "rewind_startup_notices_avoid_legacy_marker",

@@ -99,44 +99,44 @@ async function main(): Promise<void> {
     startup_project_path_does_not_depend_on_grobot_home:
       !homeRelativeProjectPath.includes(".grobot"),
     mcp_strict_failure_is_human_surface:
-      mcpPlain.includes("MCP 指令加载失败") &&
-      !mcpPlain.includes("● MCP 指令加载失败") &&
-      mcpPlain.includes("• strict 模式要求所有启用的 MCP 都有指令包。") &&
-      mcpPlain.includes("⎿  原因 missing_required_MCP_rule_packs_for_servers:_grok-search") &&
+      mcpPlain.includes("MCP instruction load failed") &&
+      !mcpPlain.includes("● MCP instruction load failed") &&
+      mcpPlain.includes("• Strict mode requires instruction packs for all enabled MCP servers.") &&
+      mcpPlain.includes("⎿  reason missing_required_MCP_rule_packs_for_servers:_grok-search") &&
       mcpPlain.includes(
-        "⎿  请补齐 .grobot/rules/mcp/<server>.md，或关闭 mcp.instructions.strict。",
+        "⎿  Add .grobot/rules/mcp/<server>.md or disable mcp.instructions.strict.",
       ),
     mcp_strict_failure_has_fix_hint:
       mcpPlain.includes(".grobot/rules/mcp/<server>.md") &&
       mcpPlain.includes("mcp.instructions.strict"),
     scheduler_tick_error_is_human_surface:
-      schedulerTickPlain.includes("经验任务调度失败") &&
-      !schedulerTickPlain.includes("● 经验任务调度失败") &&
-      schedulerTickPlain.includes("• 后台任务本轮已跳过，不影响当前输入。") &&
-      schedulerTickPlain.includes("⎿  原因 Error:_failed_to_parse_schedule_window"),
+      schedulerTickPlain.includes("Experience scheduler tick failed") &&
+      !schedulerTickPlain.includes("● Experience scheduler tick failed") &&
+      schedulerTickPlain.includes("• Background task skipped this turn; current input is unaffected.") &&
+      schedulerTickPlain.includes("⎿  reason Error:_failed_to_parse_schedule_window"),
     scheduler_task_failed_is_human_surface:
-      schedulerTaskPlain.includes("经验任务执行失败") &&
-      !schedulerTaskPlain.includes("● 经验任务执行失败") &&
-      schedulerTaskPlain.includes("• 任务 weekly-summary") &&
-      schedulerTaskPlain.includes("⎿  本轮调度已记录失败，不影响继续输入。") &&
-      schedulerTaskPlain.includes("⎿  原因 Error:_model_route_unavailable"),
+      schedulerTaskPlain.includes("Experience task failed") &&
+      !schedulerTaskPlain.includes("● Experience task failed") &&
+      schedulerTaskPlain.includes("• task weekly-summary") &&
+      schedulerTaskPlain.includes("⎿  The failure was recorded; input can continue.") &&
+      schedulerTaskPlain.includes("⎿  reason Error:_model_route_unavailable"),
     memory_maintenance_failed_is_human_surface:
-      memoryMaintenancePlain.includes("记忆维护失败") &&
-      !memoryMaintenancePlain.includes("● 记忆维护失败") &&
-      memoryMaintenancePlain.includes("• 阶段 post_turn") &&
-      memoryMaintenancePlain.includes("⎿  本轮对话会继续，后台记忆清理将在后续回合重试。") &&
-      memoryMaintenancePlain.includes("⎿  原因 Error:_decay_index_locked"),
+      memoryMaintenancePlain.includes("Memory maintenance failed") &&
+      !memoryMaintenancePlain.includes("● Memory maintenance failed") &&
+      memoryMaintenancePlain.includes("• stage post_turn") &&
+      memoryMaintenancePlain.includes("⎿  This conversation will continue; background memory cleanup will retry later.") &&
+      memoryMaintenancePlain.includes("⎿  reason Error:_decay_index_locked"),
     runtime_interrupt_ignored_is_human_surface:
-      runtimeInterruptIgnoredPlain.includes("中断请求未生效") &&
-      !runtimeInterruptIgnoredPlain.includes("● 中断请求未生效") &&
-      runtimeInterruptIgnoredPlain.includes("• /interrupt 请求已跳过。") &&
-      runtimeInterruptIgnoredPlain.includes("⎿  当前回合已完成或已过安全中断点。"),
+      runtimeInterruptIgnoredPlain.includes("Interrupt request ignored") &&
+      !runtimeInterruptIgnoredPlain.includes("● Interrupt request ignored") &&
+      runtimeInterruptIgnoredPlain.includes("• /interrupt request was skipped.") &&
+      runtimeInterruptIgnoredPlain.includes("⎿  Current turn completed or passed the safe interrupt point."),
     rewind_capture_failed_is_human_surface:
-      stripAnsi(rewindCaptureFailedSurface).includes("检查点保存失败") &&
-      !stripAnsi(rewindCaptureFailedSurface).includes("● 检查点保存失败") &&
-      stripAnsi(rewindCaptureFailedSurface).includes("• 本轮对话已继续。") &&
-      stripAnsi(rewindCaptureFailedSurface).includes("⎿  这一步无法用于 /rewind 回退。") &&
-      stripAnsi(rewindCaptureFailedSurface).includes("⎿  原因 Error:_checkpoint_store_unavailable"),
+      stripAnsi(rewindCaptureFailedSurface).includes("Checkpoint capture failed") &&
+      !stripAnsi(rewindCaptureFailedSurface).includes("● Checkpoint capture failed") &&
+      stripAnsi(rewindCaptureFailedSurface).includes("• This turn continued.") &&
+      stripAnsi(rewindCaptureFailedSurface).includes("⎿  This step cannot be used for /rewind.") &&
+      stripAnsi(rewindCaptureFailedSurface).includes("⎿  reason Error:_checkpoint_store_unavailable"),
     surfaces_avoid_legacy_machine_markers:
       !combined.includes("[governance:mcp-instruction]") &&
       !combined.includes("[experience-scheduler]") &&

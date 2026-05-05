@@ -322,7 +322,7 @@ export function runStatusRuntimeDescribeUnavailable(context) {
     quality_failure_has_runtime_health_failed: failureReasons.includes("runtime_health_failed"),
     quality_warning_has_describe_fallback: warningReasons.includes("runtime_tools_describe_fallback"),
     text_has_quality_fail:
-      result.stdout.includes("运行时 需要检查")
+      result.stdout.includes("Runtime needs check")
       && !result.stdout.includes("runtime_tool_quality: status=fail"),
   };
 }
@@ -377,9 +377,9 @@ export function runStartRuntimeDescribeFallbackDiagnostic(context) {
     ...result,
     missing_runtime_path: missingRuntimePath,
     has_runtime_tools_fallback_surface:
-      result.stderr.includes("运行时工具描述不可用")
-      && result.stderr.includes("已使用内置工具 schema 启动。")
-      && result.stderr.includes("来源 start-default"),
+      result.stderr.includes("Runtime tool description unavailable")
+      && result.stderr.includes("Started with built-in tool schema.")
+      && result.stderr.includes("source start-default"),
     compact_avoids_tool_surface_event: !result.stderr.includes("[tool-surface] event=runtime_describe_fallback"),
     compact_avoids_enabled_tools_source_field: !result.stderr.includes("enabled_tools_source="),
     has_describe_reason: result.stderr.includes("runtime_tools_describe_unavailable:spawn_failed"),
@@ -443,7 +443,7 @@ export function runStatusRuntimeDescribeInvalidSchemaProfiles(context) {
     quality_failure_has_runtime_health_failed: failureReasons.includes("runtime_health_failed"),
     quality_warning_has_describe_fallback: warningReasons.includes("runtime_tools_describe_fallback"),
     text_has_quality_fail:
-      result.stdout.includes("运行时 需要检查")
+      result.stdout.includes("Runtime needs check")
       && !result.stdout.includes("runtime_tool_quality: status=fail"),
   };
 }
@@ -501,9 +501,9 @@ export function runStartRuntimeDescribeInvalidSchemaProfiles(context) {
     ...result,
     fake_runtime_path: fakeRuntimePath,
     has_runtime_tools_fallback_surface:
-      result.stderr.includes("运行时工具描述不可用")
-      && result.stderr.includes("已使用内置工具 schema 启动。")
-      && result.stderr.includes("来源 start-default"),
+      result.stderr.includes("Runtime tool description unavailable")
+      && result.stderr.includes("Started with built-in tool schema.")
+      && result.stderr.includes("source start-default"),
     compact_avoids_tool_surface_event: !result.stderr.includes("[tool-surface] event=runtime_describe_fallback"),
     compact_avoids_enabled_tools_source_field: !result.stderr.includes("enabled_tools_source="),
     has_invalid_schema_reason: result.stderr.includes(

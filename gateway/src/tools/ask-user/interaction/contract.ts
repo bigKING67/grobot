@@ -5,8 +5,8 @@ export const ASK_USER_INTERACTION_NAV_LIMIT = 120;
 export const ASK_USER_INTERACTION_TAB_LABEL_LIMIT = 18;
 export const ASK_USER_INTERACTION_VISIBLE_OPTION_LIMIT = 7;
 export const ASK_USER_OTHER_OPTION_ID = "__other__";
-export const ASK_USER_OTHER_OPTION_LABEL = "自定义";
-export const ASK_USER_OTHER_OPTION_PLACEHOLDER = "输入自定义回复";
+export const ASK_USER_OTHER_OPTION_LABEL = "Custom";
+export const ASK_USER_OTHER_OPTION_PLACEHOLDER = "Type custom reply";
 
 export type AskUserQuestionnaireMode = "question" | "review";
 export type AskUserQuestionnaireOptionKind = "option" | "other";

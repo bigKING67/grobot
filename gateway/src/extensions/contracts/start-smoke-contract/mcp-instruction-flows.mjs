@@ -143,8 +143,8 @@ export function runStartMcpInstructionEventsFlow(context) {
     missing_prompt_injected: missingResult.stderr.includes("event=prompt_injected"),
     strict_failure_seen: missingResult.stderr.includes("event=strict_failure"),
     strict_failure_human_surface:
-      strictFailureResult.stderr.includes("MCP 指令加载失败")
-      && strictFailureResult.stderr.includes("strict 模式要求所有启用的 MCP 都有指令包。")
+      strictFailureResult.stderr.includes("MCP instruction load failed")
+      && strictFailureResult.stderr.includes("Strict mode requires instruction packs for all enabled MCP servers.")
       && strictFailureResult.stderr.includes("mcp.instructions.strict"),
     strict_failure_avoids_machine_surface:
       !strictFailureResult.stderr.includes("[governance:mcp-instruction]")

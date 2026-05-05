@@ -32,37 +32,37 @@ export function buildPlanMeta(entry: PlanArtifactEntry, planPath: string): Sessi
 export function humanizePlanStatus(status: string | undefined): string {
   switch (status) {
     case "draft":
-      return "草稿";
+      return "draft";
     case "ready":
-      return "待确认";
+      return "ready";
     case "blocked":
-      return "已阻止";
+      return "blocked";
     case "review_failed":
-      return "需完善";
+      return "needs work";
     case "approved":
-      return "已确认";
+      return "approved";
     case "applying":
-      return "执行中";
+      return "applying";
     case "applied":
-      return "已执行";
+      return "applied";
     case "apply_failed":
-      return "执行失败";
+      return "apply failed";
     case "discarded":
-      return "已取消";
+      return "cancelled";
     default:
-      return status && status.trim().length > 0 ? status : "未知";
+      return status && status.trim().length > 0 ? status : "unknown";
   }
 }
 
 export function humanizePlanPhase(phase: SessionPlanPhase | string | undefined): string {
   switch (phase) {
     case "drafting":
-      return "草稿";
+      return "drafting";
     case "awaiting_decision":
-      return "待确认";
+      return "awaiting decision";
     case "applying":
-      return "执行中";
+      return "applying";
     default:
-      return phase && phase.trim().length > 0 ? phase : "未知";
+      return phase && phase.trim().length > 0 ? phase : "unknown";
   }
 }

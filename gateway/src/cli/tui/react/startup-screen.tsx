@@ -64,7 +64,7 @@ function buildIdentityColumn(viewModel: StartScreenViewModel): StartupColumn {
   const output: StartScreenLine[] = [];
   const centerHero = (viewModel.hero?.infoLines.length ?? -1) === 0;
   if (viewModel.hero) {
-    output.push(line("欢迎回来", "title", "center"));
+    output.push(line("Welcome back", "title", "center"));
     output.push(line(""));
     output.push(...renderHeroBlock(viewModel).map((heroLine) =>
       line(heroLine.trim(), centerHero ? "brand" : undefined, centerHero ? "center" : "left")
@@ -83,7 +83,7 @@ function buildIdentityColumn(viewModel: StartScreenViewModel): StartupColumn {
     output.push(line(""));
   }
   if (output.length === 0) {
-    output.push(line("欢迎使用 Grobot。"));
+    output.push(line("Welcome to Grobot."));
   }
   const width = clamp(
     output.reduce((max, item) => Math.max(max, measureDisplayWidth(item.text)), 0) + 2,

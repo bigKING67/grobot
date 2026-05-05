@@ -48,53 +48,53 @@ tracker.markTurnFinished("error");
 const errorSnapshot = tracker.readPromptActivitySnapshot();
 
 const payload = {
-  start_snapshot_visible: startSnapshot?.text === "正在读取任务并准备上下文",
+  start_snapshot_visible: startSnapshot?.text === "Reading task and preparing context",
   start_snapshot_is_runtime_activity:
     startFullSnapshot?.kind === "runtime" && startFullSnapshot.status === "running",
-  route_diagnostic_visible: routeSnapshot?.text === "正在选择模型路由",
+  route_diagnostic_visible: routeSnapshot?.text === "Choosing model route",
   route_snapshot_has_stage_detail:
     routeFullSnapshot?.kind === "route"
-    && routeFullSnapshot.detail === "路由 alpha · 复用会话通道 · 策略 会话优先 + 评分",
+    && routeFullSnapshot.detail === "route alpha · reuse session provider · strategy session first + score",
   route_snapshot_avoids_raw_key_value:
     !String(routeFullSnapshot?.detail ?? "").includes("selected=")
     && !String(routeFullSnapshot?.detail ?? "").includes("sticky=hit")
     && !String(routeFullSnapshot?.detail ?? "").includes("strategy="),
   context_snapshot_has_budget_detail:
     contextFullSnapshot?.kind === "context"
-    && contextFullSnapshot.detail === "阶段 正常 · 预算 2200/5120 · 利用率 0.430",
+    && contextFullSnapshot.detail === "stage normal · budget 2200/5120 · usage 0.430",
   context_snapshot_avoids_raw_key_value:
     !String(contextFullSnapshot?.detail ?? "").includes("stage=")
     && !String(contextFullSnapshot?.detail ?? "").includes("tokens=")
     && !String(contextFullSnapshot?.detail ?? "").includes("util="),
   ask_user_waiting_has_reply_detail:
     askUserFullSnapshot?.kind === "ask-user"
-    && askUserFullSnapshot.detail === "在输入框回复",
+    && askUserFullSnapshot.detail === "reply in input",
   plan_diagnostic_visible:
     planFullSnapshot?.kind === "plan"
-    && planFullSnapshot.text === "Grobot 正在规划实现方案"
-    && planFullSnapshot.detail === "阶段 规划中",
+    && planFullSnapshot.text === "Grobot is planning the implementation"
+    && planFullSnapshot.detail === "phase planning",
   plan_approval_waiting_has_detail:
     planApprovalSnapshot?.kind === "plan"
-    && planApprovalSnapshot.text === "等待你确认计划"
-    && planApprovalSnapshot.detail === "确认执行或继续规划",
+    && planApprovalSnapshot.text === "Waiting for plan confirmation"
+    && planApprovalSnapshot.detail === "confirm execution or keep planning",
   semantic_prefetch_status_is_human:
     semanticPrefetchSnapshot?.kind === "context"
-    && semanticPrefetchSnapshot.detail === "状态 已应用",
+    && semanticPrefetchSnapshot.detail === "status applied",
   pre_send_detail_is_human:
     preSendSnapshot?.kind === "context"
-    && preSendSnapshot.detail === "阶段 强制压缩 · 策略 质量优先 · 重试 2",
+    && preSendSnapshot.detail === "stage forced compact · strategy quality first · retry 2",
   governance_topic_is_human:
     governanceSnapshot?.kind === "governance"
-    && governanceSnapshot.detail === "MCP 指令",
+    && governanceSnapshot.detail === "MCP instructions",
   experience_event_detail_is_human:
     experienceSnapshot?.kind === "memory"
-    && experienceSnapshot.detail === "事件 跳过任务",
+    && experienceSnapshot.detail === "event task skipped",
   memory_event_detail_is_human:
     memorySnapshot?.kind === "memory"
-    && memorySnapshot.detail === "事件 跳过记忆上下文",
+    && memorySnapshot.detail === "event memory context skipped",
   interrupt_event_detail_is_human:
     interruptSnapshot?.kind === "runtime"
-    && interruptSnapshot.detail === "事件 已忽略",
+    && interruptSnapshot.detail === "event ignored",
   residual_activity_details_avoid_raw_codes:
     [
       semanticPrefetchSnapshot?.detail,
@@ -109,16 +109,16 @@ const payload = {
     ),
   plan_mode_start_uses_plan_context:
     planStartSnapshot?.kind === "plan"
-    && planStartSnapshot.text === "正在读取目标并准备计划上下文",
+    && planStartSnapshot.text === "Reading goal and preparing plan context",
   ok_finish_clears_prompt_activity:
     typeof okSnapshot === "undefined"
-    && !emittedLines.some((line) => line.includes("执行完成，等待下一条输入")),
-  error_finish_remains_visible: errorSnapshot?.text === "执行失败，请查看错误输出",
+    && !emittedLines.some((line) => line.includes("Execution complete, waiting for next input")),
+  error_finish_remains_visible: errorSnapshot?.text === "Execution failed; see error output",
   no_done_footer_noise:
-    !emittedLines.join("").includes("执行完成，等待下一条输入"),
+    !emittedLines.join("").includes("Execution complete, waiting for next input"),
   verbose_progress_line_uses_reference_prefix:
     emittedLines.some((line) =>
-      line.includes("› 正在选择模型路由 · 路由 alpha · 复用会话通道 · 策略 会话优先 + 评分")
+      line.includes("› Choosing model route · route alpha · reuse session provider · strategy session first + score")
     ),
   verbose_progress_line_avoids_machine_prefix:
     !emittedLines.join("").includes("[process]")

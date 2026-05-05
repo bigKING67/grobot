@@ -139,21 +139,21 @@ const payload = {
   panel_omits_raw_ask_user_label: !initialPlain.includes("ask-user")
     && !initialPlain.includes("[ask-user]"),
   panel_has_codex_like_progress:
-    initialPlain.includes("问题 1/2")
-    && initialPlain.includes("(2 项未回答)"),
+    initialPlain.includes("Question 1/2")
+    && initialPlain.includes("(2 unanswered)"),
   panel_plan_mode_shows_planning_path:
-    initialPlain.includes("计划文件 .grobot/plans/session/ACTIVE.md"),
+    initialPlain.includes("Plan file .grobot/plans/session/ACTIVE.md"),
   panel_planning_context_near_top:
-    initialPlain.indexOf("计划文件 .grobot/plans/session/ACTIVE.md") > 0
-    && initialPlain.indexOf("计划文件 .grobot/plans/session/ACTIVE.md") < initialPlain.indexOf("←"),
+    initialPlain.indexOf("Plan file .grobot/plans/session/ACTIVE.md") > 0
+    && initialPlain.indexOf("Plan file .grobot/plans/session/ACTIVE.md") < initialPlain.indexOf("←"),
   panel_has_claude_like_question_tabs:
     initialPlain.includes("[□ Scope]")
     && initialPlain.includes("□ Risk Review")
-    && initialPlain.includes("✓ 提交"),
+    && initialPlain.includes("✓ Submit"),
   panel_question_separate_from_options:
     initialRendered.includes("\x1b[1mChoose execution mode")
-    && initialPlain.includes("Choose execution mode\n  问题 1/2")
-    && initialPlain.includes("问题 1/2 (2 项未回答)\n\n")
+    && initialPlain.includes("Choose execution mode\n  Question 1/2")
+    && initialPlain.includes("Question 1/2 (2 unanswered)\n\n")
     && initialPlain.includes("❯ 1. safe"),
   panel_title_is_prominent_and_not_repeated:
     initialRendered.includes("\x1b[1mChoose execution mode")
@@ -162,47 +162,47 @@ const payload = {
     initialPlain.includes("Run checks before continuing")
     && initialPlain.includes("Skip optional checks"),
   panel_has_other_type_something_row:
-    initialPlain.includes("3. 自定义")
-    && initialPlain.includes("输入自定义回复"),
+    initialPlain.includes("3. Custom")
+    && initialPlain.includes("Type custom reply"),
   panel_has_direct_keyboard_hints:
-    initialPlain.includes("Enter 确认")
-    && initialPlain.includes("↑/↓ 选择")
-    && initialPlain.includes("n 添加备注")
-    && initialPlain.includes("Esc 返回输入框")
-    && initialPlain.includes("1-2 直选")
-    && initialPlain.includes("自定义输入"),
+    initialPlain.includes("Enter confirm")
+    && initialPlain.includes("↑/↓ select")
+    && initialPlain.includes("n note")
+    && initialPlain.includes("Esc back to input")
+    && initialPlain.includes("1-2 direct")
+    && initialPlain.includes("custom input"),
   panel_has_notes_affordance:
-    initialPlain.includes("备注:")
-    && initialPlain.includes("按 n 添加备注"),
+    initialPlain.includes("Note:")
+    && initialPlain.includes("Press n to add note"),
   panel_has_chat_about_this_row:
-    initialPlain.includes("4. 继续对话补充")
-    && !initialPlain.includes("\nc. 继续对话补充"),
+    initialPlain.includes("4. Continue in chat")
+    && !initialPlain.includes("\nc. Continue in chat"),
   panel_has_plan_skip_affordance:
-    initialPlain.includes("5. 跳过访谈，直接进入计划")
-    && !initialPlain.includes("\ns. 跳过访谈，直接进入计划")
-    && initialPlain.includes("s 跳过"),
+    initialPlain.includes("5. Skip interview, start plan")
+    && !initialPlain.includes("\ns. Skip interview, start plan")
+    && initialPlain.includes("s skip"),
   panel_footer_actions_separated:
-    initialPlain.includes("按 n 添加备注\n\n  ─")
-    && initialPlain.includes("─\n  4. 继续对话补充"),
+    initialPlain.includes("Press n to add note\n\n  ─")
+    && initialPlain.includes("─\n  4. Continue in chat"),
   panel_hints_are_muted:
-    initialRendered.includes("\x1b[90mEnter 确认")
-    && initialRendered.includes("\x1b[90m↑/↓ 选择"),
+    initialRendered.includes("\x1b[90mEnter confirm")
+    && initialRendered.includes("\x1b[90m↑/↓ select"),
   panel_review_hint_uses_reference_byline:
-    reviewPlain.includes("↑/↓ 选择 · Enter 确认 · ←/→ 切换问题 · Esc 返回输入框")
-    && !reviewPlain.includes("↑/↓ 选择 | Enter 确认 | ←/→ 切换问题 | Esc 返回输入框"),
+    reviewPlain.includes("↑/↓ select · Enter confirm · ←/→ switch question · Esc back to input")
+    && !reviewPlain.includes("↑/↓ select | Enter confirm | ←/→ switch question | Esc back to input"),
   panel_review_has_submit_edit_cancel:
-    reviewPlain.includes("提交答案")
-    && reviewPlain.includes("修改 1.")
-    && reviewPlain.includes("取消"),
+    reviewPlain.includes("Submit answers")
+    && reviewPlain.includes("Edit 1.")
+    && reviewPlain.includes("Cancel"),
   panel_review_submit_tab_is_single_active:
     reviewPlain.includes("✓ Scope")
     && reviewPlain.includes("✓ Risk Review")
-    && reviewPlain.includes("[✓ 提交]")
-    && !reviewPlain.includes("[Risk Review] [提交]"),
+    && reviewPlain.includes("[✓ Submit]")
+    && !reviewPlain.includes("[Risk Review] [Submit]"),
   panel_review_title_is_prominent:
-    reviewRendered.includes("\x1b[1m检查答案"),
+    reviewRendered.includes("\x1b[1mReview answers"),
   panel_review_has_answer_summary:
-    reviewPlain.includes("已回答 2/2")
+    reviewPlain.includes("Answered 2/2")
     && reviewPlain.includes("safe"),
   panel_text_input_renders_value:
     textInputPlain.includes("Add optional constraints")
@@ -220,7 +220,7 @@ const payload = {
     && !initialPlain.includes("╰")
     && !initialPlain.includes("│"),
   panel_narrow_keeps_progress:
-    narrowPlain.includes("问题 1/2")
+    narrowPlain.includes("Question 1/2")
     && narrowPlain.includes("Choose execution mode"),
 };
 

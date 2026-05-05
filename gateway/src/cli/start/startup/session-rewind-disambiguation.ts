@@ -53,11 +53,11 @@ export async function resolveStartupRewindDisambiguation(
   ) {
     messages.push(
       renderInfoPanel({
-        title: "已自动选择启动检查点",
+        title: "Startup checkpoint auto-selected",
         sections: [{
           rows: [{
-            title: `检查点 ${targetCheckpointId}`,
-            detailLines: ["非交互启动无法打开选择器，已使用首个匹配项。"],
+            title: `checkpoint ${targetCheckpointId}`,
+            detailLines: ["Non-interactive startup cannot open a picker; using the first match."],
           }],
         }],
       }),

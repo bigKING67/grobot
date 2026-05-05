@@ -42,7 +42,7 @@ export async function resolveStatusProviderProbe(
     return {
       probeResult: {
         state: "skipped",
-        detail: "缺少接口地址或密钥",
+        detail: "Missing base URL or API key",
       },
       exitCode: 2,
     };

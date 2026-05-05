@@ -45,11 +45,11 @@ const renderSource = readFileSync(
 
 const payload = {
   has_reference_header: plain.includes("Help"),
-  has_reference_intro: plain.includes("Grobot 在终端里处理项目上下文"),
-  has_shortcuts_section: plain.includes("快捷键"),
-  has_ctrl_r: plain.includes("Ctrl+R") && plain.includes("历史搜索"),
-  has_esc: plain.includes("Esc") && plain.includes("计划空闲时退出"),
-  has_commands_section: plain.includes("命令"),
+  has_reference_intro: plain.includes("Grobot manages project context"),
+  has_shortcuts_section: plain.includes("Shortcuts"),
+  has_ctrl_r: plain.includes("Ctrl+R") && plain.includes("Search history"),
+  has_esc: plain.includes("Esc") && plain.includes("exit idle plan mode"),
+  has_commands_section: plain.includes("Commands"),
   has_sessions_command: plain.includes("• /sessions"),
   has_resume_command: plain.includes("• /resume [query]"),
   has_rewind_command: plain.includes("• /rewind [query]"),
@@ -57,55 +57,54 @@ const payload = {
   has_plan_command: plain.includes("• /plan"),
   has_status_command: plain.includes("• /status"),
   has_help_command: plain.includes("Help"),
-  has_exit_command: plain.includes("• /exit、/quit"),
+  has_exit_command: plain.includes("• /exit, /quit"),
   avoids_pipe_alias_rows: !plain.includes("/exit | /quit"),
   has_commands_browse_hint:
-    plain.includes("• /commands") && plain.includes("浏览全部命令"),
-  has_utilities_section: plain.includes("状态与工具"),
+    plain.includes("• /commands") && plain.includes("Browse all commands"),
+  has_utilities_section: plain.includes("Status and tools"),
   has_health_command: plain.includes("• /health"),
   has_context_command: plain.includes("• /context"),
   has_memory_command: plain.includes("• /memory"),
   has_skills_command: plain.includes("• /skills"),
   has_mcp_command: plain.includes("• /mcp"),
-  has_utilities_status_hint: plain.includes("查看状态栏与运行状态"),
+  has_utilities_status_hint: plain.includes("Show status bar and runtime status"),
   health_copy_is_human:
     plain.includes("/health")
-    && plain.includes("查看模型通道状态")
-    && !plain.includes("查看 provider 健康状态")
+    && plain.includes("Show model provider health")
+    && !plain.includes("Show provider health")
     && !plain.includes("provider failover")
-    && !plain.includes("circuit 状态"),
+    && !plain.includes("circuit state"),
   help_copy_hides_english_operator_terms:
-    !plain.includes("plan mode")
-    && !plain.includes("provider")
-    && !plain.includes("server 状态")
-    && !plain.includes("查看已配置 skills")
-    && !plain.includes("根据需求创建 skill")
+    !plain.includes("provider failover")
+    && !plain.includes("server status")
+    && !plain.includes("configured skills directory")
+    && !plain.includes("create skill from demand")
     && !plain.includes("config provider.model"),
-  has_notes_section: plain.includes("说明"),
-  has_compatibility_note: plain.includes("兼容入口: /switch、/continue"),
-  has_checkpoint_alias_note: plain.includes("别名: /checkpoint -> /rewind"),
+  has_notes_section: plain.includes("Notes"),
+  has_compatibility_note: plain.includes("Compatibility: /switch and /continue"),
+  has_checkpoint_alias_note: plain.includes("Alias: /checkpoint -> /rewind"),
   uses_compact_notes: (plain.match(/^\s*⎿ /gm)?.length ?? 0) === 2,
   avoids_document_style_notes:
-    !plain.includes("交互模式优先使用")
-    && !plain.includes("/plan 仅支持")
-    && !plain.includes("非交互脚本按需保留"),
+    !plain.includes("Interactive mode should prefer")
+    && !plain.includes("/plan only supports")
+    && !plain.includes("Non-interactive scripts"),
   uses_compact_overview_descriptions:
-    plain.includes("/resume [query] 恢复历史会话")
-    && plain.includes("/rewind [query] 回退到检查点")
-    && plain.includes("/model          切换模型")
-    && plain.includes("/plan           进入或查看计划模式"),
+    plain.includes("/resume [query] Resume a historical session")
+    && plain.includes("/rewind [query] Rewind to a checkpoint")
+    && plain.includes("/model          Switch model")
+    && plain.includes("/plan           Enter or view plan mode"),
   avoids_long_registry_descriptions:
-    !plain.includes("打开完整恢复选择器")
-    && !plain.includes("快速查询")
+    !plain.includes("Open full resume picker")
+    && !plain.includes("quick query")
     && !plain.includes("summary|updated-at"),
   uses_reference_bullets: plain.includes("• /sessions") && plain.includes("  ⎿"),
   uses_reference_overview_instead_of_full_command_dump:
     (plain.match(/^  • /gm)?.length ?? 0) <= 16,
   avoids_legacy_headers:
-    !plain.includes("交互命令（常用）:")
-    && !plain.includes("运维工具:")
-    && !plain.includes("兼容说明:")
-    && !plain.includes("快捷键:"),
+    !plain.includes("Interactive commands:")
+    && !plain.includes("Operations tools:")
+    && !plain.includes("Compatibility notes:")
+    && !plain.includes("Shortcuts:"),
   avoids_machine_prefix:
     !plain.includes("[help]")
     && !plain.includes("command=")

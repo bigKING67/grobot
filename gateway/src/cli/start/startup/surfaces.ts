@@ -40,7 +40,7 @@ function reasonDetailLine(reason: string | undefined): string[] {
   if (!reason || reason.trim().length === 0) {
     return [];
   }
-  return [`原因 ${formatDiagnosticToken(reason)}`];
+  return [`reason ${formatDiagnosticToken(reason)}`];
 }
 
 export function buildRuntimeInterruptSurface(input: {
@@ -51,21 +51,21 @@ export function buildRuntimeInterruptSurface(input: {
   const sourceLabel = humanizeInterruptSource(input.source);
   if (input.kind === "requested") {
     return compactSurface({
-      title: "已请求中断当前回合",
+      title: "Runtime interrupt requested",
       rows: [{
-        title: `来源 ${sourceLabel}`,
+        title: `source ${sourceLabel}`,
         detailLines: [
-          "正在尝试安全停止。",
-          `诊断 ${input.code}`,
+          "Trying to stop safely.",
+          `diagnostic ${input.code}`,
         ],
       }],
     });
   }
   return compactSurface({
-    title: "当前没有运行中的回合",
+    title: "No running turn",
     rows: [{
-      title: `${sourceLabel} 只会中断正在运行的回合。`,
-      detailLines: [`诊断 ${input.code}`],
+      title: `${sourceLabel} only interrupts a running turn.`,
+      detailLines: [`diagnostic ${input.code}`],
     }],
   });
 }
@@ -75,10 +75,10 @@ export function buildRuntimeInterruptIgnoredSurface(input: {
 }): string {
   const sourceLabel = humanizeInterruptSource(input.source);
   return compactSurface({
-    title: "中断请求未生效",
+    title: "Interrupt request ignored",
     rows: [{
-      title: `${sourceLabel} 请求已跳过。`,
-      detailLines: ["当前回合已完成或已过安全中断点。"],
+      title: `${sourceLabel} request was skipped.`,
+      detailLines: ["Current turn completed or passed the safe interrupt point."],
     }],
   });
 }
@@ -88,13 +88,13 @@ export function buildRuntimeToolsFallbackSurface(input: {
   source: string;
 }): string {
   return compactSurface({
-    title: "运行时工具描述不可用",
+    title: "Runtime tool description unavailable",
     rows: [{
-      title: "已使用内置工具 schema 启动。",
+      title: "Started with built-in tool schema.",
       detailLines: [
-        `来源 ${input.source}`,
+        `source ${input.source}`,
         ...reasonDetailLine(input.reason),
-        "如需完整诊断，可运行 grobot status --json。",
+        "For full diagnostics, run grobot status --json.",
       ],
     }],
   });
@@ -104,12 +104,12 @@ export function buildMcpInstructionStrictFailureSurface(
   reason: string | undefined,
 ): string {
   return compactSurface({
-    title: "MCP 指令加载失败",
+    title: "MCP instruction load failed",
     rows: [{
-      title: "strict 模式要求所有启用的 MCP 都有指令包。",
+      title: "Strict mode requires instruction packs for all enabled MCP servers.",
       detailLines: [
         ...reasonDetailLine(reason),
-        "请补齐 .grobot/rules/mcp/<server>.md，或关闭 mcp.instructions.strict。",
+        "Add .grobot/rules/mcp/<server>.md or disable mcp.instructions.strict.",
       ],
     }],
   });
@@ -119,12 +119,12 @@ export function buildExperienceSchedulerTickErrorSurface(
   error: string | undefined,
 ): string {
   return compactSurface({
-    title: "经验任务调度失败",
+    title: "Experience scheduler tick failed",
     rows: [{
-      title: "后台任务本轮已跳过，不影响当前输入。",
+      title: "Background task skipped this turn; current input is unaffected.",
       detailLines: [
         ...reasonDetailLine(error),
-        "如需完整诊断，可设置 GROBOT_STARTUP_DIAGNOSTICS=1 后重试。",
+        "For full diagnostics, retry with GROBOT_STARTUP_DIAGNOSTICS=1.",
       ],
     }],
   });
@@ -135,11 +135,11 @@ export function buildExperienceSchedulerTaskFailedSurface(input: {
   error: string | undefined;
 }): string {
   return compactSurface({
-    title: "经验任务执行失败",
+    title: "Experience task failed",
     rows: [{
-      title: `任务 ${input.taskId || "未知任务"}`,
+      title: `task ${input.taskId || "unknown task"}`,
       detailLines: [
-        "本轮调度已记录失败，不影响继续输入。",
+        "The failure was recorded; input can continue.",
         ...reasonDetailLine(input.error),
       ],
     }],
@@ -151,13 +151,13 @@ export function buildMemoryMaintenanceFailedSurface(input: {
   error: string | undefined;
 }): string {
   return compactSurface({
-    title: "记忆维护失败",
+    title: "Memory maintenance failed",
     rows: [{
-      title: `阶段 ${input.reason || "unknown"}`,
+      title: `stage ${input.reason || "unknown"}`,
       detailLines: [
-        "本轮对话会继续，后台记忆清理将在后续回合重试。",
+        "This conversation will continue; background memory cleanup will retry later.",
         ...reasonDetailLine(input.error),
-        "如需完整诊断，可设置 GROBOT_STARTUP_DIAGNOSTICS=1 后重试。",
+        "For full diagnostics, retry with GROBOT_STARTUP_DIAGNOSTICS=1.",
       ],
     }],
   });
@@ -167,11 +167,11 @@ export function buildRewindCaptureFailedSurface(
   error: string | undefined,
 ): string {
   return compactSurface({
-    title: "检查点保存失败",
+    title: "Checkpoint capture failed",
     rows: [{
-      title: "本轮对话已继续。",
+      title: "This turn continued.",
       detailLines: [
-        "这一步无法用于 /rewind 回退。",
+        "This step cannot be used for /rewind.",
         ...reasonDetailLine(error),
       ],
     }],

@@ -13,7 +13,7 @@ function formatSessionKeyForDisplay(value: string): string {
   if (parts.length > 0 && normalized.includes(":")) {
     return parts[parts.length - 1];
   }
-  return normalized.length > 0 ? normalized : "当前会话";
+  return normalized.length > 0 ? normalized : "current session";
 }
 
 function formatCheckpointCreatedAt(value: string): string {
@@ -23,7 +23,11 @@ function formatCheckpointCreatedAt(value: string): string {
     const [, year, month, day, hour, minute] = isoMatch;
     return `${year}-${month}-${day} ${hour}:${minute}`;
   }
-  return normalized.length > 0 ? normalized : "未知";
+  return normalized.length > 0 ? normalized : "unknown";
+}
+
+function formatChangedFileCount(count: number): string {
+  return `${String(count)} ${count === 1 ? "file" : "files"}`;
 }
 
 export function buildCheckpointSummaryText(
@@ -32,16 +36,16 @@ export function buildCheckpointSummaryText(
 ): string {
   const rows: InfoPanelRow[] = [
     {
-      title: `会话 ${formatSessionKeyForDisplay(sessionKey)}`,
-      detailLines: [`检查点 ${String(summaries.length)}`],
+      title: `Session ${formatSessionKeyForDisplay(sessionKey)}`,
+      detailLines: [`checkpoints ${String(summaries.length)}`],
     },
   ];
   if (summaries.length === 0) {
     rows.push({
-      title: "暂无可用检查点。",
+      title: "No available checkpoints.",
     });
     return renderInfoPanel({
-      title: "检查点概览",
+      title: "Checkpoint overview",
       sections: [{ rows }],
     });
   }
@@ -49,16 +53,16 @@ export function buildCheckpointSummaryText(
     rows.push({
       title: row.checkpointId,
       detailLines: [
-        `${formatCheckpointCreatedAt(row.createdAt)} · ${String(row.changedFilesCount)} 个文件 · 消息 ${String(
+        `${formatCheckpointCreatedAt(row.createdAt)} · ${formatChangedFileCount(row.changedFilesCount)} · messages ${String(
           row.historyBeforeCount,
         )}->${String(row.historyAfterCount)}`,
-        `用户 ${compactSingleLine(row.userText, 72)}`,
-        `助手 ${compactSingleLine(row.assistantText, 72)}`,
+        `user ${compactSingleLine(row.userText, 72)}`,
+        `assistant ${compactSingleLine(row.assistantText, 72)}`,
       ],
     });
   }
   return renderInfoPanel({
-    title: "检查点概览",
+    title: "Checkpoint overview",
     sections: [{ rows }],
   });
 }

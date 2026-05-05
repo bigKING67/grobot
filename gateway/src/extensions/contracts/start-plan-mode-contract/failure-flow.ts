@@ -187,34 +187,37 @@ export async function runFailurePlanModeFlow(workDir: string) {
   });
   const applyFailureStatusResult = await applyFailureStatusPlanMode.showPlanStatus();
   const applyFailureStatusSurface = stripAnsi(applyFailureStatusStdout);
+  const cleanOverrideStdout = stripAnsi(overrideStdout);
+  const cleanFailureStderr = stripAnsi(failureStderr);
+  const cleanApplyFailureStderr = stripAnsi(applyFailureStderr);
 
   return {
     compact_plan_turn_failure_code_preserved: failureResultCode === 1,
     plan_turn_stdout_override_captures_plan_scaffolding:
       stdoutOverrideResult === 0
-      && overrideStdout.includes("已进入计划模式")
-      && overrideStdout.includes("正在规划...")
+      && cleanOverrideStdout.includes("Entered plan mode")
+      && cleanOverrideStdout.includes("Planning...")
       && overrideStdout.includes("runtime output through override")
-      && overrideStdout.includes("计划需要继续完善"),
+      && cleanOverrideStdout.includes("Plan needs refinement"),
     plan_turn_working_notice_uses_info_panel:
-      !stripAnsi(overrideStdout).includes("● 正在规划...")
-      && stripAnsi(overrideStdout).includes("正在规划...")
-      && stripAnsi(overrideStdout).includes("• 模型正在生成计划草稿。"),
+      !cleanOverrideStdout.includes("● Planning...")
+      && cleanOverrideStdout.includes("Planning...")
+      && cleanOverrideStdout.includes("• The model is drafting the plan."),
     plan_turn_stdout_override_skips_fallback_writer: fallbackStdout.length === 0,
     compact_plan_turn_failure_surface_human:
-      failureStderr.includes("计划更新失败")
-      && failureStderr.includes("• 运行时未完成")
-      && failureStderr.includes("  ⎿")
-      && failureStderr.includes("通道 mock 不可用（上游连接失败）。")
-      && failureStderr.includes("计划已保存: .grobot/plans/")
-      && failureStderr.includes("计划草稿已保留")
-      && failureStderr.includes('直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。')
-      && failureStderr.includes("详细日志可查看通道、退出码和策略字段。")
-      && !failureStderr.includes("供应商不可用:")
-      && !failureStderr.includes("详情:")
-      && !failureStderr.includes("Provider 不可用")
-      && !failureStderr.includes("provider、exit code 和 policy")
-      && !failureStderr.includes("PLAN_PROVIDER_RUNTIME_FAILURE"),
+      cleanFailureStderr.includes("Plan update failed")
+      && cleanFailureStderr.includes("• Runtime did not finish")
+      && cleanFailureStderr.includes("  ⎿")
+      && cleanFailureStderr.includes("Provider mock is unavailable (upstream connection failed).")
+      && cleanFailureStderr.includes("Plan saved: .grobot/plans/")
+      && cleanFailureStderr.includes("Plan draft kept and plan mode remains active")
+      && cleanFailureStderr.includes('Type more details to refine it, or use "/plan open" to edit the draft.')
+      && cleanFailureStderr.includes("Verbose logs include provider, exit code, and policy fields.")
+      && !cleanFailureStderr.includes("供应商不可用:")
+      && !cleanFailureStderr.includes("详情:")
+      && !cleanFailureStderr.includes("Provider 不可用")
+      && !cleanFailureStderr.includes("provider、exit code 和 policy")
+      && !cleanFailureStderr.includes("PLAN_PROVIDER_RUNTIME_FAILURE"),
     compact_plan_turn_failure_hides_machine_lines:
       !failureStderr.includes("runtime failed:")
       && !failureStderr.includes("[runtime-route] failed attempts=")
@@ -226,27 +229,26 @@ export async function runFailurePlanModeFlow(workDir: string) {
     compact_plan_apply_failure_code_preserved:
       applyFailureResult.handled && applyFailureResult.code === 1,
     compact_plan_apply_failure_surface_human:
-      applyFailureStderr.includes("计划实现失败")
-      && applyFailureStderr.includes("通道 mock 不可用（上游连接失败）。")
-      && applyFailureStderr.includes("计划已保存: .grobot/plans/")
-      && applyFailureStderr.includes("计划仍可用")
-      && applyFailureStderr.includes("再回复“开始实现计划”")
-      && applyFailureStderr.includes("详细日志可查看通道、退出码和策略字段。")
-      && !applyFailureStderr.includes("供应商不可用:")
-      && !applyFailureStderr.includes("详情:")
-      && !applyFailureStderr.includes("Provider 不可用")
-      && !applyFailureStderr.includes("provider、exit code 和 policy")
-      && !applyFailureStderr.includes("PLAN_PROVIDER_RUNTIME_FAILURE"),
+      cleanApplyFailureStderr.includes("Plan implementation failed")
+      && cleanApplyFailureStderr.includes("Provider mock is unavailable (upstream connection failed).")
+      && cleanApplyFailureStderr.includes("Plan saved: .grobot/plans/")
+      && cleanApplyFailureStderr.includes("The plan is still available")
+      && cleanApplyFailureStderr.includes("reply Implement the plan")
+      && cleanApplyFailureStderr.includes("Verbose logs include provider, exit code, and policy fields.")
+      && !cleanApplyFailureStderr.includes("供应商不可用:")
+      && !cleanApplyFailureStderr.includes("详情:")
+      && !cleanApplyFailureStderr.includes("Provider 不可用")
+      && !cleanApplyFailureStderr.includes("provider、exit code 和 policy")
+      && !cleanApplyFailureStderr.includes("PLAN_PROVIDER_RUNTIME_FAILURE"),
     compact_plan_apply_failure_hides_machine_lines:
       !applyFailureStderr.includes("runtime failed:")
       && !applyFailureStderr.includes("[runtime-route] failed attempts=")
       && !applyFailureStderr.includes("plan_id="),
     compact_apply_failed_status_surface_shows_human_state:
       applyFailureStatusResult === 0
-      && applyFailureStatusSurface.includes("当前计划")
-      && applyFailureStatusSurface.includes("状态 执行失败")
-      && applyFailureStatusSurface.includes("计划仍保留")
-      && applyFailureStatusSurface.includes("开始实现计划"),
+      && applyFailureStatusSurface.includes("Current plan")
+      && applyFailureStatusSurface.includes("apply failed")
+      && applyFailureStatusSurface.includes("# Contract Plan"),
     compact_apply_failed_status_surface_hides_machine_fields:
       !applyFailureStatusSurface.includes("plan_status_output_mode:")
       && !applyFailureStatusSurface.includes("active_plan_id:")

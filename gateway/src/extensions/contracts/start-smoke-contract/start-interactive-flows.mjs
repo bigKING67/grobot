@@ -126,7 +126,7 @@ export function runStartBareInteractiveSessionFlow(context) {
   return {
     ...commandResult,
     has_start_banner: hasStartBannerMarker(outputText),
-    has_status_snapshot: outputText.includes("状态栏"),
+    has_status_snapshot: outputText.includes("Status bar"),
     startup_suppresses_legacy_store_migration_warning:
       !outputText.includes("[store] history migrated from legacy path")
       && !outputText.includes("[session] session registry migrated from legacy path"),
@@ -209,17 +209,18 @@ export function runStartInteractiveDiagnosticsFlow(context, mode, scriptedInput,
     diagnostic_mode: normalizedMode,
     verbose_mode: normalizedMode !== "compact",
     has_process_lines:
-      commandResult.stdout.includes("› 正在")
-      || commandResult.stdout.includes("› Grobot")
-      || commandResult.stdout.includes("› 等待")
-      || commandResult.stdout.includes("› 语义")
-      || commandResult.stdout.includes("› 所有模型通道暂不可用"),
+      commandResult.stdout.includes("› Reading task")
+      || commandResult.stdout.includes("› Maintaining memory policy")
+      || commandResult.stdout.includes("› Preparing context window")
+      || commandResult.stdout.includes("› Grobot is planning")
+      || commandResult.stdout.includes("› Choosing model route")
+      || commandResult.stdout.includes("› Execution failed"),
     has_machine_process_lines: commandResult.stdout.includes("[process]"),
-    has_process_summary_lines: /›\s+(执行完成|执行失败|已中断)\s+·\s+\d/.test(
+    has_process_summary_lines: /›\s+(Completed|Execution failed|Interrupted)\s+·\s+\d/.test(
       commandResult.stdout,
     ),
     has_machine_process_summary_lines: commandResult.stdout.includes("[process-summary]"),
-    has_short_process_summary_code: /›\s+(执行完成|执行失败|已中断)\s+·\s+\d/.test(
+    has_short_process_summary_code: /›\s+(Completed|Execution failed|Interrupted)\s+·\s+\d/.test(
       commandResult.stdout,
     ),
     stderr_has_event_lines: /\bevent=/.test(commandResult.stderr),
@@ -242,21 +243,21 @@ export function runStartInteractiveDiagnosticsPlanFlow(context, mode) {
     ...payload,
     command_flow: "plan",
     has_plan_marker:
-      payload.stdout.includes("当前计划")
+      payload.stdout.includes("Current plan")
       || payload.stdout.includes("Enabled plan mode")
       || payload.stdout.includes("Already in plan mode")
-      || payload.stdout.includes("计划草稿")
-      || payload.stdout.includes("已进入计划模式")
+      || payload.stdout.includes("Plan draft")
+      || payload.stdout.includes("Entered plan mode")
       || payload.stdout.includes("[plan]"),
-    has_entered_plan_mode_surface: payload.stdout.includes("已进入计划模式"),
-    has_plan_entry_path_line: payload.stdout.includes("计划文件 .grobot/plans/"),
-    has_plan_entry_goal_line: payload.stdout.includes("目标 diagnostics integration flow"),
+    has_entered_plan_mode_surface: payload.stdout.includes("Entered plan mode"),
+    has_plan_entry_path_line: payload.stdout.includes("plan file .grobot/plans/"),
+    has_plan_entry_goal_line: payload.stdout.includes("goal diagnostics integration flow"),
     has_plan_entry_read_only_line:
-      payload.stdout.includes("确认计划前，计划模式只会读取和规划。"),
-    has_plan_entry_working_notice: payload.stdout.includes("正在规划..."),
-    has_plan_draft_surface: payload.stdout.includes("计划草稿"),
+      payload.stdout.includes("Before confirmation, plan mode only reads and plans."),
+    has_plan_entry_working_notice: payload.stdout.includes("Planning..."),
+    has_plan_draft_surface: payload.stdout.includes("Plan draft"),
     has_plan_draft_refine_hint:
-      payload.stdout.includes('直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。'),
+      payload.stdout.includes('Type more details to refine it, or use "/plan open" to edit the draft.'),
     plan_draft_avoids_legacy_empty_message:
       !payload.stdout.includes("Already in plan mode. No plan written yet."),
   };
@@ -274,10 +275,10 @@ export function runStartInteractiveDiagnosticsSkillCreatorFlow(context, mode) {
   return {
     ...payload,
     command_flow: "skill_creator",
-    has_skill_creator_marker: stdoutPlain.includes("正在生成技能"),
+    has_skill_creator_marker: stdoutPlain.includes("Generating skill"),
     skill_creator_surface_avoids_legacy_marker: !payload.stdout.includes("[skill-creator]"),
     has_human_skill_creator_surface:
-      stdoutPlain.includes("正在生成技能")
+      stdoutPlain.includes("Generating skill")
       && stdoutPlain.includes("create a demo skill for diagnostics contracts"),
   };
 }
@@ -299,14 +300,14 @@ export function runStartInteractiveDiagnosticsUserCommandFlow(context, mode) {
   return {
     ...payload,
     command_flow: "user_command",
-    has_commands_marker: stdoutPlain.includes("已创建自定义命令"),
+    has_commands_marker: stdoutPlain.includes("User command created"),
     command_surface_avoids_legacy_marker: !payload.stdout.includes("[commands]"),
     has_human_created_command_surface:
       stdoutPlain.includes("/ping")
-      && stdoutPlain.includes("保存位置 ")
-      && !stdoutPlain.includes("命令:")
-      && !stdoutPlain.includes("文件:")
-      && !stdoutPlain.includes("下一步:"),
+      && stdoutPlain.includes("saved at ")
+      && !stdoutPlain.includes("command:")
+      && !stdoutPlain.includes("file:")
+      && stdoutPlain.includes("next: /commands"),
   };
 }
 
@@ -386,57 +387,57 @@ export function runStartInteractiveSessionCommandsFallbackFlow(context) {
     registry_path: registryPath,
     session_count: Math.max(sessions.length, inferredSessionIds.size),
     has_switch_usage:
-      outputPlain.includes("用法 /switch")
-      && !outputPlain.includes("用法: /switch"),
+      outputPlain.includes("Usage /switch")
+      && !outputPlain.includes("Usage: /switch"),
     has_continue_usage:
-      outputPlain.includes("用法 /continue")
-      && !outputPlain.includes("用法: /continue"),
+      outputPlain.includes("Usage /continue")
+      && !outputPlain.includes("Usage: /continue"),
     has_resume_usage:
-      outputPlain.includes("用法 /resume")
-      && !outputPlain.includes("用法: /resume"),
+      outputPlain.includes("Usage /resume")
+      && !outputPlain.includes("Usage: /resume"),
     has_rewind_usage:
-      outputPlain.includes("用法 /rewind")
-      && !outputPlain.includes("用法: /rewind"),
+      outputPlain.includes("Usage /rewind")
+      && !outputPlain.includes("Usage: /rewind"),
     has_sessions_overview:
-      outputPlain.includes("会话")
-      && outputPlain.includes("个会话 · 当前")
-      && outputPlain.includes("⎿  会话 "),
+      outputPlain.includes("Sessions")
+      && outputPlain.includes("sessions · current")
+      && outputPlain.includes("⎿  session "),
     session_surface_avoids_legacy_plain_namespace:
-      !outputPlain.includes("会话命名空间:")
-      && !outputPlain.includes("命名空间:")
-      && !outputPlain.includes("命名空间 "),
+      !outputPlain.includes("session namespace:")
+      && !outputPlain.includes("namespace:")
+      && !outputPlain.includes("namespace "),
     session_switch_surface_is_human:
-      outputPlain.includes("已切换会话")
-      && !outputPlain.includes("● 已切换会话")
-      && !outputPlain.includes("原因 new")
-      && !outputPlain.includes("历史来源 empty"),
+      outputPlain.includes("Session switched")
+      && !outputPlain.includes("● Session switched")
+      && !outputPlain.includes("reason new")
+      && !outputPlain.includes("history source empty"),
     session_commands_avoid_raw_labels:
-      !outputPlain.includes("会话:")
-      && !outputPlain.includes("原因:")
-      && !outputPlain.includes("恢复:")
-      && !outputPlain.includes("历史来源:")
-      && !outputPlain.includes("数量:")
+      !outputPlain.includes("session:")
+      && !outputPlain.includes("reason:")
+      && !outputPlain.includes("restore:")
+      && !outputPlain.includes("history source:")
+      && !outputPlain.includes("count:")
       && !outputPlain.includes("feishu:grobot:dm:session-command-fallback-user"),
-    has_session_title_main: outputPlain.includes("主会话"),
-    has_session_title_untitled: outputPlain.includes("未命名会话"),
-    has_status_snapshot: outputText.includes("状态栏"),
+    has_session_title_main: outputPlain.includes("Main session"),
+    has_session_title_untitled: outputPlain.includes("Untitled session"),
+    has_status_snapshot: outputText.includes("Status bar"),
     has_status_theme_set:
-      outputText.includes("已更新状态栏主题")
-      && outputPlain.includes("主题 图标增强"),
+      outputText.includes("Status theme updated")
+      && outputPlain.includes("theme Nerd font"),
     has_status_layout_set:
-      outputText.includes("已更新状态栏布局")
-      && outputPlain.includes("布局 紧凑"),
+      outputText.includes("Status layout updated")
+      && outputPlain.includes("layout Compact"),
     has_status_tokens_off:
-      outputText.includes("已更新状态栏状态段")
-      && outputText.includes("状态段 Token")
-      && outputText.includes("已关闭"),
-    has_status_theme_current: outputPlain.includes("主题 图标增强"),
-    has_status_layout_current: outputPlain.includes("布局 紧凑"),
-    has_status_tokens_current_off: outputText.includes("Token 关闭"),
+      outputText.includes("Status segment updated")
+      && outputText.includes("segment Token")
+      && outputText.includes("disabled"),
+    has_status_theme_current: outputPlain.includes("theme Nerd font"),
+    has_status_layout_current: outputPlain.includes("layout Compact"),
+    has_status_tokens_current_off: outputText.includes("Token off"),
     status_commands_avoid_raw_labels:
-      !outputPlain.includes("主题:")
-      && !outputPlain.includes("布局:")
-      && !outputText.includes("状态段:"),
+      !outputPlain.includes("theme:")
+      && !outputPlain.includes("layout:")
+      && !outputText.includes("segment:"),
   };
 }
 
@@ -506,8 +507,8 @@ export function runStartInteractiveInterruptFlow(
   return {
     ...commandResult,
     interrupt_requested_seen:
-      combinedOutput.includes("已请求中断当前回合")
-      && combinedOutput.includes("诊断 TURN_INTERRUPT_OK")
+      combinedOutput.includes("Runtime interrupt requested")
+      && combinedOutput.includes("diagnostic TURN_INTERRUPT_OK")
       && !commandResult.stdout.includes("[interrupt] code=TURN_INTERRUPT_OK"),
     interrupt_requested_avoids_legacy_event: !combinedOutput.includes(
       "[interrupt] event=requested source=command",
@@ -519,9 +520,9 @@ export function runStartInteractiveInterruptFlow(
       "[interrupt] event=ignored source=command",
     ),
     interrupt_notice_seen:
-      combinedOutput.includes("回合已中断")
-      && !commandResult.stdout.includes("[interrupt] 回合已中断"),
-    interrupt_continue_hint_seen: combinedOutput.includes("可以继续输入新指令。"),
+      combinedOutput.includes("Turn interrupted")
+      && !commandResult.stdout.includes("[interrupt] Turn interrupted"),
+    interrupt_continue_hint_seen: combinedOutput.includes("Type a new instruction to continue."),
   };
 }
 

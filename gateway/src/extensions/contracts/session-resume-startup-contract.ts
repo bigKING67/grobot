@@ -166,21 +166,21 @@ function run(): void {
     ),
     check(
       "resume_multiple_query_notice_contains_tip",
-      (resumeMultipleMatches.notice ?? "").includes("可确定恢复目标"),
+      (resumeMultipleMatches.notice ?? "").includes("Hint: use --resume <session-id> to choose a target."),
     ),
     check(
       "resume_multiple_query_notice_surface_is_human",
-      startupResumeNoticePlain.includes("找到多个可恢复会话")
-      && startupResumeNoticePlain.includes("• 查询 session")
-      && startupResumeNoticePlain.includes("  ⎿  匹配 3 个会话")
-      && !startupResumeNoticePlain.includes("查询:")
-      && !startupResumeNoticePlain.includes("匹配:"),
+      startupResumeNoticePlain.includes("Multiple resumable sessions found")
+      && startupResumeNoticePlain.includes("• query session")
+      && startupResumeNoticePlain.includes("  ⎿  3 sessions matched")
+      && !startupResumeNoticePlain.includes("query:")
+      && !startupResumeNoticePlain.includes("sessions matched:"),
     ),
     check(
       "resume_multiple_query_notice_uses_reference_detail_rows",
       startupResumeNoticePlain.includes("  ⎿  session-legacy")
-      && startupResumeNoticePlain.includes("  ⎿  2026-04-24T09:59:00.000Z · 标题 Legacy Session")
-      && startupResumeNoticePlain.includes("  ⎿  摘要 historical context")
+      && startupResumeNoticePlain.includes("  ⎿  2026-04-24T09:59:00.000Z · title Legacy Session")
+      && startupResumeNoticePlain.includes("  ⎿  summary historical context")
       && !startupResumeNoticePlain.includes(" | "),
     ),
     check("resume_startup_notices_avoid_legacy_title_bullet", !startupResumeNoticePlain.includes("●")),
@@ -194,11 +194,11 @@ function run(): void {
     ),
     check(
       "resume_no_match_fallback_has_notice",
-      (resumeNoMatchFallback.notice ?? "").includes("已回退到最近可恢复会话"),
+      (resumeNoMatchFallback.notice ?? "").includes("Fell back to latest resumable session"),
     ),
     check(
       "resume_no_match_without_fallback_has_notice",
-      (resumeNoMatchNoFallback.notice ?? "").includes("没有可恢复会话"),
+      (resumeNoMatchNoFallback.notice ?? "").includes("No resumable sessions."),
     ),
     check(
       "resume_startup_notices_avoid_legacy_marker",

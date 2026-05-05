@@ -27,7 +27,7 @@ const ASK_USER_PANEL_MIN_WIDTH = 44;
 const ASK_USER_PANEL_MAX_WIDTH = 96;
 const ASK_USER_PANEL_ROW_DESCRIPTION_MIN_WIDTH = 20;
 const ASK_USER_PANEL_ROW_DESCRIPTION_GAP = 2;
-const ASK_USER_PANEL_TEXT_INPUT_PLACEHOLDER = "输入回复后按 Enter";
+const ASK_USER_PANEL_TEXT_INPUT_PLACEHOLDER = "Type reply, then Enter";
 
 function normalizeColumns(value: number | undefined): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -79,28 +79,28 @@ function renderSecondaryAction(input: {
 
 function buildProgressText(view: Extract<AskUserQuestionnaireView, { kind: "question" }>): string {
   const unanswered = Math.max(0, view.totalCount - view.answeredCount);
-  const base = `问题 ${String(view.currentQuestionNumber)}/${String(view.totalCount)}`;
+  const base = `Question ${String(view.currentQuestionNumber)}/${String(view.totalCount)}`;
   if (unanswered <= 0) {
     return base;
   }
-  return `${base} (${String(unanswered)} 项未回答)`;
+  return `${base} (${String(unanswered)} unanswered)`;
 }
 
 function renderOptionLabel(item: AskUserQuestionnaireOptionItem): string {
   if (item.kind === "other" && sanitizePanelText(item.label, item.id).toLowerCase() === "other") {
-    return "自定义";
+    return "Custom";
   }
   return sanitizePanelText(item.label, item.id);
 }
 
 function renderOtherPlaceholder(value: string | undefined): string {
-  const placeholder = sanitizePanelText(value, "输入自定义回复");
-  return placeholder.toLowerCase() === "type something." ? "输入自定义回复" : placeholder;
+  const placeholder = sanitizePanelText(value, "Type custom reply");
+  return placeholder.toLowerCase() === "type something." ? "Type custom reply" : placeholder;
 }
 
 function renderTab(tab: AskUserQuestionnaireTab, activeSubmit: boolean): string {
   if (tab.status === "submit") {
-    return "✓ 提交";
+    return "✓ Submit";
   }
   const answeredMarker = tab.status === "answered" ? "✓" : "□";
   const text = `${answeredMarker} ${sanitizePanelText(tab.label, `Q${String(tab.index + 1)}`)}`;
@@ -257,12 +257,12 @@ function renderNotesLine(input: {
   active: boolean;
   maxWidth: number;
 }): string {
-  const label = terminalStyle.accent("备注:");
+  const label = terminalStyle.accent("Note:");
   const rawValue = sanitizeTerminalDisplayText(input.value ?? "");
   const displayValue = rawValue.trim().length > 0
     ? rawValue
-    : "按 n 添加备注";
-  const available = Math.max(8, input.maxWidth - measureDisplayWidth("备注:  "));
+    : "Press n to add note";
+  const available = Math.max(8, input.maxWidth - measureDisplayWidth("Note:  "));
   const text = fitPlainLine(displayValue, available);
   const renderedValue = input.active || rawValue.trim().length > 0
     ? terminalStyle.accent(text)
@@ -277,19 +277,19 @@ function renderReviewRows(input: {
   maxWidth: number;
 }): string[] {
   const rows: Array<{ label: string; description: string }> = [{
-    label: "提交答案",
-    description: `已回答 ${String(input.reviewItems.filter((item) => item.answer?.trim()).length)}/${String(input.reviewItems.length)}`,
+    label: "Submit answers",
+    description: `Answered ${String(input.reviewItems.filter((item) => item.answer?.trim()).length)}/${String(input.reviewItems.length)}`,
   }];
   for (let index = 0; index < input.reviewItems.length; index += 1) {
     const item = input.reviewItems[index];
     rows.push({
-      label: `修改 ${String(index + 1)}. ${sanitizePanelText(item?.question, `Q${String(index + 1)}`)}`,
-      description: sanitizePanelText(item?.answer) || "<未回答>",
+      label: `Edit ${String(index + 1)}. ${sanitizePanelText(item?.question, `Q${String(index + 1)}`)}`,
+      description: sanitizePanelText(item?.answer) || "<unanswered>",
     });
   }
   rows.push({
-    label: "取消",
-    description: "返回输入框，问题仍保留",
+    label: "Cancel",
+    description: "Keep questions and return to input",
   });
   const labelWidth = Math.min(
     Math.max(14, ...rows.map((row) => measureDisplayWidth(row.label) + 4)),
@@ -318,7 +318,7 @@ function renderQuestionPanel(input: {
   const contentWidth = input.surfaceWidth - 2;
   const progress = buildProgressText(input.view);
   if (input.planMode && input.planFilePath?.trim()) {
-    lines.push(`  ${terminalStyle.muted(fitPlainLine(`计划文件 ${input.planFilePath}`, contentWidth))}`);
+    lines.push(`  ${terminalStyle.muted(fitPlainLine(`Plan file ${input.planFilePath}`, contentWidth))}`);
     lines.push(`  ${renderMutedRule(contentWidth)}`);
   }
   const navigationLine = renderNavigationLine({
@@ -344,7 +344,7 @@ function renderQuestionPanel(input: {
       maxWidth: contentWidth,
     })}`);
     if (input.view.defaultAnswer && input.view.defaultAnswer.trim().length > 0) {
-      lines.push(`  ${terminalStyle.muted(`默认：${fitPlainLine(input.view.defaultAnswer, contentWidth - 6)}`)}`);
+      lines.push(`  ${terminalStyle.muted(`Default: ${fitPlainLine(input.view.defaultAnswer, contentWidth - 9)}`)}`);
     }
   }
   lines.push("");
@@ -358,13 +358,13 @@ function renderQuestionPanel(input: {
   const footerBaseIndex = input.view.optionItems.length + 1;
   lines.push(`  ${renderSecondaryAction({
     marker: String(footerBaseIndex),
-    label: "继续对话补充",
+    label: "Continue in chat",
     maxWidth: contentWidth,
   })}`);
   if (input.planMode) {
     lines.push(`  ${renderSecondaryAction({
       marker: String(footerBaseIndex + 1),
-      label: "跳过访谈，直接进入计划",
+      label: "Skip interview, start plan",
       maxWidth: contentWidth,
     })}`);
   }
@@ -372,13 +372,13 @@ function renderQuestionPanel(input: {
   const standardOptionCount = input.view.optionItems.filter((item) => item.kind === "option").length;
   const maxDirect = Math.min(standardOptionCount, 9);
   const directHint = maxDirect > 0
-    ? ` · ${maxDirect > 1 ? `1-${String(maxDirect)}` : "1"} 直选 · 自定义输入`
+    ? ` · ${maxDirect > 1 ? `1-${String(maxDirect)}` : "1"} direct · custom input`
     : "";
-  const primaryHint = `Enter 确认${directHint} · Esc 返回输入框`;
-  const actionHint = input.planMode ? " · c 对话 · s 跳过" : " · c 对话";
+  const primaryHint = `Enter confirm${directHint} · Esc back to input`;
+  const actionHint = input.planMode ? " · c chat · s skip" : " · c chat";
   const secondaryHint = input.view.totalCount > 1
-    ? `↑/↓ 选择 · n 添加备注 · ←/→ 切换${actionHint}`
-    : `↑/↓ 选择 · n 添加备注${actionHint}`;
+    ? `↑/↓ select · n note · ←/→ switch${actionHint}`
+    : `↑/↓ select · n note${actionHint}`;
   lines.push(`  ${terminalStyle.muted(fitPlainLine(primaryHint, contentWidth))}`);
   lines.push(`  ${terminalStyle.muted(fitPlainLine(secondaryHint, contentWidth))}`);
   return lines;
@@ -392,7 +392,7 @@ function renderReviewPanel(input: {
   const lines: string[] = [];
   const contentWidth = input.surfaceWidth - 2;
   lines.push(`  ${renderPanelTitle(input.view.title, contentWidth)}`);
-  lines.push(`  ${terminalStyle.muted(`问题复核 (${String(input.view.unansweredCount)} 项未回答)`)}`);
+  lines.push(`  ${terminalStyle.muted(`Review answers (${String(input.view.unansweredCount)} unanswered)`)}`);
   const navigationLine = renderNavigationLine({
     tabs: [],
     maxWidth: contentWidth,
@@ -405,7 +405,7 @@ function renderReviewPanel(input: {
   }
   lines.push("");
   if (input.view.unansweredCount > 0) {
-    lines.push(`  ${terminalStyle.muted(`还有 ${String(input.view.unansweredCount)} 项未回答；提交前会回到第一项未答。`)}`);
+    lines.push(`  ${terminalStyle.muted(`${String(input.view.unansweredCount)} unanswered; submit returns to the first unanswered item.`)}`);
     lines.push("");
   }
   lines.push(...renderReviewRows({
@@ -415,7 +415,7 @@ function renderReviewPanel(input: {
   }).map((line) => `  ${line}`));
   lines.push("");
   lines.push(`  ${renderMutedRule(contentWidth)}`);
-  lines.push(`  ${terminalStyle.muted("↑/↓ 选择 · Enter 确认 · ←/→ 切换问题 · Esc 返回输入框")}`);
+  lines.push(`  ${terminalStyle.muted("↑/↓ select · Enter confirm · ←/→ switch question · Esc back to input")}`);
   return lines;
 }
 

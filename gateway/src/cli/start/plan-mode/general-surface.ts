@@ -4,10 +4,10 @@ import { renderPlanSurface } from "./info-surface";
 
 export function buildExitedPlanModeSurface(): string {
   return renderPlanSurface({
-    title: "已退出计划模式",
+    title: "Exited plan mode",
     rows: [
       {
-        title: "回到普通执行模式",
+        title: "Back to normal execution mode",
         tone: "muted",
       },
     ],
@@ -22,15 +22,15 @@ export function buildPlanCancelSurface(input: {
 }): string {
   const detailLines: string[] = [];
   if (input.kind === "cancelled") {
-    detailLines.push("计划已丢弃，计划模式已退出。");
+    detailLines.push("Plan discarded and plan mode exited.");
   } else if (input.kind === "empty") {
-    detailLines.push('计划模式已退出；使用 "/plan <goal>" 开始新计划。');
+    detailLines.push('Plan mode exited; use "/plan <goal>" to start a new plan.');
   } else {
-    detailLines.push(input.detail ?? "计划状态未更新。");
+    detailLines.push(input.detail ?? "Plan status was not updated.");
   }
   if (input.workDir && input.planPath) {
     detailLines.unshift(
-      `计划文件 ${formatHumanPlanFilePath({
+      `plan file ${formatHumanPlanFilePath({
         workDir: input.workDir,
         planPath: input.planPath,
       })}`,
@@ -38,17 +38,17 @@ export function buildPlanCancelSurface(input: {
   }
   return renderPlanSurface({
     title: input.kind === "cancelled"
-      ? "已取消计划"
+      ? "Plan cancelled"
       : input.kind === "empty"
-        ? "当前没有可取消的计划"
-        : "取消计划失败",
+        ? "No plan to cancel"
+        : "Plan cancel failed",
     rows: [
       {
         title: input.kind === "cancelled"
-          ? "计划已取消"
+          ? "Plan cancelled"
           : input.kind === "empty"
-            ? "没有活跃计划"
-            : "计划状态未更新",
+            ? "No active plan"
+            : "Plan status was not updated",
         detailLines,
       },
     ],
@@ -69,20 +69,20 @@ export function buildPlanModeEnteredSurface(input?: {
   const compactGoal = compactSpaces(input?.goal ?? "");
   const detailLines: string[] = [];
   if (displayPath) {
-    detailLines.push(`计划文件 ${displayPath}`);
+    detailLines.push(`plan file ${displayPath}`);
   }
   if (compactGoal) {
-    detailLines.push(`目标 ${truncateDisplayWidth(compactGoal, 88)}`);
+    detailLines.push(`goal ${truncateDisplayWidth(compactGoal, 88)}`);
   }
   detailLines.push(
-    "Grobot 正在探索并设计实现方案。",
-    "确认计划前，计划模式只会读取和规划。",
+    "Grobot is exploring and designing the implementation plan.",
+    "Before confirmation, plan mode only reads and plans.",
   );
   return `${renderPlanSurface({
-    title: "已进入计划模式",
+    title: "Entered plan mode",
     rows: [
       {
-        title: "开始规划",
+        title: "Planning started",
         detailLines,
       },
     ],
@@ -91,12 +91,12 @@ export function buildPlanModeEnteredSurface(input?: {
 
 export function buildPlanKeptInPlanningSurface(): string {
   return renderPlanSurface({
-    title: "已继续留在计划模式",
+    title: "Still in plan mode",
     rows: [
       {
-        title: "继续规划",
+        title: "Keep planning",
         detailLines: [
-          '直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。',
+          'Type more details to refine it, or use "/plan open" to edit the draft.',
         ],
       },
     ],
@@ -105,12 +105,12 @@ export function buildPlanKeptInPlanningSurface(): string {
 
 export function buildPlanNeedsRefinementSurface(detail: string): string {
   return renderPlanSurface({
-    title: "计划需要继续完善",
+    title: "Plan needs refinement",
     rows: [
       {
         title: detail,
         detailLines: [
-          '直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。',
+          'Type more details to refine it, or use "/plan open" to edit the draft.',
         ],
       },
     ],
@@ -122,12 +122,12 @@ export function buildPlanUpdatedSurface(input: {
   nextAction: string;
 }): string {
   return renderPlanSurface({
-    title: "计划已更新",
+    title: "Plan updated",
     rows: [
       {
-        title: `状态 ${input.phase}`,
+        title: `status ${input.phase}`,
         detailLines: [
-          `接下来 ${input.nextAction}`,
+          `next ${input.nextAction}`,
         ],
       },
     ],

@@ -74,17 +74,17 @@ const ROOT_SLASH_PRIORITY_COMMANDS: readonly string[] = [
 const PLAN_PRIMARY_PRIORITY_SUGGESTIONS: readonly RunStartSlashSuggestion[] = [
   {
     command: "/plan",
-    description: "进入计划模式；已在计划中时显示当前计划状态",
+    description: "Enter plan mode; shows status when already planning",
     source: "builtin",
   },
   {
     command: "/plan <goal>",
-    description: "带目标进入计划模式",
+    description: "Enter plan mode with a goal",
     source: "builtin",
   },
   {
     command: "/plan open",
-    description: "在编辑器中打开当前计划文件",
+    description: "Open the current plan file in your editor",
     source: "builtin",
   },
 ];
@@ -115,15 +115,15 @@ function resolvePlanSuggestionStateTag(state: RunStartPlanSuggestionState | unde
   const activeStatus = resolved.activeStatus;
   const latestStatus = resolved.latestStatus;
   const effectiveStatus = resolved.effectiveStatus;
-  const verificationLabel = resolved.verificationPending ? "验证待记录" : "验证已记录";
+  const verificationLabel = resolved.verificationPending ? "verification pending" : "verification recorded";
   if (!activeStatus && (latestStatus === "applied" || latestStatus === "apply_failed")) {
-    return `最近计划 ${humanizePlanSuggestionStatus(latestStatus)} · ${verificationLabel}`;
+    return `latest plan ${humanizePlanSuggestionStatus(latestStatus)} · ${verificationLabel}`;
   }
   if (effectiveStatus === "applied" || effectiveStatus === "apply_failed") {
-    return `状态 ${humanizePlanSuggestionStatus(effectiveStatus)} · ${verificationLabel}`;
+    return `status ${humanizePlanSuggestionStatus(effectiveStatus)} · ${verificationLabel}`;
   }
   if (effectiveStatus) {
-    return `状态 ${humanizePlanSuggestionStatus(effectiveStatus)}`;
+    return `status ${humanizePlanSuggestionStatus(effectiveStatus)}`;
   }
   return undefined;
 }
@@ -131,23 +131,23 @@ function resolvePlanSuggestionStateTag(state: RunStartPlanSuggestionState | unde
 function humanizePlanSuggestionStatus(status: RunStartPlanSuggestionStatus): string {
   switch (status) {
     case "draft":
-      return "草稿";
+      return "draft";
     case "blocked":
-      return "已阻止";
+      return "blocked";
     case "review_failed":
-      return "需完善";
+      return "needs work";
     case "ready":
-      return "待确认";
+      return "ready";
     case "approved":
-      return "已确认";
+      return "approved";
     case "applying":
-      return "执行中";
+      return "applying";
     case "apply_failed":
-      return "执行失败";
+      return "apply failed";
     case "applied":
-      return "已执行";
+      return "applied";
     case "discarded":
-      return "已取消";
+      return "cancelled";
   }
 }
 
@@ -282,7 +282,7 @@ function toBuiltinSuggestion(item: SlashCommandSuggestion): RunStartSlashSuggest
 function toUserSuggestion(item: RunStartUserCommandSuggestion): RunStartSlashSuggestion {
   return {
     command: item.command,
-    description: item.enabled ? item.description : `${item.description}（已停用）`,
+    description: item.enabled ? item.description : `${item.description} (disabled)`,
     source: "user",
   };
 }
@@ -422,7 +422,7 @@ export function listRunStartSlashSuggestions(
           || (!hasExplicitRecommendationTarget && index === 0)
         )
       ) {
-        suffixParts.push(`建议: ${planRecommendation.reason}`);
+        suffixParts.push(`recommended: ${planRecommendation.reason}`);
       }
       if (suffixParts.length <= 0) {
         return item;

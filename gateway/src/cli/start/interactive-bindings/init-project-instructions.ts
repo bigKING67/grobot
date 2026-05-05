@@ -16,21 +16,21 @@ export function buildAgentsInitPrompt(input: {
   workDir: string;
 }): string {
   return [
-    "你正在执行 grobot 内置 `/init`。",
-    "目标：为当前项目生成项目级 `AGENTS.md`，这是用户可编辑的项目协作规范。",
+    "You are executing grobot built-in `/init`.",
+    "Goal: generate a project-level `AGENTS.md` for the current project. This is a user-editable collaboration guide.",
     "",
-    "硬性约束：",
-    `- 必须创建文件：${input.targetPath}`,
-    `- 项目根目录：${input.projectRoot}`,
-    `- 当前工作目录：${input.workDir}`,
-    "- 不要创建或修改 `CLAUDE.md`。",
-    "- 不要创建或修改 `SYSTEM.md` 或 `SOUL.md`；`SYSTEM.md` 是产品内置系统提示词，不是项目文件。",
-    "- 不要生成 Trellis 文件，也不要把 Trellis 描述为 grobot 用户需要使用的功能。",
-    "- `AGENTS.md` 应描述项目结构、构建/测试命令、代码风格、验证要求、安全配置注意事项，以及 agent-specific instructions。",
-    "- 内容应简洁、可执行、面向这个仓库；如果某些命令无法确认，写明需要用当前仓库脚本核验，不要编造。",
-    "- 必须实际写入文件，不要只在聊天中展示内容。",
+    "Hard constraints:",
+    `- Must create file: ${input.targetPath}`,
+    `- Project root: ${input.projectRoot}`,
+    `- Current working directory: ${input.workDir}`,
+    "- Do not create or modify `CLAUDE.md`.",
+    "- Do not create or modify `SYSTEM.md` or `SOUL.md`; `SYSTEM.md` is the product built-in system prompt, not a project file.",
+    "- Do not generate Trellis files or describe Trellis as something grobot users must use.",
+    "- `AGENTS.md` should describe project structure, build/test commands, coding style, verification requirements, security/config notes, and agent-specific instructions.",
+    "- Keep content concise, executable, and specific to this repository; if commands cannot be confirmed, say they need repository-script verification instead of inventing them.",
+    "- Actually write the file; do not only show content in chat.",
     "",
-    "建议结构：",
+    "Suggested structure:",
     "# Repository Guidelines",
     "## Project Structure",
     "## Build, Test, and Development Commands",
@@ -43,11 +43,11 @@ export function buildAgentsInitPrompt(input: {
 
 export function buildAgentsInitExistsSurface(targetPath: string): string {
   return renderInfoPanel({
-    title: "AGENTS.md 已存在",
+    title: "AGENTS.md already exists",
     sections: [{
       rows: [{
-        title: "已跳过 /init，避免覆盖。",
-        detailLines: [`路径 ${targetPath}`],
+        title: "/init skipped to avoid overwrite.",
+        detailLines: [`path ${targetPath}`],
       }],
     }],
   });
@@ -55,11 +55,11 @@ export function buildAgentsInitExistsSurface(targetPath: string): string {
 
 export function buildAgentsInitStartedSurface(targetPath: string): string {
   return renderInfoPanel({
-    title: "正在生成项目指令",
+    title: "Generating project instructions",
     sections: [{
       rows: [{
-        title: "目标文件已确认。",
-        detailLines: [`路径 ${targetPath}`],
+        title: "Target file confirmed.",
+        detailLines: [`path ${targetPath}`],
       }],
     }],
   });

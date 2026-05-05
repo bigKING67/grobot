@@ -234,7 +234,7 @@ async function showPlanStatusCompact(input: ShowPlanStatusInput): Promise<number
     const statusLabel = humanizePlanStatus(active.entry.status);
     const statusDetailLines = active.entry.status === "apply_failed"
       ? [
-          '上次实现没有完成；计划仍保留，可修复问题后回复“开始实现计划”。',
+          "The last implementation did not finish; the plan is still available. Fix the issue, then reply Implement the plan.",
         ]
       : undefined;
     input.writeStdout(buildCurrentPlanDisplay({
@@ -264,20 +264,20 @@ async function showPlanStatusCompact(input: ShowPlanStatusInput): Promise<number
       ? `${latestTitle} · ${humanizePlanStatus(latestApplied.status)}`
       : humanizePlanStatus(latestApplied.status);
     input.writeStdout(buildPlanStatusSummarySurface({
-      title: "最近计划状态",
-      primary: "当前没有活跃计划。",
+      title: "Recent plan status",
+      primary: "No active plan.",
       detailLines: [
-        `最近计划 ${latestSummary}`,
-        '使用 "/plan <goal>" 开始新计划。',
+        `latest plan ${latestSummary}`,
+        'Use "/plan <goal>" to start a new plan.',
       ],
     }));
     return 0;
   }
   input.writeStdout(buildPlanStatusSummarySurface({
-    title: "当前计划",
-    primary: "还没有写入计划。",
+    title: "Current plan",
+    primary: "No plan has been written yet.",
     detailLines: [
-      '使用 "/plan <goal>" 开始规划。',
+      'Use "/plan <goal>" to start planning.',
     ],
   }));
   return 0;

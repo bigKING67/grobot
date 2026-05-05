@@ -168,8 +168,8 @@ export function runStatusTsRust(context, windowSize) {
     ...result,
     status_text_exit_code: textResult.exit_code,
     status_text_uses_info_panel:
-      textResult.stdout.includes("Grobot 状态")
-      && textResult.stdout.includes("• 路由 ")
+      textResult.stdout.includes("Grobot status")
+      && textResult.stdout.includes("• Route ")
       && textResult.stdout.includes("  ⎿"),
     status_text_hides_raw_machine_lines:
       STATUS_TEXT_FORBIDDEN_RAW_FRAGMENTS.every((fragment) => !textResult.stdout.includes(fragment)),

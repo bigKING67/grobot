@@ -64,6 +64,10 @@ function resolveModeFromMenuId(value: string): RewindRestoreMode | undefined {
   return undefined;
 }
 
+function formatChangedFileCount(count: number): string {
+  return `${String(count)} ${count === 1 ? "file" : "files"}`;
+}
+
 function parseFileFilterInput(value: string): string[] | undefined {
   const rows = value
     .split(/[,\s]+/)
@@ -84,7 +88,7 @@ function buildSessionMenuNotice(title: string, details: readonly string[]): stri
     title,
     sections: [{
       rows: [{
-        title: primary ?? "无更多信息",
+        title: primary ?? "No details",
         detailLines,
       }],
     }],
@@ -93,11 +97,11 @@ function buildSessionMenuNotice(title: string, details: readonly string[]): stri
 
 function buildSessionCommandUsageNotice(command: string): string {
   return renderInfoPanel({
-    title: "会话命令",
+    title: "Session command",
     sections: [{
-      title: "可用入口",
+      title: "Available entries",
       rows: [{
-        title: `用法 ${command}`,
+        title: `Usage ${command}`,
       }],
     }],
   });
@@ -114,8 +118,8 @@ export function createRunStartSessionMenuOps(
     withInputPaused: <T>(operation: () => Promise<T>) => Promise<T>,
   ): Promise<void> => {
     if (sessions.length === 0) {
-      input.writeStdout(buildSessionMenuNotice("暂无可回退会话", [
-        "当前命名空间还没有可选择的会话。",
+      input.writeStdout(buildSessionMenuNotice("No rewindable sessions", [
+        "This namespace has no selectable sessions yet.",
       ]));
       return;
     }
@@ -132,29 +136,29 @@ export function createRunStartSessionMenuOps(
     const sessionId = pickedSession.sessionId;
     const modePick = await withInputPaused(() =>
       runSelectMenu({
-        title: "回退模式",
-        subtitle: `会话 ${sessionId}`,
-        hint: "↑/↓ 选择 · Enter 确认 · Esc 返回",
+        title: "Rewind mode",
+        subtitle: `session ${sessionId}`,
+        hint: "↑/↓ select · Enter confirm · Esc back",
         items: [
           {
             id: "summarize",
-            label: "汇总检查点",
-            description: "只显示最近检查点，不执行恢复。",
+            label: "Summarize checkpoints",
+            description: "Show recent checkpoints without restoring.",
           },
           {
             id: "both",
-            label: "同时恢复对话 + 代码",
-            description: "同时恢复检查点对话记录和已跟踪文件快照。",
+            label: "Restore conversation + code",
+            description: "Restore checkpoint conversation history and tracked file snapshots.",
           },
           {
             id: "conversation",
-            label: "仅恢复对话",
-            description: "只恢复对话记录。",
+            label: "Restore conversation only",
+            description: "Restore conversation history only.",
           },
           {
             id: "code",
-            label: "仅恢复代码",
-            description: "只恢复已跟踪文件快照。",
+            label: "Restore code only",
+            description: "Restore tracked file snapshots only.",
           },
         ],
       }),
@@ -164,8 +168,8 @@ export function createRunStartSessionMenuOps(
     }
     const mode = resolveModeFromMenuId(modePick.item.id);
     if (!mode) {
-      input.writeStdout(buildSessionMenuNotice("回退模式无效", [
-        "请重新打开 /rewind 选择回退模式。",
+      input.writeStdout(buildSessionMenuNotice("Invalid rewind mode", [
+        "Reopen /rewind and choose a rewind mode.",
       ]));
       return;
     }
@@ -179,28 +183,28 @@ export function createRunStartSessionMenuOps(
     }
     const checkpoints = input.listRewindCheckpoints(sessionId, 32);
     if (checkpoints.length === 0) {
-      input.writeStdout(buildSessionMenuNotice("暂无可用检查点", [
-        `会话 ${sessionId}`,
-        "继续对话后会自动生成新的回退检查点。",
+      input.writeStdout(buildSessionMenuNotice("No available checkpoints", [
+        `session ${sessionId}`,
+        "New rewind checkpoints are generated automatically after conversation turns.",
       ]));
       return;
     }
     const pickedCheckpoint = await withInputPaused(() =>
       runSelectMenu({
-        title: "回退检查点",
-        subtitle: `会话 ${sessionId}`,
-        hint: "↑/↓ 选择 · Enter 确认 · Esc 返回",
+        title: "Rewind checkpoint",
+        subtitle: `session ${sessionId}`,
+        hint: "↑/↓ select · Enter confirm · Esc back",
         items: [
           {
             id: "__latest__",
-            label: "最新检查点",
-            description: "使用选中会话的最近检查点。",
+            label: "Latest checkpoint",
+            description: "Use the selected session's latest checkpoint.",
           },
           ...checkpoints.map((checkpoint) => ({
             id: checkpoint.checkpointId,
             label: checkpoint.checkpointId,
             description:
-              `${checkpoint.createdAt} · ${String(checkpoint.changedFilesCount)} 个文件 · 消息 ${String(checkpoint.historyBeforeCount)}->${String(checkpoint.historyAfterCount)} · 用户 ${checkpoint.userText}`,
+              `${checkpoint.createdAt} · ${formatChangedFileCount(checkpoint.changedFilesCount)} · messages ${String(checkpoint.historyBeforeCount)}->${String(checkpoint.historyAfterCount)} · user ${checkpoint.userText}`,
           })),
         ],
       }),
@@ -215,7 +219,7 @@ export function createRunStartSessionMenuOps(
     if (mode === "code") {
       const fileFilterInput = await withInputPaused(() =>
         runLinePrompt({
-          prompt: "文件过滤（可选，逗号分隔）> ",
+          prompt: "File filter (optional, comma separated)> ",
         }),
       );
       if (fileFilterInput.kind === "cancelled") {
@@ -255,8 +259,8 @@ export function createRunStartSessionMenuOps(
       return;
     }
     if (sessions.length === 0) {
-      input.writeStdout(buildSessionMenuNotice("暂无可用会话", [
-        "当前命名空间里还没有可切换的会话。",
+      input.writeStdout(buildSessionMenuNotice("No available sessions", [
+        "This namespace has no switchable sessions yet.",
       ]));
       return;
     }
@@ -311,8 +315,8 @@ export function createRunStartSessionMenuOps(
   ): Promise<void> => {
     const sessions = input.listSessions();
     if (mode !== "sessions" && sessions.length === 0) {
-      input.writeStdout(buildSessionMenuNotice("暂无可用会话", [
-        "当前命名空间里还没有可切换的会话。",
+      input.writeStdout(buildSessionMenuNotice("No available sessions", [
+        "This namespace has no switchable sessions yet.",
       ]));
       return;
     }

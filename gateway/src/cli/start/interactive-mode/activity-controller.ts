@@ -125,7 +125,7 @@ export function createInteractiveActivityController(input: {
       inlineActivityTick += 1;
       return;
     }
-    const defaultActivityText = input.isPlanMode() ? "正在设计实现方案" : "正在执行";
+    const defaultActivityText = input.isPlanMode() ? "Planning implementation" : "Working";
     const activitySnapshot = activityTracker.readActivitySnapshot();
     const activityText = compactSummaryText(
       activitySnapshot?.title ?? activityTracker.readPromptActivity() ?? defaultActivityText,
@@ -200,7 +200,7 @@ export function createInteractiveActivityController(input: {
       parts.push(`· exit ${String(inputSummary.exitCode)}`);
     }
     if ((inputSummary.pendingAskCount ?? 0) > 0) {
-      parts.push(`· 待确认 ${String(inputSummary.pendingAskCount)}`);
+      parts.push(`· pending ${String(inputSummary.pendingAskCount)}`);
     }
     const shouldShowStage = processSummaryDetail === "full"
       || inputSummary.result !== "ok"

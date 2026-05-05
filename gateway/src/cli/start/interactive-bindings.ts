@@ -182,33 +182,33 @@ export function createRunStartInteractiveModeInput(
       const theme = resolveStatusTheme(rawTheme);
       if (!theme) {
         input.output.writeStdout(
-          buildStatusThemeUsageSurface("无效状态主题"),
+          buildStatusThemeUsageSurface("Invalid status theme"),
         );
         return;
       }
       statusLineState.updateStatusLineConfig({ theme });
       input.output.writeStdout(
-        buildCompactNotice("已更新状态栏主题", [`主题 ${formatStatusThemeLabel(theme)}`]),
+        buildCompactNotice("Status theme updated", [`theme ${formatStatusThemeLabel(theme)}`]),
       );
     },
     setStatusLayoutMode: (rawLayoutMode) => {
       const layoutMode = resolveStatusLayoutMode(rawLayoutMode);
       if (!layoutMode) {
         input.output.writeStdout(
-          buildStatusLayoutUsageSurface("无效状态布局"),
+          buildStatusLayoutUsageSurface("Invalid status layout"),
         );
         return;
       }
       statusLineState.updateStatusLineConfig({ layoutMode });
       input.output.writeStdout(
-        buildCompactNotice("已更新状态栏布局", [`布局 ${formatStatusLayoutModeLabel(layoutMode)}`]),
+        buildCompactNotice("Status layout updated", [`layout ${formatStatusLayoutModeLabel(layoutMode)}`]),
       );
     },
     setStatusSegmentEnabled: (rawSegmentId, enabled) => {
       const segmentId = normalizeStatusSegmentId(rawSegmentId);
       if (!segmentId) {
         input.output.writeStdout(
-          buildStatusSegmentUsageSurface("无效状态段"),
+          buildStatusSegmentUsageSurface("Invalid status segment"),
         );
         return;
       }
@@ -219,9 +219,9 @@ export function createRunStartInteractiveModeInput(
       });
       const segmentLabel = formatStatusSegmentLabel(segmentId);
       input.output.writeStdout(
-        buildCompactNotice("已更新状态栏状态段", [
-          `状态段 ${segmentLabel}`,
-          enabled ? "已开启" : "已关闭",
+        buildCompactNotice("Status segment updated", [
+          `segment ${segmentLabel}`,
+          enabled ? "enabled" : "disabled",
         ]),
       );
     },

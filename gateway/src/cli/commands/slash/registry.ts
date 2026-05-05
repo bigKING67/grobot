@@ -38,7 +38,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       || userInput === "quit",
     execute: async () => "break",
     helpLines: [
-      "  /exit、/quit          退出交互模式",
+      "  /exit, /quit         Exit interactive mode",
     ],
   },
   {
@@ -49,7 +49,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /help                显示交互帮助",
+      "  /help                Show interactive help",
     ],
   },
   {
@@ -60,7 +60,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /sessions            打开会话操作菜单（新建/切换/恢复/回退/继续）",
+      "  /sessions            Open session menu (new/switch/resume/rewind/continue)",
     ],
   },
   {
@@ -74,21 +74,21 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       }
       if (isInteractiveTerminal()) {
         handlers.writeStdout(buildSlashNotice(
-          "已打开命令管理",
-          ["交互模式仅保留主入口 /commands。"],
+          "Command manager opened",
+          ["Interactive mode keeps /commands as the main entry."],
         ));
         await handlers.openCommandsMenu(controls.withInputPaused);
         return "continue";
       }
       handlers.writeStdout(buildSlashNotice(
-        "正在执行兼容子命令",
-        ["非交互模式仍支持该写法；交互模式建议使用 /commands 菜单。"],
+        "Running compatibility subcommand",
+        ["Non-interactive mode still supports this form; interactive mode should use the /commands menu."],
       ));
       await handlers.handleUserCommandsCommand(userInput);
       return "continue";
     },
     helpLines: [
-      "  /commands            打开用户命令管理器（仅 ~/.grobot/commands）",
+      "  /commands            Manage user commands (~/.grobot/commands only)",
     ],
   },
   {
@@ -98,8 +98,8 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       const parsed = parseSkillCreatorCommand(userInput);
       if (parsed.kind === "invalid") {
         handlers.writeStdout(buildSlashNotice(
-          "技能创建不可用",
-          [parsed.reason ?? "技能创建命令无效"],
+          "Skill creation unavailable",
+          [parsed.reason ?? "Invalid skill creation command"],
         ));
         return "continue";
       }
@@ -109,8 +109,8 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       }
       if (!isInteractiveTerminal()) {
         handlers.writeStdout(buildSlashNotice(
-          "需要提供技能需求",
-          [formatUsageLine("/skill-creator [需求]")],
+          "Skill requirement required",
+          [formatUsageLine("/skill-creator [requirement]")],
         ));
         return "continue";
       }
@@ -124,7 +124,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /skill-creator       根据需求创建技能（空输入时会询问）",
+      "  /skill-creator       Create a skill from requirements (prompts if empty)",
     ],
   },
   {
@@ -135,7 +135,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /health              查看模型通道状态",
+      "  /health              Show model provider health",
     ],
   },
   {
@@ -146,7 +146,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /init                创建带项目指令的 AGENTS.md",
+      "  /init                Create AGENTS.md project instructions",
     ],
   },
   {
@@ -157,7 +157,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /context             查看当前回合上下文组装状态",
+      "  /context             Show current turn context assembly status",
     ],
   },
   {
@@ -168,7 +168,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /memory              查看持久记忆层状态",
+      "  /memory              Show persistent memory status",
     ],
   },
   {
@@ -179,7 +179,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /skills              查看已配置技能目录和数量",
+      "  /skills              Show configured skill directories and counts",
     ],
   },
   {
@@ -190,7 +190,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /mcp                 查看 MCP 指令和服务状态",
+      "  /mcp                 Show MCP instructions and service status",
     ],
   },
   {
@@ -203,13 +203,13 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         return "continue";
       }
       if (parsed.kind === "legacy_subcommand" || parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "模型命令无效"}\n\n`);
+        handlers.writeStdout(`${parsed.reason ?? "Invalid model command"}\n\n`);
         return "continue";
       }
       return "continue";
     },
     helpLines: [
-      "  /model               打开模型选择器（同步模型配置）",
+      "  /model               Open model picker (syncs model config)",
     ],
   },
   {
@@ -218,8 +218,8 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     execute: async ({ userInput, controls, handlers }) => {
       if (isInteractiveTerminal()) {
         if (userInput.trim() !== "/status") {
-          handlers.writeStdout(buildSlashNotice("已打开状态栏菜单", [
-            "交互模式已收敛为主入口 /status。",
+          handlers.writeStdout(buildSlashNotice("Status bar menu opened", [
+            "Interactive mode uses /status as the main entry.",
           ]));
         }
         await handlers.openStatusMenu(controls.withInputPaused);
@@ -227,7 +227,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       }
       const parsed = parseStatusCommand(userInput);
       if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "状态栏命令无效"}\n\n`);
+        handlers.writeStdout(`${parsed.reason ?? "Invalid status bar command"}\n\n`);
         return "continue";
       }
       if (parsed.kind === "current") {
@@ -246,7 +246,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /status              查看/调整状态栏",
+      "  /status              View/change status bar",
     ],
   },
   {
@@ -255,14 +255,14 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     execute: async ({ userInput, handlers }) => {
       const parsed = parseHistoryCommand(userInput);
       if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "历史命令无效"}\n\n`);
+        handlers.writeStdout(`${parsed.reason ?? "Invalid history command"}\n\n`);
         return "continue";
       }
       await handlers.showHistory(parsed.query);
       return "continue";
     },
     helpLines: [
-      "  /history [keyword]   查看最近对话历史（可选关键词过滤）",
+      "  /history [keyword]   Show recent conversation history (optional keyword filter)",
     ],
   },
   {
@@ -320,15 +320,15 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
         return "continue";
       }
       if (parsed.kind === "invalid") {
-        handlers.writeStdout(buildSlashNotice("计划模式", [parsed.reason]));
+        handlers.writeStdout(buildSlashNotice("Plan mode", [parsed.reason]));
         return "continue";
       }
       return "continue";
     },
     helpLines: [
-      "  /plan                进入计划模式；已在计划中时显示当前计划状态",
-      "  /plan open           在编辑器中打开当前计划文件（交互模式）",
-      "  /plan <goal>         带目标进入计划模式并运行首轮规划",
+      "  /plan                Enter plan mode; show plan status if already planning",
+      "  /plan open           Open current plan file in editor (interactive mode)",
+      "  /plan <goal>         Enter plan mode with a goal and run first planning turn",
     ],
   },
   {
@@ -343,7 +343,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /interrupt           中断当前运行回合（Esc: 运行中=中断，计划空闲=退出）",
+      "  /interrupt           Interrupt current turn (Esc: running=interrupt, idle plan=exit)",
     ],
   },
   {
@@ -351,8 +351,8 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     matches: (userInput) => userInput === "/new",
     execute: async ({ controls, handlers }) => {
       if (isInteractiveTerminal()) {
-        handlers.writeStdout(buildSlashNotice("已打开会话菜单", [
-          "交互模式已收敛为主入口 /sessions。",
+        handlers.writeStdout(buildSlashNotice("Session menu opened", [
+          "Interactive mode uses /sessions as the main entry.",
         ]));
         await handlers.openSessionMenu("sessions", controls.withInputPaused);
         return "continue";
@@ -361,7 +361,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /new                 新建并切换到新会话",
+      "  /new                 Create and switch to a new session",
     ],
   },
   {
@@ -369,15 +369,15 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     matches: (userInput) => matchesInteractiveCommand(userInput, "/switch"),
     execute: async ({ userInput, controls, handlers }) => {
       if (isInteractiveTerminal()) {
-        handlers.writeStdout(buildSlashNotice("已打开会话菜单", [
-          "交互模式已收敛为主入口 /sessions。",
+        handlers.writeStdout(buildSlashNotice("Session menu opened", [
+          "Interactive mode uses /sessions as the main entry.",
         ]));
         await handlers.openSessionMenu("sessions", controls.withInputPaused);
         return "continue";
       }
       const parsed = parseSessionMenuCommand(userInput, "/switch");
       if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "切换会话命令无效"}\n\n`);
+        handlers.writeStdout(`${parsed.reason ?? "Invalid switch command"}\n\n`);
         return "continue";
       }
       if (parsed.kind === "legacy_with_id") {
@@ -387,7 +387,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /switch              打开会话切换器",
+      "  /switch              Open session switcher",
     ],
   },
   {
@@ -395,7 +395,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     matches: (userInput) => matchesInteractiveCommand(userInput, "/resume"),
     execute: executeResumeSlashCommand,
     helpLines: [
-      "  /resume [query]      打开完整恢复选择器（快速查询 /resume <query> 或 /resume find <id|title|summary|updated-at>）",
+      "  /resume [query]      Open full resume picker (quick query: /resume <query> or /resume find <id|title|summary|updated-at>)",
     ],
   },
   {
@@ -403,7 +403,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     matches: (userInput) => matchesInteractiveCommand(userInput, "/rewind"),
     execute: async (input) => executeRewindSlashCommand(input, "/rewind"),
     helpLines: [
-      "  /rewind [query]      按检查点查询回退当前会话，或打开回退菜单",
+      "  /rewind [query]      Query checkpoints to rewind current session, or open rewind menu",
     ],
   },
   {
@@ -411,7 +411,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     matches: (userInput) => matchesInteractiveCommand(userInput, "/checkpoint"),
     execute: async (input) => executeRewindSlashCommand(input, "/checkpoint"),
     helpLines: [
-      "  /checkpoint [query]  /rewind 的别名（支持查询和菜单）",
+      "  /checkpoint [query]  Alias for /rewind (supports query and menu)",
     ],
   },
   {
@@ -419,15 +419,15 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
     matches: (userInput) => matchesInteractiveCommand(userInput, "/continue"),
     execute: async ({ userInput, controls, handlers }) => {
       if (isInteractiveTerminal()) {
-        handlers.writeStdout(buildSlashNotice("已打开会话菜单", [
-          "交互模式已收敛为主入口 /sessions。",
+        handlers.writeStdout(buildSlashNotice("Session menu opened", [
+          "Interactive mode uses /sessions as the main entry.",
         ]));
         await handlers.openSessionMenu("sessions", controls.withInputPaused);
         return "continue";
       }
       const parsed = parseSessionMenuCommand(userInput, "/continue");
       if (parsed.kind === "invalid") {
-        handlers.writeStdout(`${parsed.reason ?? "继续会话命令无效"}\n\n`);
+        handlers.writeStdout(`${parsed.reason ?? "Invalid continue command"}\n\n`);
         return "continue";
       }
       if (parsed.kind === "legacy_with_id") {
@@ -437,7 +437,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /continue            打开 summary-bridge 选择器",
+      "  /continue            Open summary-bridge picker",
     ],
   },
   {
@@ -449,7 +449,7 @@ const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
       return "continue";
     },
     helpLines: [
-      "  /handoff             写入 HANDOFF.md",
+      "  /handoff             Write HANDOFF.md",
     ],
   },
 ];
@@ -504,26 +504,26 @@ const UTILITY_HELP_ORDER: readonly string[] = [
 ];
 
 const SLASH_COMMAND_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
-  { command: "/sessions", description: "打开会话菜单（新建/切换/恢复/回退/继续）" },
-  { command: "/resume", description: "恢复并完整还原历史会话" },
-  { command: "/rewind", description: "打开当前或选中会话的检查点回退菜单" },
-  { command: "/checkpoint", description: "/rewind 的别名（打开检查点回退菜单）" },
-  { command: "/commands", description: "管理用户自定义 / 命令" },
-  { command: "/skill-creator", description: "创建技能（可直接追加需求文本）" },
-  { command: "/history [keyword]", description: "按可选关键词查看最近历史" },
-  { command: "/init", description: "创建带项目指令的 AGENTS.md" },
-  { command: "/context", description: "查看当前回合上下文组装状态" },
-  { command: "/memory", description: "查看持久记忆层状态" },
-  { command: "/health", description: "查看模型通道状态" },
-  { command: "/skills", description: "查看已配置技能目录和数量" },
-  { command: "/mcp", description: "查看 MCP 指令和服务状态" },
-  { command: "/model", description: "打开模型选择器" },
-  { command: "/status", description: "查看当前状态栏配置快照" },
-  { command: "/plan", description: "进入计划模式；已在计划中时显示计划状态" },
-  { command: "/interrupt", description: "中断运行中回合（Esc: 运行中断，计划空闲退出）" },
-  { command: "/handoff", description: "写入 HANDOFF.md" },
-  { command: "/help", description: "显示交互帮助" },
-  { command: "/exit", description: "退出交互模式" },
+  { command: "/sessions", description: "Open session menu (new/switch/resume/rewind/continue)" },
+  { command: "/resume", description: "Resume and fully restore a historical session" },
+  { command: "/rewind", description: "Open checkpoint rewind menu for the current or selected session" },
+  { command: "/checkpoint", description: "Alias for /rewind (checkpoint rewind menu)" },
+  { command: "/commands", description: "Manage user custom slash commands" },
+  { command: "/skill-creator", description: "Create a skill (can append requirement text)" },
+  { command: "/history [keyword]", description: "Show recent history with optional keyword filter" },
+  { command: "/init", description: "Create AGENTS.md project instructions" },
+  { command: "/context", description: "Show current turn context assembly status" },
+  { command: "/memory", description: "Show persistent memory status" },
+  { command: "/health", description: "Show model provider health" },
+  { command: "/skills", description: "Show configured skill directories and counts" },
+  { command: "/mcp", description: "Show MCP instructions and service status" },
+  { command: "/model", description: "Open model picker" },
+  { command: "/status", description: "Show current status bar config snapshot" },
+  { command: "/plan", description: "Enter plan mode; show plan status if already planning" },
+  { command: "/interrupt", description: "Interrupt running turn (Esc: interrupt running, exit idle plan)" },
+  { command: "/handoff", description: "Write HANDOFF.md" },
+  { command: "/help", description: "Show interactive help" },
+  { command: "/exit", description: "Exit interactive mode" },
 ];
 
 const PLAN_MODE_BLOCKED_COMMANDS: Readonly<Record<string, string>> = {
@@ -571,11 +571,11 @@ export function listUtilitySlashCommandHelpLines(): string[] {
 
 export function listSlashCommandCompatibilityNotes(): string[] {
   return [
-    "  - /switch /continue 保留为兼容快捷入口；优先使用 /sessions + /resume + /rewind。",
-    "  - /checkpoint 是 /rewind 的别名。",
-    "  - 交互模式优先使用 /sessions 和 /status 菜单。",
-    "  - /plan 仅支持: /plan、/plan <goal>、/plan open。",
-    "  - 非交互脚本按需保留兼容快捷入口。",
+    "  - /switch and /continue remain compatibility shortcuts; prefer /sessions + /resume + /rewind.",
+    "  - /checkpoint is an alias for /rewind.",
+    "  - Interactive mode prefers /sessions and /status menus.",
+    "  - /plan supports only: /plan, /plan <goal>, /plan open.",
+    "  - Non-interactive scripts keep compatibility shortcuts as needed.",
   ];
 }
 
@@ -604,11 +604,11 @@ export async function dispatchSlashCommand(
     if (handlers.isPlanMode() && command.id in PLAN_MODE_BLOCKED_COMMANDS) {
       const commandName = PLAN_MODE_BLOCKED_COMMANDS[command.id] ?? `/${command.id}`;
       handlers.writeStdout(buildSlashNotice(
-        "计划模式中暂不可用",
+        "Unavailable in plan mode",
         [
           commandName,
-          "计划模式只接受计划相关操作。",
-          "可用入口 /plan、/plan open、/interrupt、/exit",
+          "Plan mode only accepts plan-related operations.",
+          "Available entries: /plan, /plan open, /interrupt, /exit",
         ],
       ));
       return "continue";

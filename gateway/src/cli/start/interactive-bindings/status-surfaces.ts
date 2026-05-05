@@ -27,13 +27,13 @@ export function createInteractiveStatusSurfaces(
     const allRows = input.runtimeState.getHistoryMessages();
     if (allRows.length === 0) {
       input.output.writeStdout(renderInfoPanel({
-        title: "对话历史",
-        subtitle: "最近对话记录",
+        title: "Conversation history",
+        subtitle: "Recent conversation records",
         sections: [
           {
             rows: [
               {
-                title: "暂无对话历史",
+                title: "No conversation history",
               },
             ],
           },
@@ -47,25 +47,25 @@ export function createInteractiveStatusSurfaces(
         ? allRows.filter((row) => row.content.toLowerCase().includes(query))
         : allRows;
     const renderRows = filteredRows.slice(-20);
-    const historySummaryLine = `总数 ${String(allRows.length)} · 匹配 ${String(filteredRows.length)} · 查询 ${query.length > 0 ? query : "无"} · 最近 ${String(renderRows.length)}`;
+    const historySummaryLine = `total ${String(allRows.length)} · matches ${String(filteredRows.length)} · query ${query.length > 0 ? query : "none"} · recent ${String(renderRows.length)}`;
     const historyWidth = Math.max(
       96,
       measureDisplayWidth(historySummaryLine) + 10,
       ...renderRows.map((row) =>
-        measureDisplayWidth(`${row.role === "assistant" ? "助手" : "用户"} ${compactSingleLine(row.content, 220)}`) + 10,
+        measureDisplayWidth(`${row.role === "assistant" ? "assistant" : "user"} ${compactSingleLine(row.content, 220)}`) + 10,
       ),
     );
 
     if (renderRows.length === 0) {
       input.output.writeStdout(renderInfoPanel({
-        title: "对话历史",
-        subtitle: "最近对话记录",
+        title: "Conversation history",
+        subtitle: "Recent conversation records",
         sections: [
           {
             rows: [
               {
-                title: `总数 ${String(allRows.length)} · 匹配 ${String(filteredRows.length)} · 查询 ${query.length > 0 ? query : "无"}`,
-                detailLines: ["没有匹配记录。"],
+                title: `total ${String(allRows.length)} · matches ${String(filteredRows.length)} · query ${query.length > 0 ? query : "none"}`,
+                detailLines: ["No matching records."],
               },
             ],
           },
@@ -76,15 +76,15 @@ export function createInteractiveStatusSurfaces(
     }
 
     input.output.writeStdout(renderInfoPanel({
-      title: "对话历史",
-      subtitle: "最近对话记录",
+      title: "Conversation history",
+      subtitle: "Recent conversation records",
       sections: [
         {
           rows: [
             {
               title: historySummaryLine,
               detailLines: renderRows.map((row) => {
-                const role = row.role === "assistant" ? "助手" : "用户";
+                const role = row.role === "assistant" ? "assistant" : "user";
                 return `${role} ${compactSingleLine(row.content, 220)}`;
               }),
             },
@@ -111,46 +111,46 @@ export function createInteractiveStatusSurfaces(
     const autoCompactLabel =
       typeof input.contextEngineConfig.autoCompactTokenLimit === "number"
         ? String(input.contextEngineConfig.autoCompactTokenLimit)
-        : "自动";
-    const contextSummaryLine = `上下文引擎 · ${input.contextEngineConfig.enabled ? "开启" : "关闭"} · 档位 ${input.contextEngineConfig.profile}`;
+        : "auto";
+    const contextSummaryLine = `Context engine · ${input.contextEngineConfig.enabled ? "on" : "off"} · profile ${input.contextEngineConfig.profile}`;
     const contextWidth = Math.max(
       96,
-      measureDisplayWidth("系统提示 · SYSTEM.md 内置") + 10,
+      measureDisplayWidth("System prompt · built-in SYSTEM.md") + 10,
       measureDisplayWidth(contextSummaryLine) + 10,
-      measureDisplayWidth(`窗口 ${typeof effectiveWindow === "number" ? String(effectiveWindow) : "未知"} · 自动压缩 ${autoCompactLabel}`) + 10,
-      measureDisplayWidth(`历史 ${String(input.runtimeState.getHistoryMessages().length)} 条`) + 10,
-      measureDisplayWidth(`项目指令 ${agentsInstructions.sources.length > 0 ? agentsInstructions.sources.join(",") : "无"}`) + 10,
-      measureDisplayWidth("记忆是可检索素材，不等同于当前上下文窗口") + 10,
+      measureDisplayWidth(`window ${typeof effectiveWindow === "number" ? String(effectiveWindow) : "unknown"} · auto compact ${autoCompactLabel}`) + 10,
+      measureDisplayWidth(`history ${String(input.runtimeState.getHistoryMessages().length)} messages`) + 10,
+      measureDisplayWidth(`project instructions ${agentsInstructions.sources.length > 0 ? agentsInstructions.sources.join(",") : "none"}`) + 10,
+      measureDisplayWidth("Memory is retrieval material, not the current context window") + 10,
     );
 
     input.output.writeStdout(renderInfoPanel({
-      title: "上下文",
-      subtitle: "每轮发送前组装的上下文窗口",
+      title: "Context",
+      subtitle: "Context window assembled before each turn",
       sections: [
         {
           rows: [
             {
-              title: "系统提示 · SYSTEM.md 内置",
+              title: "System prompt · built-in SYSTEM.md",
             },
             {
               title: contextSummaryLine,
               detailLines: [
-                `窗口 ${typeof effectiveWindow === "number" ? String(effectiveWindow) : "未知"} · 自动压缩 ${autoCompactLabel}`,
-                `历史 ${String(input.runtimeState.getHistoryMessages().length)} 条`,
+                `window ${typeof effectiveWindow === "number" ? String(effectiveWindow) : "unknown"} · auto compact ${autoCompactLabel}`,
+                `history ${String(input.runtimeState.getHistoryMessages().length)} messages`,
               ],
             },
             {
-              title: "项目指令",
+              title: "Project instructions",
               detailLines: [
                 agentsInstructions.sources.length > 0
                   ? agentsInstructions.sources.join(",")
-                  : "无",
+                  : "none",
               ],
             },
             {
-              title: "关系",
+              title: "Relationship",
               detailLines: [
-                "记忆是可检索素材，不等同于当前上下文窗口",
+                "Memory is retrieval material, not the current context window",
               ],
             },
           ],
@@ -164,46 +164,46 @@ export function createInteractiveStatusSurfaces(
     const policy = input.memoryOrchestrator.policySnapshot();
     const sessionKey = input.runtimeState.getSessionKey();
     const gaState = input.gaMechanismRuntime.snapshotSession(sessionKey);
-    const memorySummaryLine = `记忆编排 · ${policy.enabled ? "开启" : "关闭"} · 版本 ${policy.version}`;
+    const memorySummaryLine = `Memory orchestration · ${policy.enabled ? "on" : "off"} · version ${policy.version}`;
     const memoryWidth = Math.max(
       96,
       measureDisplayWidth(memorySummaryLine) + 10,
-      measureDisplayWidth(`预算比例 ${policy.injectBudgetRatio.toFixed(2)} · 单段上限 ${String(policy.maxSectionTokens)}`) + 10,
-      measureDisplayWidth(`个人记忆 ${String(policy.maxGaMemoryRows)} 行 · 团队经验 ${String(policy.maxTeamExperienceRows)} 行 · 团队最低分 ${policy.minTeamExperienceScore.toFixed(2)}`) + 10,
-      measureDisplayWidth(`最大行 ${String(policy.decayMaxRowsPerSession)} · 最小保留 ${String(policy.decayMinRowsToKeep)}`) + 10,
-      measureDisplayWidth(`记忆 ${String(gaState?.memory.length ?? 0)} 条 · 技能卡 ${String(gaState?.skillCards.length ?? 0)} 张 · 反思 ${String(gaState?.reflectionQueue.length ?? 0)} 条 · 待处理询问 ${String(gaState?.pendingAskQueue?.length ?? 0)} 项`) + 10,
-      measureDisplayWidth("记忆是持久素材，只有被选中的片段会进入当前上下文窗口") + 10,
+      measureDisplayWidth(`budget ratio ${policy.injectBudgetRatio.toFixed(2)} · max section ${String(policy.maxSectionTokens)}`) + 10,
+      measureDisplayWidth(`personal memory ${String(policy.maxGaMemoryRows)} rows · team experience ${String(policy.maxTeamExperienceRows)} rows · min team score ${policy.minTeamExperienceScore.toFixed(2)}`) + 10,
+      measureDisplayWidth(`max rows ${String(policy.decayMaxRowsPerSession)} · min keep ${String(policy.decayMinRowsToKeep)}`) + 10,
+      measureDisplayWidth(`memory ${String(gaState?.memory.length ?? 0)} · skill cards ${String(gaState?.skillCards.length ?? 0)} · reflections ${String(gaState?.reflectionQueue.length ?? 0)} · pending asks ${String(gaState?.pendingAskQueue?.length ?? 0)}`) + 10,
+      measureDisplayWidth("Memory is persistent material; only selected snippets enter the current context window") + 10,
     );
 
     input.output.writeStdout(renderInfoPanel({
-      title: "记忆",
-      subtitle: "跨回合、跨会话、跨项目的持久记忆",
+      title: "Memory",
+      subtitle: "Persistent memory across turns, sessions, projects",
       sections: [
         {
           rows: [
             {
               title: memorySummaryLine,
               detailLines: [
-                `预算比例 ${policy.injectBudgetRatio.toFixed(2)} · 单段上限 ${String(policy.maxSectionTokens)}`,
-                `个人记忆 ${String(policy.maxGaMemoryRows)} 行 · 团队经验 ${String(policy.maxTeamExperienceRows)} 行 · 团队最低分 ${policy.minTeamExperienceScore.toFixed(2)}`,
+                `budget ratio ${policy.injectBudgetRatio.toFixed(2)} · max section ${String(policy.maxSectionTokens)}`,
+                `personal memory ${String(policy.maxGaMemoryRows)} rows · team experience ${String(policy.maxTeamExperienceRows)} rows · min team score ${policy.minTeamExperienceScore.toFixed(2)}`,
               ],
             },
             {
-              title: `衰减 · ${policy.decayEnabled ? "开启" : "关闭"}`,
+              title: `Decay · ${policy.decayEnabled ? "on" : "off"}`,
               detailLines: [
-                `最大行 ${String(policy.decayMaxRowsPerSession)} · 最小保留 ${String(policy.decayMinRowsToKeep)}`,
+                `max rows ${String(policy.decayMaxRowsPerSession)} · min keep ${String(policy.decayMinRowsToKeep)}`,
               ],
             },
             {
-              title: "当前会话记忆",
+              title: "Current session memory",
               detailLines: [
-                `记忆 ${String(gaState?.memory.length ?? 0)} 条 · 技能卡 ${String(gaState?.skillCards.length ?? 0)} 张 · 反思 ${String(gaState?.reflectionQueue.length ?? 0)} 条 · 待处理询问 ${String(gaState?.pendingAskQueue?.length ?? 0)} 项`,
+                `memory ${String(gaState?.memory.length ?? 0)} · skill cards ${String(gaState?.skillCards.length ?? 0)} · reflections ${String(gaState?.reflectionQueue.length ?? 0)} · pending asks ${String(gaState?.pendingAskQueue?.length ?? 0)}`,
               ],
             },
             {
-              title: "关系",
+              title: "Relationship",
               detailLines: [
-                "记忆是持久素材，只有被选中的片段会进入当前上下文窗口",
+                "Memory is persistent material; only selected snippets enter the current context window",
               ],
             },
           ],
@@ -228,20 +228,20 @@ export function createInteractiveStatusSurfaces(
     const serverNames =
       input.mcpInstructionServerNames.length > 0
         ? input.mcpInstructionServerNames.join(",")
-        : "无";
-    const mcpSummaryLine = `服务 · ${serverNames}`;
+        : "none";
+    const mcpSummaryLine = `Services · ${serverNames}`;
     const mcpWidth = Math.max(
       96,
       measureDisplayWidth(mcpSummaryLine) + 10,
-      measureDisplayWidth(`指令包 · ${hasInstructionPack ? "已加载" : "无"}`) + 10,
-      measureDisplayWidth(`指令检查 ${input.mcpInstructionStrictFailure ?? "通过"}`) + 10,
-      measureDisplayWidth("代理按需选择 MCP 服务与工具") + 10,
-      measureDisplayWidth("/health 查看模型通道；启动时会提示 MCP 指令注入") + 10,
+      measureDisplayWidth(`instruction pack · ${hasInstructionPack ? "loaded" : "none"}`) + 10,
+      measureDisplayWidth(`instruction check ${input.mcpInstructionStrictFailure ?? "passed"}`) + 10,
+      measureDisplayWidth("Agent selects MCP services and tools as needed") + 10,
+      measureDisplayWidth("/health shows model providers; startup reports MCP instruction injection") + 10,
     );
 
     input.output.writeStdout(renderInfoPanel({
       title: "MCP",
-      subtitle: "服务清单与指令注入状态",
+      subtitle: "Service list and instruction injection status",
       sections: [
         {
           rows: [
@@ -249,17 +249,17 @@ export function createInteractiveStatusSurfaces(
               title: mcpSummaryLine,
             },
             {
-              title: `指令包 · ${hasInstructionPack ? "已加载" : "无"}`,
+              title: `Instruction pack · ${hasInstructionPack ? "loaded" : "none"}`,
               detailLines: [
-                `指令检查 ${input.mcpInstructionStrictFailure ?? "通过"}`,
-                "代理按需选择 MCP 服务与工具",
+                `instruction check ${input.mcpInstructionStrictFailure ?? "passed"}`,
+                "Agent selects MCP services and tools as needed",
               ],
             },
           ],
         },
       ],
       footerLines: [
-        "/health 查看模型通道；启动时会提示 MCP 指令注入",
+        "/health shows model providers; startup reports MCP instruction injection",
       ],
       terminalColumns: mcpWidth,
     }));

@@ -7,23 +7,23 @@ import {
 import { renderInfoPanel } from "../../tui/components/info-panel/render";
 
 const STATUS_SEGMENT_LABELS: Record<StatusLineSegmentId, string> = {
-  model: "模型",
-  project: "项目",
-  context: "上下文",
+  model: "Model",
+  project: "Project",
+  context: "Context",
   tokens: "Token",
-  session: "会话",
+  session: "Session",
 };
 
 const STATUS_THEME_LABELS: Record<StatusLineTheme, string> = {
-  plain: "极简",
-  ccline: "双行",
-  nerd_font: "图标增强",
+  plain: "Plain",
+  ccline: "Two-line",
+  nerd_font: "Nerd font",
 };
 
 const STATUS_LAYOUT_MODE_LABELS: Record<StatusLineLayoutMode, string> = {
-  adaptive: "自适应",
-  full: "完整",
-  compact: "紧凑",
+  adaptive: "Adaptive",
+  full: "Full",
+  compact: "Compact",
 };
 
 export function formatStatusSegmentLabel(
@@ -44,7 +44,7 @@ export function formatStatusSegmentStateLine(
   segmentId: StatusLineSegmentId,
   enabled: boolean,
 ): string {
-  return `${formatStatusSegmentLabel(segmentId)} ${enabled ? "开启" : "关闭"}`;
+  return `${formatStatusSegmentLabel(segmentId)} ${enabled ? "on" : "off"}`;
 }
 
 export function normalizeStatusSegmentId(
@@ -82,30 +82,30 @@ export function formatStatusLineCurrentSnapshot(
     )
     .join(", ");
   return renderInfoPanel({
-    title: "状态栏",
-    subtitle: "当前底部状态配置",
+    title: "Status bar",
+    subtitle: "Current bottom status config",
     sections: [
       {
         rows: [
           {
-            title: `状态 · ${config.enabled ? "开启" : "关闭"}`,
+            title: `Status · ${config.enabled ? "on" : "off"}`,
             detailLines: [
-              `布局 ${formatStatusLayoutModeLabel(config.layoutMode)} · 主题 ${formatStatusThemeLabel(config.theme)}`,
-              `分隔符 ${JSON.stringify(config.separator)}`,
+              `layout ${formatStatusLayoutModeLabel(config.layoutMode)} · theme ${formatStatusThemeLabel(config.theme)}`,
+              `separator ${JSON.stringify(config.separator)}`,
             ],
           },
           {
-            title: "状态段",
+            title: "Status segments",
             detailLines: [
               segmentText,
             ],
           },
           {
-            title: "阈值与缓存",
+            title: "Thresholds and cache",
             detailLines: [
-              `提醒阈值 ${String(Math.round(config.warningThresholdRatio * 100))}% · 危险阈值 ${String(Math.round(config.criticalThresholdRatio * 100))}%`,
-              `预算快照缓存 ${String(config.budgetSnapshotCacheTtlMs)}ms · 会话主题缓存 ${String(config.sessionTopicCacheTtlMs)}ms`,
-              `会话主题宽度 ${String(config.sessionTopicMaxWidth)}`,
+              `warning threshold ${String(Math.round(config.warningThresholdRatio * 100))}% · critical threshold ${String(Math.round(config.criticalThresholdRatio * 100))}%`,
+              `budget snapshot cache ${String(config.budgetSnapshotCacheTtlMs)}ms · session topic cache ${String(config.sessionTopicCacheTtlMs)}ms`,
+              `session topic width ${String(config.sessionTopicMaxWidth)}`,
             ],
           },
         ],
@@ -118,32 +118,32 @@ function buildStatusUsageSurface(title: string, command: string): string {
   return renderInfoPanel({
     title,
     sections: [{
-      title: "可用入口",
+      title: "Available entry",
       rows: [{
-        title: `用法 ${command}`,
+        title: `Usage ${command}`,
       }],
     }],
   });
 }
 
-export function buildStatusThemeUsageSurface(title = "无效状态主题"): string {
+export function buildStatusThemeUsageSurface(title = "Invalid status theme"): string {
   return buildStatusUsageSurface(
     title,
-    "/status 主题 <极简|双行|图标增强>",
+    "/status theme <plain|ccline|nerd_font>",
   );
 }
 
-export function buildStatusLayoutUsageSurface(title = "无效状态布局"): string {
+export function buildStatusLayoutUsageSurface(title = "Invalid status layout"): string {
   return buildStatusUsageSurface(
     title,
-    "/status 布局 <自适应|完整|紧凑>",
+    "/status layout <adaptive|full|compact>",
   );
 }
 
-export function buildStatusSegmentUsageSurface(title = "无效状态段"): string {
+export function buildStatusSegmentUsageSurface(title = "Invalid status segment"): string {
   return buildStatusUsageSurface(
     title,
-    "/status 状态段 <模型|项目|上下文|Token|会话> <开启|关闭>",
+    "/status segment <model|project|context|tokens|session> <on|off>",
   );
 }
 

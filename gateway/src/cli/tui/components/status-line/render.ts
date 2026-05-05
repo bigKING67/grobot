@@ -113,9 +113,9 @@ function formatContextLeft(input: {
 }): string {
   const leftPercent = resolveContextLeftPercent(input);
   if (typeof leftPercent !== "number") {
-    return "n/a 剩余";
+    return "n/a left";
   }
-  return `剩余 ${String(leftPercent)}%`;
+  return `${String(leftPercent)}% left`;
 }
 
 function formatWindowUsage(input: {
@@ -226,7 +226,7 @@ function resolveStatusSegmentLabel(input: {
   const plainFull: Record<StatusLineSegmentId, string> = {
     model: "",
     project: "",
-    context: "上下文",
+    context: "context",
     tokens: "",
     session: "",
   };
@@ -436,8 +436,8 @@ function buildWarningLine(input: {
   const level =
     ratio >= input.config.criticalThresholdRatio ? "critical" : "warning";
   const icon = input.config.theme === "nerd_font" ? "" : "!";
-  const label = input.config.theme === "ccline" ? "ctx" : "上下文";
-  const stateLabel = level === "critical" ? "已到上限" : "接近上限";
+  const label = input.config.theme === "ccline" ? "ctx" : "context";
+  const stateLabel = level === "critical" ? "limit reached" : "near limit";
   return `${icon} ${label} ${Math.round(ratio * 100)}% · ${stateLabel}`;
 }
 
@@ -459,7 +459,7 @@ function resolvePlanModeBadge(input: {
   if (!input.prompt.planMode) {
     return undefined;
   }
-  const label = compactSpaces(input.prompt.planModeLabel ?? "计划模式");
+  const label = compactSpaces(input.prompt.planModeLabel ?? "plan mode");
   if (!label) {
     return undefined;
   }

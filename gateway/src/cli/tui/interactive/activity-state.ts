@@ -146,35 +146,35 @@ function detailFromParts(parts: string[]): string | undefined {
 function humanFieldLabel(label: string): string {
   switch (label) {
     case "provider":
-      return "通道";
+      return "provider";
     case "timeout":
-      return "超时";
+      return "timeout";
     case "reason":
-      return "原因";
+      return "reason";
     case "retry":
-      return "重试";
+      return "retry";
     case "selected":
-      return "路由";
+      return "route";
     case "strategy":
-      return "策略";
+      return "strategy";
     case "stage":
-      return "阶段";
+      return "stage";
     case "util":
-      return "利用率";
+      return "usage";
     case "overall":
-      return "质量";
+      return "quality";
     case "coverage":
-      return "覆盖";
+      return "coverage";
     case "symbol":
-      return "符号";
+      return "symbols";
     case "deps":
-      return "依赖";
+      return "deps";
     case "event":
-      return "事件";
+      return "event";
     case "phase":
-      return "阶段";
+      return "phase";
     case "status":
-      return "状态";
+      return "status";
     default:
       return label;
   }
@@ -186,11 +186,11 @@ function humanFieldValue(label: string, value: string): string {
   if (label === "strategy") {
     switch (key) {
       case "sticky+score":
-        return "会话优先 + 评分";
+        return "session first + score";
       case "quality_first":
-        return "质量优先";
+        return "quality first";
       case "hard_budget":
-        return "硬预算";
+        return "hard budget";
       default:
         break;
     }
@@ -198,15 +198,15 @@ function humanFieldValue(label: string, value: string): string {
   if (label === "stage" || label === "phase") {
     switch (key) {
       case "normal":
-        return "正常";
+        return "normal";
       case "proactive":
-        return "主动压缩";
+        return "proactive compact";
       case "forced":
-        return "强制压缩";
+        return "forced compact";
       case "minimal":
-        return "最小上下文";
+        return "minimal context";
       case "planning":
-        return "规划中";
+        return "planning";
       default:
         break;
     }
@@ -214,17 +214,17 @@ function humanFieldValue(label: string, value: string): string {
   if (label === "status") {
     switch (key) {
       case "applied":
-        return "已应用";
+        return "applied";
       case "warning":
-        return "告警";
+        return "warning";
       case "degraded":
-        return "降级";
+        return "degraded";
       case "empty":
-        return "暂无结果";
+        return "empty";
       case "success":
-        return "成功";
+        return "success";
       case "failed":
-        return "失败";
+        return "failed";
       default:
         break;
     }
@@ -232,39 +232,39 @@ function humanFieldValue(label: string, value: string): string {
   if (label === "event") {
     switch (key) {
       case "maintenance_skipped":
-        return "跳过维护";
+        return "maintenance skipped";
       case "maintenance":
-        return "执行维护";
+        return "maintenance";
       case "maintenance_failed":
-        return "维护失败";
+        return "maintenance failed";
       case "task_skipped":
-        return "跳过任务";
+        return "task skipped";
       case "task_triggered":
-        return "已触发任务";
+        return "task triggered";
       case "task_finished":
-        return "任务已结束";
+        return "task finished";
       case "task_failed":
-        return "任务失败";
+        return "task failed";
       case "context_injected":
-        return "已注入记忆上下文";
+        return "memory context injected";
       case "context_skipped":
-        return "跳过记忆上下文";
+        return "memory context skipped";
       case "prompt_injected":
-        return "已注入提示";
+        return "prompt injected";
       case "prompt_skipped":
-        return "跳过提示注入";
+        return "prompt skipped";
       case "strict_failure":
-        return "指令检查失败";
+        return "instruction check failed";
       case "policy_injected":
-        return "已注入策略";
+        return "policy injected";
       case "requested":
-        return "已请求";
+        return "requested";
       case "applied":
-        return "已应用";
+        return "applied";
       case "ignored":
-        return "已忽略";
+        return "ignored";
       case "rejected":
-        return "已拒绝";
+        return "rejected";
       default:
         break;
     }
@@ -272,21 +272,21 @@ function humanFieldValue(label: string, value: string): string {
   if (label === "reason") {
     switch (key) {
       case "no_active_turn":
-        return "当前没有运行任务";
+        return "no active turn";
       case "turn_completed_before_abort":
-        return "任务已结束";
+        return "turn already completed";
       case "active_turn":
-        return "当前任务运行中";
+        return "active turn";
       case "pending_ask":
       case "ask_user_interrupt":
       case "ask_user_pending_followup":
-        return "等待人工确认";
+        return "waiting for confirmation";
       case "plan_mode":
-        return "计划模式中";
+        return "plan mode";
       case "budget_or_no_signal":
-        return "预算或信号不足";
+        return "budget or signal insufficient";
       case "circuit_open":
-        return "熔断中";
+        return "circuit open";
       default:
         break;
     }
@@ -305,9 +305,9 @@ function humanDiagnosticTopic(tag: string): string | undefined {
   const topic = tag.slice(colonIndex + 1);
   switch (topic) {
     case "mcp-instruction":
-      return "MCP 指令";
+      return "MCP instructions";
     case "search-route":
-      return "搜索路由";
+      return "search route";
     default:
       return topic.replace(/[-_]+/g, " ");
   }
@@ -328,7 +328,7 @@ function promptBudgetDetail(body: string): string | undefined {
   const utilization = selectedUtilization ?? extractField(body, "utilization");
   return detailFromParts([
     fieldDetail("stage", stage),
-    estimatedTokens && targetLimit ? `预算 ${estimatedTokens}/${targetLimit}` : "",
+    estimatedTokens && targetLimit ? `budget ${estimatedTokens}/${targetLimit}` : "",
     fieldDetail("util", utilization),
   ]);
 }
@@ -340,7 +340,7 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
     const timeoutMs = extractField(body, "timeout_ms");
     return {
       stageId: "runtime_model",
-      text: "正在准备模型请求参数",
+      text: "Preparing model request",
       detail: detailFromParts([
         fieldDetail("provider", provider),
         fieldDetail("timeout", timeoutMs ? `${timeoutMs}ms` : undefined),
@@ -350,14 +350,14 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
   if (tag === "execution") {
     return {
       stageId: "execution_done",
-      text: "模型响应已返回，正在整理输出",
-      detail: "整理最终回复",
+      text: "Model response received; formatting output",
+      detail: "formatting final reply",
     };
   }
   if (tag === "governance" || tag.startsWith("governance:")) {
     return {
       stageId: "governance",
-      text: "正在执行治理与路由策略检查",
+      text: "Checking governance and routing policy",
       detail: humanDiagnosticTopic(tag),
     };
   }
@@ -365,7 +365,7 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
     if (body.includes("all provider circuits are OPEN")) {
       return {
         stageId: "runtime_route_open_circuit",
-        text: "所有模型通道暂不可用",
+        text: "All model providers unavailable",
         status: "warning",
       };
     }
@@ -377,8 +377,8 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
       return {
         stageId: "runtime_retry",
         text: backoffMs
-          ? `上游限流，${backoffMs}ms 后重试`
-          : "上游限流，正在重试请求",
+          ? `Upstream rate limited; retrying in ${backoffMs}ms`
+          : "Upstream rate limited; retrying request",
         detail: detailFromParts([
           fieldDetail("provider", provider),
           fieldDetail("reason", reason),
@@ -392,17 +392,17 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
       const stickyHit = extractField(body, "sticky_hit");
       return {
         stageId: "runtime_route_decision",
-        text: "正在选择模型路由",
+        text: "Choosing model route",
         detail: detailFromParts([
           fieldDetail("selected", selected),
-          stickyHit === "true" ? "复用会话通道" : "",
+          stickyHit === "true" ? "reuse session provider" : "",
           fieldDetail("strategy", strategy),
         ]),
       };
     }
     return {
       stageId: "runtime_route",
-      text: "正在执行模型路由",
+      text: "Running model route",
     };
   }
   if (tag === "context-engine") {
@@ -411,27 +411,27 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
       if (status === "applied") {
         return {
           stageId: "context_prefetch_applied",
-          text: "正在补充语义证据",
+          text: "Adding semantic evidence",
           detail: fieldDetail("status", status),
         };
       }
       if (status === "warning" || status === "degraded") {
         return {
           stageId: "context_prefetch_degraded",
-          text: "语义证据部分可用，继续执行",
+          text: "Semantic evidence partially available; continuing",
           detail: fieldDetail("status", status),
           status: "warning",
         };
       }
       return {
         stageId: "context_prefetch",
-        text: "正在尝试语义证据预取",
+        text: "Trying semantic evidence prefetch",
       };
     }
     if (event === "prompt_quality") {
       return {
         stageId: "context_quality",
-        text: "正在评估提示词质量",
+        text: "Evaluating prompt quality",
         detail: detailFromParts([
           fieldDetail("overall", extractField(body, "overall")),
           fieldDetail("coverage", extractField(body, "coverage")),
@@ -441,7 +441,7 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
     if (event === "graph_cache_stats") {
       return {
         stageId: "context_graph_cache",
-        text: "正在校准上下文证据",
+        text: "Calibrating context evidence",
         detail: detailFromParts([
           fieldDetail("symbol", extractField(body, "quality_symbol_rows")),
           fieldDetail("deps", extractField(body, "quality_dependency_rows")),
@@ -451,14 +451,14 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
     if (event === "prompt_prepared" || event === "quality_guard_precompact" || event === "downshift_precompact") {
       return {
         stageId: "context_prepare",
-        text: "正在整理上下文窗口",
+        text: "Preparing context window",
         detail: promptBudgetDetail(body),
       };
     }
     if (event?.startsWith("pre_send_")) {
       return {
         stageId: "context_pre_send",
-        text: "正在压缩上下文以适配预算",
+        text: "Compacting context to fit budget",
         detail: detailFromParts([
           fieldDetail("stage", extractField(body, "stage")),
           fieldDetail("strategy", extractField(body, "strategy")),
@@ -474,7 +474,7 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
     ) {
       return {
         stageId: "context_recovery",
-        text: "正在执行上下文恢复策略",
+        text: "Running context recovery strategy",
         detail: detailFromParts([
           fieldDetail("provider", extractField(body, "provider")),
           fieldDetail("reason", extractField(body, "reason")),
@@ -484,151 +484,151 @@ function resolveProgressTextFromDiagnostic(tag: string, body: string): ActivityU
     }
     return {
       stageId: "context_engine",
-      text: "正在构建上下文",
+      text: "Building context",
     };
   }
   if (tag === "ask-user") {
     if (event === "interrupt_received") {
       return {
         stageId: "ask_user_waiting",
-        text: "等待你确认后继续执行",
-        detail: "在输入框回复",
+        text: "Waiting for confirmation",
+        detail: "reply in input",
       };
     }
     if (event === "clarification_hint_injected") {
       return {
         stageId: "ask_user_clarify",
-        text: "正在补充澄清提示",
-        detail: "澄清上下文",
+        text: "Adding clarification prompt",
+        detail: "clarification context",
       };
     }
     return {
       stageId: "ask_user",
-      text: "正在处理用户确认流程",
+      text: "Processing confirmation flow",
     };
   }
   if (tag === "plan-mode") {
     if (event === "enter_started") {
       return {
         stageId: "plan_enter_started",
-        text: "正在进入计划模式",
+        text: "Entering plan mode",
       };
     }
     if (event === "draft_created") {
       return {
         stageId: "plan_draft_created",
-        text: "计划草稿已创建，正在补充目标上下文",
+        text: "Plan draft created; adding goal context",
       };
     }
     if (event === "progress_saved") {
       return {
         stageId: "plan_progress_saved",
-        text: "正在记录你的补充要求",
+        text: "Recording your additional requirements",
       };
     }
     if (event === "model_planning") {
       return {
         stageId: "plan_model_planning",
-        text: "Grobot 正在规划实现方案",
+        text: "Grobot is planning the implementation",
         detail: fieldDetail("phase", extractField(body, "phase")),
       };
     }
     if (event === "model_returned") {
       return {
         stageId: "plan_model_returned",
-        text: "计划草稿已返回，正在保存",
+        text: "Plan draft returned; saving",
       };
     }
     if (event === "proposed_plan_ingested") {
       return {
         stageId: "plan_file_updated",
-        text: "正在更新计划文件",
+        text: "Updating plan file",
       };
     }
     if (event === "review_started") {
       return {
         stageId: "plan_review_started",
-        text: "正在检查计划是否可执行",
+        text: "Checking whether the plan is executable",
       };
     }
     if (event === "review_needs_refinement") {
       return {
         stageId: "plan_review_refinement",
-        text: "计划需要补充细节",
+        text: "Plan needs more detail",
         status: "warning",
       };
     }
     if (event === "plan_updated") {
       return {
         stageId: "plan_updated",
-        text: "计划已更新，等待继续细化",
+        text: "Plan updated; waiting for refinement",
         status: "done",
       };
     }
     if (event === "approval_waiting") {
       return {
         stageId: "plan_approval_waiting",
-        text: "等待你确认计划",
-        detail: "确认执行或继续规划",
+        text: "Waiting for plan confirmation",
+        detail: "confirm execution or keep planning",
       };
     }
     if (event === "apply_review_started") {
       return {
         stageId: "plan_apply_review_started",
-        text: "正在复核已批准计划",
+        text: "Reviewing approved plan",
       };
     }
     if (event === "apply_model_running") {
       return {
         stageId: "plan_apply_model_running",
-        text: "正在执行已批准计划",
+        text: "Executing approved plan",
       };
     }
     if (event === "apply_finished") {
       return {
         stageId: "plan_apply_finished",
-        text: "已按计划完成执行，正在收尾",
+        text: "Plan execution finished; wrapping up",
         status: "done",
       };
     }
     return {
       stageId: "plan_mode",
-      text: "正在处理计划模式流程",
+      text: "Processing plan-mode flow",
       detail: fieldDetail("event", event),
     };
   }
   if (tag === "experience" && event === "publish_skipped") {
     return {
       stageId: "experience_skip",
-      text: "当前轮触发人工确认，跳过经验沉淀",
-      detail: "等待人工确认",
+      text: "Confirmation requested; skipping experience capture",
+      detail: "waiting for confirmation",
     };
   }
   if (tag === "experience-pool" || tag === "experience-scheduler") {
     return {
       stageId: "experience_maintenance",
-      text: "正在维护经验池与调度任务",
+      text: "Maintaining experience pool and scheduled tasks",
       detail: fieldDetail("event", event),
     };
   }
   if (tag === "memory-orchestrator") {
     return {
       stageId: "memory_maintenance",
-      text: "正在维护记忆策略与质量窗口",
+      text: "Maintaining memory policy and quality window",
       detail: fieldDetail("event", event),
     };
   }
   if (tag === "interrupt") {
     return {
       stageId: "interrupt",
-      text: "正在处理中断请求",
+      text: "Processing interrupt request",
       detail: fieldDetail("event", event),
     };
   }
   if (tag === "reflection") {
     return {
       stageId: "reflection",
-      text: "正在生成复盘建议",
+      text: "Generating reflection suggestions",
     };
   }
   return undefined;
@@ -716,8 +716,8 @@ export function createInteractiveActivityTracker(
         stageId: inputStart?.stageId ?? (inputStart?.planMode ? "plan_turn_start" : "turn_start"),
         text: inputStart?.text
           ?? (inputStart?.planMode
-            ? "正在读取目标并准备计划上下文"
-            : "正在读取任务并准备上下文"),
+            ? "Reading goal and preparing plan context"
+            : "Reading task and preparing context"),
         detail: inputStart?.detail,
       });
     },
@@ -731,14 +731,14 @@ export function createInteractiveActivityTracker(
       if (status === "interrupted") {
         setActivity({
           stageId: "turn_finished_interrupted",
-          text: "执行已中断",
+          text: "Execution interrupted",
           status: "warning",
         });
         return;
       }
       setActivity({
         stageId: "turn_finished_error",
-        text: "执行失败，请查看错误输出",
+        text: "Execution failed; see error output",
         status: "error",
       });
     },

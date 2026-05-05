@@ -157,10 +157,10 @@ const payload = {
     !startupInteractive.includes("Enter message")
     && !startupInteractive.includes("/ for commands")
     && !startupInteractive.includes("? for shortcuts"),
-  startup_has_tips_title: startupInteractive.includes("开始使用"),
-  startup_has_recent_activity_title: startupInteractive.includes("最近活动"),
+  startup_has_tips_title: startupInteractive.includes("Get started"),
+  startup_has_recent_activity_title: startupInteractive.includes("Recent activity"),
   startup_has_recent_activity_empty_or_items:
-    startupInteractive.includes("暂无最近活动")
+    startupInteractive.includes("No recent activity")
     || startupInteractive.includes("2h ago  Session planning update"),
   startup_has_developed_by_67:
     stripAnsi(startupBrandSymbolInteractive).includes("Grobot 0.1.0 developed by 67"),
@@ -171,13 +171,13 @@ const payload = {
   startup_interactive_title_has_muted_version_color:
     startupBrandSymbolInteractive.includes("\x1b[90m 0.1.0 developed by 67\x1b[0m"),
   startup_feed_title_uses_brand_color:
-    startupBrandSymbolInteractive.includes("\x1b[38;2;202;124;94m开始使用"),
+    startupBrandSymbolInteractive.includes("\x1b[38;2;202;124;94mGet started"),
   startup_feed_title_avoids_accent_color:
-    !startupBrandSymbolInteractive.includes("\x1b[92m开始使用"),
+    !startupBrandSymbolInteractive.includes("\x1b[92mGet started"),
   startup_feed_footer_uses_muted_color:
-    startupBrandSymbolInteractive.includes("\x1b[90m/sessions 查看更多"),
+    startupBrandSymbolInteractive.includes("\x1b[90m/sessions for more"),
   startup_feed_footer_avoids_info_color:
-    !startupBrandSymbolInteractive.includes("\x1b[96m/sessions 查看更多"),
+    !startupBrandSymbolInteractive.includes("\x1b[96m/sessions for more"),
   startup_has_no_join_artifact: startupNoJoinArtifact,
   startup_has_no_tee_glyph: startupNoTeeGlyph,
   startup_has_no_outer_round_frame: startupHasNoOuterRoundFrame,
@@ -194,9 +194,9 @@ const payload = {
   menu_interactive_has_current_check: menuInteractive.includes("✓"),
   menu_plain_has_secondary_description: menuPlain.includes("Current active model"),
   menu_hint_is_compact: menuPlain.includes("·"),
-  menu_hint_has_escape_back: menuPlain.includes("Esc 返回"),
-  menu_hint_has_enter_action: menuPlain.includes("Enter 确认"),
-  menu_hint_has_navigation_hint: menuPlain.includes("↑/↓ 选择"),
+  menu_hint_has_escape_back: menuPlain.includes("Esc back"),
+  menu_hint_has_enter_action: menuPlain.includes("Enter confirm"),
+  menu_hint_has_navigation_hint: menuPlain.includes("↑/↓ select"),
   menu_hint_omits_secondary_key_chords:
     !menuPlain.includes("j/k")
     && !menuPlain.includes("Ctrl+n/p")
@@ -234,13 +234,13 @@ const payload = {
   model_picker_current_uses_check: stripAnsi(modelPickerPlain).includes("model-a ✓"),
   model_picker_current_not_parenthesized: !stripAnsi(modelPickerPlain).includes("(current)"),
   model_picker_has_default_suffix: stripAnsi(modelPickerPlain).includes("model-b (default)"),
-  model_picker_has_footer_hint: stripAnsi(modelPickerPlain).includes("Enter 确认 · Esc 返回"),
+  model_picker_has_footer_hint: stripAnsi(modelPickerPlain).includes("Enter confirm · Esc back"),
   model_picker_has_config_scope_subtitle:
-    stripAnsi(modelPickerPlain).includes("切换当前配置模型，后续会话沿用"),
+    stripAnsi(modelPickerPlain).includes("Switch the configured model for future sessions"),
   model_picker_avoids_stale_session_only_copy:
-    !stripAnsi(modelPickerPlain).includes("切换当前会话模型"),
+    !stripAnsi(modelPickerPlain).includes("Switch the current session model"),
   model_picker_has_config_scope_context:
-    stripAnsi(modelPickerPlain).includes("通道 alpha · 2 个模型 · 写入当前配置"),
+    stripAnsi(modelPickerPlain).includes("provider alpha · 2 models · writes current config"),
   model_picker_active_description_is_muted:
     modelPickerInteractive.includes("\x1b[90mCurrent active model\x1b[0m")
     && !modelPickerInteractive.includes("\x1b[38;2;202;124;94mCurrent active model"),
@@ -254,78 +254,78 @@ const payload = {
   ask_user_menu_uses_warm_brand_color:
     askUserMenuInteractive.includes("\x1b[38;2;202;124;94m"),
   ask_user_menu_has_progress_title:
-    stripAnsi(askUserMenuPlain).includes("需要确认 · Scope · 1/2"),
+    stripAnsi(askUserMenuPlain).includes("Confirmation needed · Scope · 1/2"),
   ask_user_menu_has_input_return_hint:
-    stripAnsi(askUserMenuPlain).includes("Esc 返回输入框"),
+    stripAnsi(askUserMenuPlain).includes("Esc back to input"),
   ask_user_menu_preserves_option_descriptions:
     stripAnsi(askUserMenuPlain).includes("Run checks before continuing"),
   ask_user_menu_uses_claude_pointer:
     stripAnsi(askUserMenuPlain).includes("❯"),
   plan_approval_menu_has_ready_title:
-    planApprovalMenuPlainText.includes("准备开始实现？"),
+    planApprovalMenuPlainText.includes("Ready to implement?"),
   plan_approval_menu_has_planning_path_header:
-    planApprovalMenuPlainText.includes("计划文件 .grobot/plans/demo/001-contract-plan.md")
-    && planApprovalMenuPlainText.indexOf("计划文件 .grobot/plans/demo/001-contract-plan.md")
-      < planApprovalMenuPlainText.indexOf("准备开始实现？"),
+    planApprovalMenuPlainText.includes("Plan file .grobot/plans/demo/001-contract-plan.md")
+    && planApprovalMenuPlainText.indexOf("Plan file .grobot/plans/demo/001-contract-plan.md")
+      < planApprovalMenuPlainText.indexOf("Ready to implement?"),
   plan_approval_menu_title_is_not_plan_color_flooded:
-    !planApprovalMenuInteractive.includes("\x1b[38;2;72;150;140m\x1b[1m准备开始实现？"),
+    !planApprovalMenuInteractive.includes("\x1b[38;2;72;150;140m\x1b[1mReady to implement?"),
   plan_approval_menu_has_subtitle:
-    planApprovalMenuPlainText.includes("执行前请确认计划。"),
+    planApprovalMenuPlainText.includes("Confirm the plan before execution."),
   plan_approval_menu_embeds_plan_markdown:
     planApprovalMenuPlainText.includes("# Contract Plan")
     && planApprovalMenuPlainText.includes("## Validation"),
   plan_approval_menu_separates_plan_actions_and_footer:
     planApprovalDividerRows.length >= 2,
   plan_approval_menu_has_reference_prompt:
-    planApprovalMenuPlainText.includes("是否开始执行？"),
+    planApprovalMenuPlainText.includes("Start execution?"),
   plan_approval_menu_uses_sticky_footer_order:
-    planApprovalMenuPlainText.indexOf("是否开始执行？")
+    planApprovalMenuPlainText.indexOf("Start execution?")
       > planApprovalMenuPlainText.indexOf("## Validation")
-    && planApprovalMenuPlainText.indexOf("Ctrl-G 编辑计划")
-      > planApprovalMenuPlainText.indexOf("继续完善计划"),
+    && planApprovalMenuPlainText.indexOf("Ctrl-G edit plan")
+      > planApprovalMenuPlainText.indexOf("Refine plan"),
   plan_approval_menu_has_yes_no_options:
-    planApprovalMenuPlainText.includes("❯ 确认，开始实现计划")
-    && planApprovalMenuPlainText.includes("继续完善计划"),
+    planApprovalMenuPlainText.includes("❯ Confirm, implement plan")
+    && planApprovalMenuPlainText.includes("Refine plan"),
   plan_approval_menu_has_ctrl_g_edit_hint:
-    planApprovalMenuPlainText.includes("Ctrl-G 编辑计划 · vim")
+    planApprovalMenuPlainText.includes("Ctrl-G edit plan · vim")
     && planApprovalMenuPlainText.includes(".grobot/plans/demo/001-contract-plan.md"),
   plan_approval_menu_shows_saved_after_external_edit:
-    stripAnsi(planApprovalEditedPlain).includes("✓ 计划已保存"),
+    stripAnsi(planApprovalEditedPlain).includes("✓ Plan saved"),
   plan_approval_menu_shows_keep_planning_feedback_hint:
-    stripAnsi(planApprovalKeepPlanningPlain).includes("Shift+Tab 可带反馈批准执行"),
+    stripAnsi(planApprovalKeepPlanningPlain).includes("Shift+Tab approves with feedback"),
   plan_approval_menu_shows_inline_feedback_input:
-    stripAnsi(planApprovalKeepPlanningPlain).includes("继续完善计划: 告诉 Grobot 需要调整什么"),
+    stripAnsi(planApprovalKeepPlanningPlain).includes("Refine plan: Tell Grobot what to adjust"),
   plan_approval_menu_shows_inline_feedback_cursor:
-    stripAnsi(planApprovalKeepPlanningPlain).includes("告诉 Grobot 需要调整什么▌"),
+    stripAnsi(planApprovalKeepPlanningPlain).includes("Tell Grobot what to adjust▌"),
   plan_approval_menu_preserves_feedback_after_reopen:
-    stripAnsi(planApprovalDraftFeedbackPlain).includes("继续完善计划: tighten validation▌"),
+    stripAnsi(planApprovalDraftFeedbackPlain).includes("Refine plan: tighten validation▌"),
   plan_approval_menu_uses_plan_mode_color:
     planApprovalMenuInteractive.includes("\x1b[38;2;72;150;140m"),
   plan_approval_menu_has_no_default_thin_pointer:
     !planApprovalMenuPlainText.includes("›"),
   plan_approval_empty_uses_exit_title:
-    emptyPlanApprovalPlainText.includes("退出计划模式?"),
+    emptyPlanApprovalPlainText.includes("Exit plan mode?"),
   plan_approval_empty_uses_reference_copy:
-    emptyPlanApprovalPlainText.includes("Grobot 将退出计划模式"),
+    emptyPlanApprovalPlainText.includes("Grobot will exit plan mode"),
   plan_approval_empty_has_yes_no_only:
-    emptyPlanApprovalPlainText.includes("❯ 是，退出")
-    && emptyPlanApprovalPlainText.includes("  否，继续规划")
+    emptyPlanApprovalPlainText.includes("❯ Yes, exit")
+    && emptyPlanApprovalPlainText.includes("  No, keep planning")
     && !emptyPlanApprovalPlainText.includes("Implement the plan")
-    && !emptyPlanApprovalPlainText.includes("确认，开始实现计划"),
+    && !emptyPlanApprovalPlainText.includes("Confirm, implement plan"),
   plan_approval_empty_omits_plan_markdown:
-    !emptyPlanApprovalPlainText.includes("Grobot 的计划：")
-    && !emptyPlanApprovalPlainText.includes("未找到计划。")
-    && !emptyPlanApprovalPlainText.includes("是否开始执行？")
+    !emptyPlanApprovalPlainText.includes("Grobot's plan:")
+    && !emptyPlanApprovalPlainText.includes("Plan not found.")
+    && !emptyPlanApprovalPlainText.includes("Start execution?")
     && !emptyPlanApprovalPlainText.includes("ctrl-g to edit"),
   model_picker_direct_render_uses_model_visible_count:
     stripAnsi(directLargeModelPickerPlain).includes("10.")
     && !stripAnsi(directLargeModelPickerPlain).includes("11."),
   model_picker_direct_render_shows_hidden_count:
-    stripAnsi(directLargeModelPickerPlain).includes("还有 2 个模型…"),
+    stripAnsi(directLargeModelPickerPlain).includes("2 more models..."),
   model_picker_direct_render_has_no_english_hidden_count:
     !stripAnsi(directLargeModelPickerPlain).includes("and 2 more"),
   model_picker_direct_render_has_config_scope_context:
-    stripAnsi(directLargeModelPickerPlain).includes("通道 alpha · 12 个模型 · 写入当前配置"),
+    stripAnsi(directLargeModelPickerPlain).includes("provider alpha · 12 models · writes current config"),
   model_picker_direct_render_has_no_row_scroll_marker:
     renderedMenuRows(directLargeModelPickerPlain).every((line) => {
       const trimmed = line.trimStart();
@@ -337,8 +337,8 @@ const payload = {
     !stripAnsi(longModelPickerPlain)
       .split("\n")
       .some((line) =>
-        line.trimStart().startsWith("包含较长上下文说明")
-        || line.trimStart().startsWith("路由元数据")
+        line.trimStart().startsWith("with long context notes")
+        || line.trimStart().startsWith("routing metadata")
         || line.trimStart().startsWith("ng provider detail")
       ),
   model_picker_long_current_suffix_preserved:
@@ -348,7 +348,7 @@ const payload = {
   model_picker_narrow_rows_within_width:
     renderedLinesWithinColumns(narrowModelPickerPlain, 52),
   model_picker_narrow_hides_description:
-    !stripAnsi(narrowModelPickerPlain).includes("Provider 可用"),
+    !stripAnsi(narrowModelPickerPlain).includes("Provider available"),
   menu_long_rows_within_width:
     renderedLinesWithinColumns(longMenuPlain, 72),
   menu_long_current_suffix_preserved:

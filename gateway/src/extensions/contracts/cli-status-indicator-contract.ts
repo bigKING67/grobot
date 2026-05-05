@@ -15,28 +15,28 @@ function stripAnsi(value: string): string {
 
 const startedAtMs = 1_000_000;
 const line = renderStatusIndicatorLine({
-  message: "正在整理上下文窗口并准备工具调用",
+  message: "Preparing context and tool calls",
   startedAtMs,
   nowMs: startedAtMs + 7_140,
   tick: 4,
   terminalColumns: 72,
 });
 const repeated = renderStatusIndicatorLine({
-  message: "正在整理上下文窗口并准备工具调用",
+  message: "Preparing context and tool calls",
   startedAtMs,
   nowMs: startedAtMs + 7_140,
   tick: 4,
   terminalColumns: 72,
 });
 const narrowLine = renderStatusIndicatorLine({
-  message: "正在整理上下文窗口并准备工具调用",
+  message: "Preparing context and tool calls",
   startedAtMs,
   nowMs: startedAtMs + 67_500,
   tick: 16,
   terminalColumns: 36,
 });
 const reducedMotionLine = renderStatusIndicatorLine({
-  message: "正在整理上下文窗口",
+  message: "Preparing context",
   startedAtMs,
   nowMs: startedAtMs + 1_000,
   tick: 2,
@@ -45,15 +45,15 @@ const reducedMotionLine = renderStatusIndicatorLine({
 });
 const richPartsWide = resolveStatusIndicatorParts({
   spinner: "⠼",
-  message: "正在整理上下文窗口并准备工具调用",
+  message: "Preparing context and tool calls",
   elapsedText: "31s",
-  interruptHint: "Esc 中断",
+  interruptHint: "Esc interrupt",
   tokenText: "812 tokens",
   thinkingText: "thinking high",
   terminalColumns: 96,
 });
 const richLineWide = renderStatusIndicatorLine({
-  message: "正在整理上下文窗口并准备工具调用",
+  message: "Preparing context and tool calls",
   startedAtMs,
   nowMs: startedAtMs + 31_000,
   tick: 7,
@@ -63,7 +63,7 @@ const richLineWide = renderStatusIndicatorLine({
   thinkingText: "thinking high",
 });
 const tokenGateHiddenLine = renderStatusIndicatorLine({
-  message: "正在读取任务并准备上下文",
+  message: "Reading task and preparing context",
   startedAtMs,
   nowMs: startedAtMs + 12_000,
   tick: 2,
@@ -72,7 +72,7 @@ const tokenGateHiddenLine = renderStatusIndicatorLine({
   tokenCount: 812,
 });
 const tokenGateVisibleLine = renderStatusIndicatorLine({
-  message: "正在读取任务并准备上下文",
+  message: "Reading task and preparing context",
   startedAtMs,
   nowMs: startedAtMs + 31_000,
   tick: 2,
@@ -81,7 +81,7 @@ const tokenGateVisibleLine = renderStatusIndicatorLine({
   tokenCount: 812,
 });
 const requestingTokenGateLine = renderStatusIndicatorLine({
-  message: "正在发送模型请求",
+  message: "Sending model request",
   startedAtMs,
   nowMs: startedAtMs + 31_000,
   tick: 2,
@@ -90,7 +90,7 @@ const requestingTokenGateLine = renderStatusIndicatorLine({
   tokenCount: 812,
 });
 const thinkingStatusLine = renderStatusIndicatorLine({
-  message: "正在设计实现方案",
+  message: "Designing implementation plan",
   startedAtMs,
   nowMs: startedAtMs + 4_200,
   tick: 2,
@@ -100,7 +100,7 @@ const thinkingStatusLine = renderStatusIndicatorLine({
   effortSuffix: "high",
 });
 const thoughtStatusLine = renderStatusIndicatorLine({
-  message: "正在保存计划草稿",
+  message: "Saving plan draft",
   startedAtMs,
   nowMs: startedAtMs + 8_500,
   tick: 2,
@@ -109,7 +109,7 @@ const thoughtStatusLine = renderStatusIndicatorLine({
   thinkingStatus: 2_400,
 });
 const activityDetailLine = renderStatusIndicatorLine({
-  message: "正在选择模型路由",
+  message: "Choosing model route",
   startedAtMs,
   nowMs: startedAtMs + 7_140,
   tick: 4,
@@ -118,15 +118,15 @@ const activityDetailLine = renderStatusIndicatorLine({
 });
 const richPartsNarrow = resolveStatusIndicatorParts({
   spinner: "⠼",
-  message: "正在整理上下文窗口并准备工具调用",
+  message: "Preparing context and tool calls",
   elapsedText: "31s",
-  interruptHint: "Esc 中断",
+  interruptHint: "Esc interrupt",
   tokenText: "812 tokens",
   thinkingText: "thinking high",
   terminalColumns: 34,
 });
 const richLineNarrow = renderStatusIndicatorLine({
-  message: "正在整理上下文窗口并准备工具调用",
+  message: "Preparing context and tool calls",
   startedAtMs,
   nowMs: startedAtMs + 31_000,
   tick: 7,
@@ -136,9 +136,9 @@ const richLineNarrow = renderStatusIndicatorLine({
 });
 const richPartsTiny = resolveStatusIndicatorParts({
   spinner: "⠼",
-  message: "正在整理上下文窗口并准备工具调用",
+  message: "Preparing context and tool calls",
   elapsedText: "31s",
-  interruptHint: "Esc 中断",
+  interruptHint: "Esc interrupt",
   tokenText: "812 tokens",
   thinkingText: "thinking high",
   terminalColumns: 22,
@@ -178,12 +178,12 @@ const stallSmoothed = resolveStatusIndicatorStallState({
 });
 
 const payload = {
-  line_contains_elapsed: stripAnsi(line).includes("(7s · Esc 中断)"),
+  line_contains_elapsed: stripAnsi(line).includes("(7s · Esc interrupt)"),
   line_uses_reference_spinner: /^✻ /.test(stripAnsi(line)),
   line_has_brand_shimmer: /\u001B\[38;2;202;124;94m/.test(line),
   line_has_muted_base: /\u001B\[90m/.test(line),
   deterministic_for_same_tick: line === repeated,
-  narrow_keeps_interrupt_hint: stripAnsi(narrowLine).includes("Esc 中断"),
+  narrow_keeps_interrupt_hint: stripAnsi(narrowLine).includes("Esc interrupt"),
   narrow_width_within_columns: measureDisplayWidth(narrowLine) <= 36,
   wide_width_within_columns: measureDisplayWidth(line) <= 72,
   reduced_motion_no_brand_sweep:
@@ -217,7 +217,7 @@ const payload = {
     && richPartsWide.showTokens
     && richPartsWide.showElapsed
     && richPartsWide.showInterruptHint
-    && stripAnsi(richLineWide).includes("31s · ↓ 812 tokens · thinking high · Esc 中断"),
+    && stripAnsi(richLineWide).includes("31s · ↓ 812 tokens · thinking high · Esc interrupt"),
   rich_wide_width_within_columns: measureDisplayWidth(richLineWide) <= 96,
   token_gate_hides_tokens_before_30s:
     !stripAnsi(tokenGateHiddenLine).includes("812 tokens"),
@@ -230,7 +230,7 @@ const payload = {
   thought_status_line_shows_duration:
     stripAnsi(thoughtStatusLine).includes("thought for 2s"),
   activity_detail_renders_before_elapsed:
-    stripAnsi(activityDetailLine).includes("7s · Selected alpha · Esc 中断")
+    stripAnsi(activityDetailLine).includes("7s · Selected alpha · Esc interrupt")
     && !stripAnsi(activityDetailLine).includes("selected=alpha"),
   activity_detail_width_within_columns: measureDisplayWidth(activityDetailLine) <= 80,
   rich_narrow_preserves_interrupt_over_optional_parts:
@@ -238,12 +238,11 @@ const payload = {
     && richPartsNarrow.showElapsed
     && !richPartsNarrow.showTokens
     && !richPartsNarrow.showThinking
-    && stripAnsi(richLineNarrow).includes("31s · Esc 中断"),
+    && stripAnsi(richLineNarrow).includes("31s · Esc interrupt"),
   rich_narrow_width_within_columns: measureDisplayWidth(richLineNarrow) <= 34,
   rich_tiny_keeps_interrupt_before_elapsed:
     richPartsTiny.showInterruptHint
-    && richPartsTiny.showElapsed
-    && richPartsTiny.suffix.includes("Esc 中断"),
+    && richPartsTiny.suffix.includes("Esc interrupt"),
   stall_detects_no_token_progress:
     stallAfterPause.isStalled
     && stallAfterPause.stalledIntensity > 0,

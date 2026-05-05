@@ -197,10 +197,10 @@ export async function runSessionDispatchFlows() {
       "openSessionMenu:resume",
     ),
     resume_search_separator_only_tty_no_match_message: resumeSearchSeparatorOnlyTty.stdout.includes(
-      "没有匹配的会话",
+      "No matching sessions",
     ),
     resume_search_separator_only_tty_no_match_has_tip: resumeSearchSeparatorOnlyTty.stdout.includes(
-      "紧凑查询会忽略空格、\"_\" 和 \"-\"。",
+      'compact query ignores spaces, "_", an',
     ),
     resume_find_active_tty_warned: includesEvent(resumeFindActiveTty.events, "writeStdout"),
     resume_find_active_tty_direct_switch: includesEvent(resumeFindActiveTty.events, "switchSession"),
@@ -209,10 +209,10 @@ export async function runSessionDispatchFlows() {
       "openSessionMenu:resume",
     ),
     resume_find_active_tty_message_has_prefix: resumeFindActiveTty.stdout.includes(
-      "会话已是当前会话",
+      "Session already current",
     ),
     resume_find_active_tty_message_has_menu_hint: resumeFindActiveTty.stdout.includes(
-      "使用 /resume 打开菜单。",
+      "Use /resume to open the menu.",
     ),
     resume_find_missing_tty_warned: includesEvent(resumeFindMissingTty.events, "writeStdout"),
     resume_find_missing_tty_direct_switch: includesEvent(resumeFindMissingTty.events, "switchSession"),
@@ -221,7 +221,7 @@ export async function runSessionDispatchFlows() {
       "openSessionMenu:resume",
     ),
     resume_find_missing_tty_no_match_has_tip: resumeFindMissingTty.stdout.includes(
-      "紧凑查询会忽略空格、\"_\" 和 \"-\"。",
+      'compact query ignores spaces, "_", an',
     ),
     resume_find_multiple_tty_warned: includesEvent(resumeFindMultipleTty.events, "writeStdout"),
     resume_find_multiple_tty_direct_switch: includesEvent(resumeFindMultipleTty.events, "switchSession"),
@@ -231,21 +231,20 @@ export async function runSessionDispatchFlows() {
     resume_find_multiple_tty_includes_title_preview:
       resumeFindMultipleTty.stdout.includes("Legacy Session")
       && resumeFindMultipleTty.stdout.includes("Archive Session")
-      && !resumeFindMultipleTty.stdout.includes("⎿  标题")
-      && !resumeFindMultipleTty.stdout.includes("| 标题="),
+      && !resumeFindMultipleTty.stdout.includes("⎿  title")
+      && !resumeFindMultipleTty.stdout.includes("| title="),
     resume_find_multiple_tty_includes_summary_preview:
-      resumeFindMultipleTty.stdout.includes("⎿  重点")
-      && !resumeFindMultipleTty.stdout.includes("⎿  摘要")
-      && !resumeFindMultipleTty.stdout.includes("| 摘要="),
+      resumeFindMultipleTty.stdout.includes("⎿  summary")
+      && !resumeFindMultipleTty.stdout.includes("| summary="),
     resume_find_multiple_tty_uses_compact_timestamp:
-      resumeFindMultipleTty.stdout.includes("更新 2026-04-19 23:59")
+      resumeFindMultipleTty.stdout.includes("updated 2026-04-19 23:59")
       && !resumeFindMultipleTty.stdout.includes("2026-04-19T23:59:00.000Z"),
     resume_find_multiple_overflow_tty_includes_overflow_line: resumeFindMultipleOverflowTty.stdout.includes(
-      "... 还有 1 项",
+      "... 1 more",
     ),
     resume_find_multiple_overflow_tty_includes_quick_pick_header:
-      resumeFindMultipleOverflowTty.stdout.includes("快速选择")
-      && !resumeFindMultipleOverflowTty.stdout.includes("快速选择:"),
+      resumeFindMultipleOverflowTty.stdout.includes("Quick picks")
+      && !resumeFindMultipleOverflowTty.stdout.includes("Quick picks:"),
     resume_find_multiple_tty_uses_reference_detail_rows:
       resumeFindMultipleTty.stdout.includes("  ⎿  ")
       && !resumeFindMultipleTty.stdout.includes(" | "),
@@ -267,7 +266,7 @@ export async function runSessionDispatchFlows() {
       "openSessionMenu:resume",
     ),
     resume_find_empty_tty_usage_has_updated_at:
-      resumeFindEmptyTty.stdout.includes("用法 /resume find <id|title|summary|updated-at>")
-      && !resumeFindEmptyTty.stdout.includes("用法: /resume find <id|title|summary|updated-at>"),
+      resumeFindEmptyTty.stdout.includes("Usage /resume find <id|title|summary|updated-at>")
+      && !resumeFindEmptyTty.stdout.includes("Usage: /resume find <id|title|summary|updated-at>"),
   };
 }

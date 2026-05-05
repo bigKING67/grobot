@@ -24,6 +24,10 @@ export interface ResolveStartupRewindTargetResult {
 
 const STARTUP_REWIND_HINT_LIMIT = 3;
 
+function formatStartupRewindFileCount(count: number): string {
+  return `${String(count)} ${count === 1 ? "file" : "files"}`;
+}
+
 function formatStartupRewindPreview(value: string, maxLength = 42): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (!normalized) {
@@ -42,12 +46,12 @@ function formatStartupRewindHints(
     .slice(0, STARTUP_REWIND_HINT_LIMIT)
     .flatMap((checkpoint) => [
       checkpoint.checkpointId,
-      `${checkpoint.createdAt} · ${String(checkpoint.changedFilesCount)} 个文件`,
-      `用户 ${formatStartupRewindPreview(checkpoint.userText)}`,
-      `助手 ${formatStartupRewindPreview(checkpoint.assistantText)}`,
+      `${checkpoint.createdAt} · ${formatStartupRewindFileCount(checkpoint.changedFilesCount)}`,
+      `user ${formatStartupRewindPreview(checkpoint.userText)}`,
+      `assistant ${formatStartupRewindPreview(checkpoint.assistantText)}`,
     ]);
   if (matches.length > STARTUP_REWIND_HINT_LIMIT) {
-    rows.push(`... 还有 ${String(matches.length - STARTUP_REWIND_HINT_LIMIT)} 项`);
+    rows.push(`... ${String(matches.length - STARTUP_REWIND_HINT_LIMIT)} more`);
   }
   return rows.join("\n");
 }
@@ -117,11 +121,11 @@ export function resolveStartupRewindTarget(
       }
       return {
         notice: buildStartupRewindNotice(
-          "启动检查点未找到",
+          "Startup checkpoint not found",
           [
-            `查询 ${queryRaw}`,
-            "已跳过回退。",
-            "提示：使用 --rewind <query> 可模糊选择检查点。",
+            `query ${queryRaw}`,
+            "Rewind skipped.",
+            "Hint: use --rewind <query> to fuzzy-pick a checkpoint.",
           ],
         ),
       };
@@ -140,14 +144,14 @@ export function resolveStartupRewindTarget(
         requiresDisambiguation: true,
         disambiguationCandidates: matches,
         notice: renderStartupRewindNotice({
-          title: "找到多个启动检查点",
-          primary: `查询 ${queryRaw}`,
+          title: "Multiple startup checkpoints found",
+          primary: `query ${queryRaw}`,
           detailLines: [
-            `匹配 ${String(matches.length)} 个检查点`,
+            `${String(matches.length)} checkpoints matched`,
             ...hints.split("\n"),
           ],
           footerLines: [
-            "提示：使用 --rewind <检查点 ID> 可确定回退目标。",
+            "Hint: use --rewind <checkpoint-id> to choose a rewind target.",
           ],
         }),
       };
@@ -156,20 +160,20 @@ export function resolveStartupRewindTarget(
       return {
         targetCheckpointId: fallbackTargetCheckpointId,
         notice: buildStartupRewindNotice(
-          "未匹配到启动检查点",
+          "No startup checkpoint matched",
           [
-            `查询 ${queryRaw}`,
-            `已回退到最近检查点 ${fallbackTargetCheckpointId}`,
+            `query ${queryRaw}`,
+            `Fell back to latest checkpoint ${fallbackTargetCheckpointId}`,
           ],
         ),
       };
     }
     return {
       notice: buildStartupRewindNotice(
-        "未匹配到启动检查点",
+        "No startup checkpoint matched",
         [
-          `查询 ${queryRaw}`,
-          "没有可用检查点。",
+          `query ${queryRaw}`,
+          "No checkpoints available.",
         ],
       ),
     };
@@ -182,8 +186,8 @@ export function resolveStartupRewindTarget(
   }
   return {
     notice: buildStartupRewindNotice(
-      "启动回退不可用",
-      ["已请求启动回退，但没有可用检查点。"],
+      "Startup rewind unavailable",
+      ["Startup rewind was requested, but no checkpoints are available."],
     ),
   };
 }

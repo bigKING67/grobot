@@ -13,7 +13,7 @@ export async function openPlanInEditor(input: {
   const planPath = input.planMode.getActivePlanPath();
   if (!planPath) {
     input.writeStdout(
-      buildCompactNotice("当前没有活跃计划文件", ["请先使用 /plan <goal>。"]),
+      buildCompactNotice("No active plan file", ["Use /plan <goal> first."]),
     );
     return;
   }
@@ -23,9 +23,9 @@ export async function openPlanInEditor(input: {
     const launched = launchPlanFileInEditor(planPath);
     if (!launched.ok) {
       input.writeStdout(
-        buildCompactNotice("无法打开计划文件", [
-          `原因 ${compactSingleLine(launched.detail, 200)}`,
-          `计划文件 ${displayPath}`,
+        buildCompactNotice("Cannot open plan file", [
+          `reason ${compactSingleLine(launched.detail, 200)}`,
+          `plan file ${displayPath}`,
         ]),
       );
       return;
@@ -34,7 +34,7 @@ export async function openPlanInEditor(input: {
       return;
     }
     input.writeStdout(
-      buildCompactNotice("已打开计划文件", [`计划文件 ${displayPath}`]),
+      buildCompactNotice("Plan file opened", [`plan file ${displayPath}`]),
     );
   };
   if (!process.stdin.isTTY) {

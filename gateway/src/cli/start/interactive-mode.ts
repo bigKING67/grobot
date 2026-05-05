@@ -311,7 +311,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
         traceEvent: "plan_enter",
         startActivity: {
           stageId: "plan_turn_start",
-          text: "正在进入计划模式并准备计划上下文",
+          text: "Entering plan mode and preparing plan context",
           planMode: true,
         },
         operation: () =>
@@ -328,7 +328,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
         traceEvent: "plan_apply",
         startActivity: {
           stageId: "plan_apply_start",
-          text: "正在准备执行已批准计划",
+          text: "Preparing approved plan execution",
           planMode: true,
         },
         operation: () =>
@@ -347,7 +347,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
         traceEvent: "plan_turn",
         startActivity: {
           stageId: "plan_turn_start",
-          text: "正在读取目标并准备计划上下文",
+          text: "Reading goal and preparing plan context",
           planMode: true,
         },
         operation: () =>

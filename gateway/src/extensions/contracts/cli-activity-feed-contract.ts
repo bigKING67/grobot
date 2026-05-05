@@ -266,10 +266,10 @@ const recoveryPlain = stripAnsi(recoveryRendered);
 const turnTranscriptPlain = stripAnsi(turnOutputTranscript.activityFeed);
 const lines = rendered.trimEnd().split("\n");
 const payload = {
-  renders_real_tool_rows: plain.includes("搜索") && plain.includes("读取 gateway/src"),
+  renders_real_tool_rows: plain.includes("Search") && plain.includes("Read gateway/src"),
   uses_reference_tool_status_dot:
-    plain.trimStart().startsWith("● 搜索")
-    && !plain.trimStart().startsWith("• 搜索"),
+    plain.trimStart().startsWith("● Search")
+    && !plain.trimStart().startsWith("• Search"),
   compact_hides_key_value_details:
     !plain.includes("matches=")
     && !plain.includes("engine=")
@@ -278,34 +278,34 @@ const payload = {
     && !plain.includes("error_class=")
     && !plain.includes("@@ -42"),
   renders_edit_with_diff_stats:
-    fullPlain.includes("编辑 gateway/src/cli/tui/components/bottom-pane/render.ts (+2 -1)")
+    fullPlain.includes("Edit gateway/src/cli/tui/components/bottom-pane/render.ts (+2 -1)")
     && fullPlain.includes("@@ -42,1 +42,2 @@"),
   edit_detail_uses_human_copy:
-    fullPlain.includes("  ⎿  1 处替换，行 42")
+    fullPlain.includes("  ⎿  1 replacement, line 42")
     && !fullPlain.includes("replacements=1 line=42"),
   renders_write_create_with_reference_preview:
-    plain.includes("写入 gateway/src/generated-file.ts · 12 行")
+    plain.includes("Write gateway/src/generated-file.ts · 12 lines")
     && fullPlain.includes("  ⎿  line-01")
     && fullPlain.includes("  ⎿  line-10")
-    && fullPlain.includes("  ⎿  … 还有 2 行，Ctrl+O 展开"),
+    && fullPlain.includes("  ⎿  ... 2 more lines, Ctrl+O expand"),
   compact_write_preview_hides_content:
-    !plain.includes("line-01") && !plain.includes("Ctrl+O 展开"),
+    !plain.includes("line-01") && !plain.includes("Ctrl+O expand"),
   full_detail_uses_reference_status_glyph:
-    fullPlain.includes("  ⎿  12 个匹配 rg 15ms")
-    && !fullPlain.includes("  └ 12 个匹配 rg"),
+    fullPlain.includes("  ⎿  12 matches rg 15ms")
+    && !fullPlain.includes("  └ 12 matches rg"),
   renders_failed_bash:
-    plain.includes("运行失败")
-    && fullPlain.includes("错误 命令执行失败")
-    && !fullPlain.includes("错误 bash_command_failed"),
+    plain.includes("Run failed")
+    && fullPlain.includes("Error Command failed")
+    && !fullPlain.includes("Error bash_command_failed"),
   renders_recovery_row:
-    plain.includes("恢复策略 · 运行")
-    && fullPlain.includes("  ⎿  切换策略 检查错误后切换策略 错误 命令执行失败")
+    plain.includes("Recovery · Run")
+    && fullPlain.includes("  ⎿  Switch strategy Inspect error, then switch strategy Error Command failed")
     && !fullPlain.includes("inspect_error_and_switch_strategy"),
   recovery_rows_humanize_all_known_stages:
-    recoveryPlain.includes("本地修复 重新读取后重试 错误 目标文件已变化")
-    && recoveryPlain.includes("等待确认 需要修复环境 错误 浏览器后端错误")
-    && recoveryPlain.includes("先观察 先观察已有工具结果 错误 工具调用失败")
-    && recoveryPlain.includes("切换策略 检查可见工具参数后重试 错误 MCP 调用失败"),
+    recoveryPlain.includes("Local fix Reread target, then retry Error Target changed")
+    && recoveryPlain.includes("Waiting for confirmation Environment fix needed Error Browser backend error")
+    && recoveryPlain.includes("Observe first Observe prior tool result first Error Tool execution deferred")
+    && recoveryPlain.includes("Switch strategy Inspect visible tool args, then retry Error MCP call failed"),
   recovery_rows_avoid_raw_stage_and_action_codes:
     !recoveryPlain.includes("local_fix")
     && !recoveryPlain.includes("ask_user")
@@ -317,19 +317,19 @@ const payload = {
   full_detail_hides_raw_error_class:
     !fullPlain.includes("bash_command_failed")
     && !fullPlain.includes("error_class="),
-  nested_payload_supported: fullPlain.includes("12 个匹配 rg"),
+  nested_payload_supported: fullPlain.includes("12 matches rg"),
   plan_file_write_uses_reference_label:
-    plain.includes("计划已更新")
+    plain.includes("Plan updated")
     && !plain.includes("Wrote .grobot/plans")
     && !plain.includes("feishu-grobot-dm-ui/001-plan.md"),
   plan_file_edit_hides_path_and_diff_stats:
-    fullPlain.includes("计划已更新")
+    fullPlain.includes("Plan updated")
     && !fullPlain.includes("Edited /tmp/grobot/.grobot/plans")
     && !fullPlain.includes("old plan")
     && !fullPlain.includes("new plan")
-    && !fullPlain.includes("计划已更新 (+"),
+    && !fullPlain.includes("Plan updated (+"),
   plan_file_full_detail_shows_preview_hint:
-    fullPlain.includes("  ⎿  /plan 预览"),
+    fullPlain.includes("  ⎿  /plan preview"),
   none_mode_suppresses_feed: noneRendered === "",
   env_default_suppresses_feed: resolveRuntimeActivityFeedDetailMode(undefined) === "none",
   env_compact_enables_feed:
@@ -342,9 +342,9 @@ const payload = {
     turnOutputDefault.activityFeed === ""
     && turnOutputDefault.assistantOutput === "final answer\n\n",
   transcript_env_enables_separate_turn_feed_chunk:
-    turnTranscriptPlain.includes("搜索")
+    turnTranscriptPlain.includes("Search")
     && turnOutputTranscript.assistantOutput === "final answer\n\n"
-    && !stripAnsi(turnOutputTranscript.assistantOutput).includes("搜索"),
+    && !stripAnsi(turnOutputTranscript.assistantOutput).includes("Search"),
   transcript_ask_user_suppresses_turn_feed:
     turnOutputAskUser.activityFeed === "",
   transcript_non_interactive_suppresses_turn_feed:

@@ -102,7 +102,7 @@ async function main(): Promise<void> {
         activePlanStatusSource: "live_snapshot",
         activePlanDecisionReady: true,
         activePlanRecommendationCommand: "Implement the plan.",
-        activePlanRecommendationReason: "当前计划已进入待决策态；直接回复“开始实现计划”或选择确认项即可开始执行",
+        activePlanRecommendationReason: "The plan is ready; reply Implement the plan. or confirm to start implementation",
       },
       maxItems: 80,
     });
@@ -114,7 +114,7 @@ async function main(): Promise<void> {
         activePlanStatus: "blocked",
         activePlanPhase: "drafting",
         activePlanQualityGuardLevel: "critical",
-        activePlanQualityGuardReason: "质量分仅 42，低于安全阈值 55",
+        activePlanQualityGuardReason: "quality score is 42, below safety threshold 55",
       },
       maxItems: 80,
     });
@@ -149,7 +149,7 @@ async function main(): Promise<void> {
       root_has_builtin_memory: topLevel.some((item) => item.command === "/memory" && item.source === "builtin"),
       root_has_user_shipit: topLevel.some((item) => item.command === "/shipit" && item.source === "user"),
       root_disabled_marked: topLevel.some(
-        (item) => item.command === "/pause_release" && item.description.includes("已停用"),
+        (item) => item.command === "/pause_release" && item.description.includes("(disabled)"),
       ),
       root_hides_status_subcommands: !topLevel.some((item) => item.command.startsWith("/status ")),
       root_hides_plan_subcommands: !topLevel.some((item) => item.command.startsWith("/plan ")),
@@ -165,7 +165,7 @@ async function main(): Promise<void> {
       plan_filter_surface_is_current_only: planOnly.every((item) =>
         item.command === "/plan" || item.command === "/plan <goal>" || item.command === "/plan open"),
       plan_filter_surface_size_ok: planOnly.length >= 2 && planOnly.length <= 3,
-      plan_filter_has_recommendation_text: planOnly.some((item) => item.description.includes("建议: ")),
+      plan_filter_has_recommendation_text: planOnly.some((item) => item.description.includes("recommended: ")),
       plan_filter_hides_machine_recommendation_label:
         planOnly.every((item) => !item.description.includes("Recommended now: ")),
       plan_mode_filter_hides_plan_root: !planOnlyPlanMode.some((item) => item.command === "/plan"),
@@ -176,19 +176,19 @@ async function main(): Promise<void> {
       plan_open_filter_only_open: planOpenOnly.every((item) => item.command === "/plan open"),
       plan_open_filter_has_open_first: planOpenOnly[0]?.command === "/plan open",
       plan_applied_pending_has_state_tag: planAppliedPending.some((item) =>
-        item.description.includes("最近计划 已执行 · 验证待记录")),
+        item.description.includes("latest plan applied · verification pending")),
       plan_applied_pending_hides_machine_state_tag: planAppliedPending.every((item) =>
         !item.description.includes("latest=")
         && !item.description.includes("status=")
         && !item.description.includes("verification=")),
       plan_ready_execute_attaches_direct_reply_hint: planReadyExecute.some((item) =>
-        item.description.includes("开始实现计划")),
+        item.description.includes("reply Implement the plan")),
       plan_ready_execute_hides_machine_recommendation_label: planReadyExecute.every((item) =>
         !item.description.includes("Recommended now: ")),
       plan_ready_execute_keeps_minimal_surface: planReadyExecute.every((item) =>
         item.command === "/plan open"),
       plan_critical_guard_reason_is_human: planCriticalGuard.some((item) =>
-        item.description.includes("计划质量门禁已阻止执行")),
+        item.description.includes("Plan quality gate blocked execution")),
       plan_critical_guard_hides_machine_reason: planCriticalGuard.every((item) =>
         !item.description.includes("quality guard=critical")),
       ship_filter_has_user_command: shipOnly.some((item) => item.command === "/shipit" && item.source === "user"),

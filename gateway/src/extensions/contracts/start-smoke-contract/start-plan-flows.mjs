@@ -89,7 +89,7 @@ export function runStartPlanModeFlow(context) {
       : 0;
   const eventsContent = readTextFileSafe(eventsPath);
   const combinedOutput = `${commandResult.stdout}\n${commandResult.stderr}`;
-  const finalStatusMarkerCurrent = "计划草稿";
+  const finalStatusMarkerCurrent = "Plan draft";
   return {
     ...commandResult,
     registry_path: registryPath,
@@ -107,26 +107,25 @@ export function runStartPlanModeFlow(context) {
     review_failed_marker_seen:
       combinedOutput.includes("[plan-review] code=PLAN_REVIEW_FAILED")
       || combinedOutput.includes("[plan-review] code=PLAN_REVIEW_BLOCKED")
-      || combinedOutput.includes("计划还没准备好")
-      || combinedOutput.includes("计划确认被阻止"),
+      || combinedOutput.includes("Plan is not ready")
+      || combinedOutput.includes("Plan confirmation blocked"),
     review_failed_recommends_refine:
-      combinedOutput.includes("接下来 继续完善计划")
-      || combinedOutput.includes("接下来 继续完善当前计划（直接输入补充内容）")
-      || combinedOutput.includes("suggested_action_command: 继续完善当前计划（直接输入补充内容）"),
+      combinedOutput.includes("Next: refine the plan, then reply Implement the plan.")
+      || combinedOutput.includes("recommended: refine the plan"),
     review_failed_avoids_raw_next_label:
       !combinedOutput.includes("下一步:"),
     review_failed_avoids_execute_recommendation:
       !combinedOutput.includes("suggested_action_command: Implement the plan."),
     review_failed_validation_command_gap_seen:
       combinedOutput.includes("validation_missing_command")
-      || combinedOutput.includes("Validation: 增加真实命令或明确的手工验证步骤。"),
+      || combinedOutput.includes("Fix Validation: Add real commands or explicit manual validation steps."),
     review_blocked_marker_seen:
       combinedOutput.includes("[plan-review] code=PLAN_REVIEW_BLOCKED")
-      || combinedOutput.includes("计划确认被阻止"),
+      || combinedOutput.includes("Plan confirmation blocked"),
     plan_cancelled_marker_seen:
-      combinedOutput.includes("已取消计划")
-      && combinedOutput.includes("计划已丢弃，计划模式已退出。")
-      && !commandResult.stdout.includes("[plan] 已取消计划 plan_id="),
+      combinedOutput.includes("Plan cancelled")
+      && combinedOutput.includes("Plan discarded and plan mode exited.")
+      && !commandResult.stdout.includes("[plan] Plan cancelled plan_id="),
     plan_final_status_line_seen: combinedOutput.includes(finalStatusMarkerCurrent),
     plan_open_script_notice_hidden:
       !combinedOutput.includes("/plan open is interactive-only")
@@ -137,35 +136,35 @@ export function runStartPlanModeFlow(context) {
       && !commandResult.stdout.includes("seq:")
       && !commandResult.stdout.includes("status:"),
     plan_draft_status_seen:
-      commandResult.stdout.includes("计划草稿"),
+      commandResult.stdout.includes("Plan draft"),
     plan_draft_status_has_path:
       commandResult.stdout.includes(".grobot/plans/"),
     plan_draft_status_has_read_only_boundary:
-      commandResult.stdout.includes("确认最终计划前，计划模式只会读取和规划。"),
+      commandResult.stdout.includes("Before final confirmation, plan mode only reads and plans."),
     plan_draft_status_has_refine_hint:
-      commandResult.stdout.includes('直接输入补充内容继续完善，或使用 "/plan open" 编辑草稿。'),
+      commandResult.stdout.includes('Type more details to refine it, or use "/plan open" to edit the draft.'),
     plan_draft_status_avoids_legacy_empty_message:
       !commandResult.stdout.includes("Already in plan mode. No plan written yet."),
-    plan_enter_surface_seen: commandResult.stdout.includes("已进入计划模式"),
+    plan_enter_surface_seen: commandResult.stdout.includes("Entered plan mode"),
     plan_enter_surface_has_path:
-      commandResult.stdout.includes("计划文件 .grobot/plans/"),
+      commandResult.stdout.includes("plan file .grobot/plans/"),
     plan_enter_surface_has_goal:
-      commandResult.stdout.includes("目标 implement plan-mode skeleton"),
+      commandResult.stdout.includes("goal implement plan-mode skeleton"),
     plan_enter_surface_read_only_seen:
-      commandResult.stdout.includes("确认计划前，计划模式只会读取和规划。"),
+      commandResult.stdout.includes("Before confirmation, plan mode only reads and plans."),
     plan_enter_surface_working_notice_seen:
-      commandResult.stdout.includes("正在规划..."),
+      commandResult.stdout.includes("Planning..."),
     plan_enter_surface_hides_absolute_path:
       !commandResult.stdout.includes(`${workDir}/.grobot/plans`)
       && !commandResult.stdout.includes(activePlanPath),
     plan_status_preview_hides_required_placeholder:
       !commandResult.stdout.includes("__REQUIRED__"),
     plan_current_display_seen:
-      commandResult.stdout.includes("当前计划")
-      || commandResult.stdout.includes("计划草稿"),
+      commandResult.stdout.includes("Current plan")
+      || commandResult.stdout.includes("Plan draft"),
     plan_current_display_has_plan_open_hint:
-      commandResult.stdout.includes('使用 "/plan open" 编辑此计划')
-      || commandResult.stdout.includes('"/plan open" 编辑草稿'),
+      commandResult.stdout.includes('use "/plan open" to edit')
+      || commandResult.stdout.includes('/plan open to edit'),
     plan_status_uses_relative_plan_file:
       commandResult.stdout.includes(".grobot/plans/"),
     plan_status_hides_absolute_plan_file:

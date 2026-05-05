@@ -21,19 +21,19 @@ export const startupViewModel: StartScreenViewModel = {
   },
   feeds: [
     {
-      title: "开始使用",
+      title: "Get started",
       lines: [
-        "运行 /init 创建 AGENTS.md 指令文件",
+        "Run /init to create AGENTS.md instructions",
       ],
       footer: "Use /help to list all commands",
     },
     {
-      title: "最近活动",
+      title: "Recent activity",
       lines: [
         "2h ago  Session planning update",
       ],
-      emptyMessage: "暂无最近活动",
-      footer: "/sessions 查看更多",
+      emptyMessage: "No recent activity",
+      footer: "/sessions for more",
     },
   ],
   rows: [
@@ -69,18 +69,18 @@ export const startupBrandSymbolViewModel: StartScreenViewModel = {
   },
   feeds: [
     {
-      title: "开始使用",
+      title: "Get started",
       lines: [
-        "运行 /init 创建 AGENTS.md 指令文件",
+        "Run /init to create AGENTS.md instructions",
       ],
     },
     {
-      title: "最近活动",
+      title: "Recent activity",
       lines: [
         "[store] history migrated from legacy path (/tmp/demo.history.json)",
       ],
-      emptyMessage: "暂无最近活动",
-      footer: "/sessions 查看更多",
+      emptyMessage: "No recent activity",
+      footer: "/sessions for more",
     },
   ],
   rows: [
@@ -108,9 +108,9 @@ export const menuInput: TerminalSelectMenuInput = {
 };
 
 export const modelPickerInput: TerminalSelectMenuInput = {
-  title: "选择模型",
-  subtitle: "切换当前配置模型，后续会话沿用；自定义模型用 /model use <id>。",
-  hint: "Enter 确认 · Esc 返回",
+  title: "Select model",
+  subtitle: "Switch the configured model for future sessions; use /model use <id> for custom models.",
+  hint: "Enter confirm · Esc back",
   variant: "model_picker",
   modelPickerMeta: {
     providerName: "alpha",
@@ -137,9 +137,9 @@ export const modelPickerInput: TerminalSelectMenuInput = {
 };
 
 export const askUserMenuInput: TerminalSelectMenuInput = {
-  title: "需要确认 · Scope · 1/2",
-  subtitle: "Choose execution mode · [Scope] Risk 提交",
-  hint: "↑/↓ 选择 · 1-2 直选 · Enter 确认 · Esc 返回输入框",
+  title: "Confirmation needed · Scope · 1/2",
+  subtitle: "Choose execution mode · [Scope] Risk Submit",
+  hint: "↑/↓ select · 1-2 direct · Enter confirm · Esc back to input",
   variant: "ask_user",
   items: [
     {
@@ -156,8 +156,8 @@ export const askUserMenuInput: TerminalSelectMenuInput = {
 };
 
 export const planApprovalMenuInput: TerminalSelectMenuInput = {
-  title: "准备开始实现？",
-  hint: "↑/↓ 选择 · Enter 确认 · Esc 返回输入框",
+  title: "Ready to implement?",
+  hint: "↑/↓ select · Enter confirm · Esc back to input",
   variant: "plan_approval",
   planApprovalMeta: {
     agentName: "Grobot",
@@ -168,24 +168,24 @@ export const planApprovalMenuInput: TerminalSelectMenuInput = {
       "",
       "## Goal",
       "",
-      "把 plan mode approval surface 对齐参考实现。",
+      "Align the plan mode approval surface with the reference implementation.",
       "",
       "## Validation",
       "",
-      "- npm run check:gateway:ts；预期通过。",
+      "- npm run check:gateway:ts; expected: pass.",
     ].join("\n"),
   },
   items: [
     {
       id: "approve",
-      label: "确认，开始实现计划",
+      label: "Confirm, implement plan",
     },
     {
       id: "keep_planning",
-      label: "继续完善计划",
-      description: "Shift+Tab 可带反馈批准执行",
+      label: "Refine plan",
+      description: "Shift+Tab approves with feedback",
       input: {
-        placeholder: "告诉 Grobot 需要调整什么",
+        placeholder: "Tell Grobot what to adjust",
         showLabelWithValue: true,
         labelValueSeparator: ": ",
         resetCursorOnUpdate: true,
@@ -195,8 +195,8 @@ export const planApprovalMenuInput: TerminalSelectMenuInput = {
 };
 
 export const emptyPlanApprovalMenuInput: TerminalSelectMenuInput = {
-  title: "退出计划模式?",
-  hint: "Enter 确认 · Esc 返回输入框",
+  title: "Exit plan mode?",
+  hint: "Enter confirm · Esc back to input",
   variant: "plan_approval",
   visibleOptionCount: 2,
   planApprovalMeta: {
@@ -209,19 +209,19 @@ export const emptyPlanApprovalMenuInput: TerminalSelectMenuInput = {
   items: [
     {
       id: "approve",
-      label: "是，退出",
+      label: "Yes, exit",
     },
     {
       id: "keep_planning",
-      label: "否，继续规划",
+      label: "No, keep planning",
     },
   ],
 };
 
 export const longModelPickerInput: TerminalSelectMenuInput = {
-  title: "选择模型",
-  subtitle: "切换当前配置模型，后续会话沿用；自定义模型用 /model use <id>。",
-  hint: "Enter 确认 · Esc 返回",
+  title: "Select model",
+  subtitle: "Switch the configured model for future sessions; use /model use <id> for custom models.",
+  hint: "Enter confirm · Esc back",
   variant: "model_picker",
   modelPickerMeta: {
     providerName: "alpha",
@@ -233,7 +233,7 @@ export const longModelPickerInput: TerminalSelectMenuInput = {
       id: "very-long-provider-name/gpt-5.4-codex-ultra-preview-with-routing",
       label: "very-long-provider-name/gpt-5.4-codex-ultra-preview-with-routing",
       current: true,
-      description: "Provider 可用，包含较长上下文说明和路由元数据",
+      description: "Provider available with long context notes and routing metadata",
     },
     {
       id: "fallback-provider/kimi-k2-2026-04-experimental-context-window",
@@ -321,7 +321,7 @@ export const expandedMenuInput: TerminalSelectMenuInput = {
 };
 
 export const viewportMenuInput: TerminalSelectMenuInput = {
-  title: "选择命令",
+  title: "Select command",
   subtitle: "Viewport contract",
   hint: "Use arrows",
   viewport: {
@@ -333,17 +333,17 @@ export const viewportMenuInput: TerminalSelectMenuInput = {
     {
       id: "cmd-8",
       label: "/context",
-      description: "查看上下文",
+      description: "Show context",
     },
     {
       id: "cmd-9",
       label: "/model",
-      description: "切换模型",
+      description: "Switch model",
     },
     {
       id: "cmd-10",
       label: "/status",
-      description: "打开状态",
+      description: "Show status",
     },
     {
       id: "cmd-11",
@@ -365,9 +365,9 @@ export const directLargeMenuInput: TerminalSelectMenuInput = {
 };
 
 export const directLargeModelPickerInput: TerminalSelectMenuInput = {
-  title: "选择模型",
-  subtitle: "切换当前配置模型，后续会话沿用；自定义模型用 /model use <id>。",
-  hint: "Enter 确认 · Esc 返回",
+  title: "Select model",
+  subtitle: "Switch the configured model for future sessions; use /model use <id> for custom models.",
+  hint: "Enter confirm · Esc back",
   variant: "model_picker",
   modelPickerMeta: {
     providerName: "alpha",

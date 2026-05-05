@@ -11,19 +11,19 @@ import { stripAnsi, type ContractPayload } from "./helpers";
 
 export function runInputChromeChecks(): ContractPayload {
   const draftFooterLines = resolveDraftAwareFooterLines({
-    footerLines: ["? 快捷键 · grobot · ctx 42%"],
+    footerLines: ["? shortcuts · grobot · ctx 42%"],
     inputGraphemeLength: 3,
   });
   const styledDraftFooterLines = resolveDraftAwareFooterLines({
-    footerLines: ["\u001B[90m\u001B[38;2;202;124;94m? 快捷键\u001B[0m\u001B[90m · grobot · ctx 42%\u001B[0m"],
+    footerLines: ["\u001B[90m\u001B[38;2;202;124;94m? shortcuts\u001B[0m\u001B[90m · grobot · ctx 42%\u001B[0m"],
     inputGraphemeLength: 3,
   });
   const emptyFooterLines = resolveDraftAwareFooterLines({
-    footerLines: ["? 快捷键 · grobot · ctx 42%"],
+    footerLines: ["? shortcuts · grobot · ctx 42%"],
     inputGraphemeLength: 0,
   });
   const draftHintOnlyFooterLines = resolveDraftAwareFooterLines({
-    footerLines: ["? 快捷键"],
+    footerLines: ["? shortcuts"],
     inputGraphemeLength: 1,
   });
   const inputChromeLines = renderInteractiveInputChromeLines({
@@ -43,7 +43,7 @@ export function runInputChromeChecks(): ContractPayload {
     theme: "ccline",
     getSlashSuggestions: (input) =>
       input === "/plan"
-        ? [{ command: "/plan", description: "进入计划模式" }]
+        ? [{ command: "/plan", description: "Enter plan mode" }]
         : [],
   });
   const submittedTranscriptPlain = submittedTranscriptLines
@@ -84,7 +84,7 @@ export function runInputChromeChecks(): ContractPayload {
       && styledDraftFooterLines[0] === "grobot · ctx 42%",
     footer_empty_keeps_shortcut_hint:
       emptyFooterLines.length === 1
-      && emptyFooterLines[0]?.startsWith("? 快捷键") === true,
+      && emptyFooterLines[0]?.startsWith("? shortcuts") === true,
     footer_draft_removes_hint_only_line:
       draftHintOnlyFooterLines.length === 0,
     input_chrome_has_open_horizontal_rails:
@@ -115,7 +115,7 @@ export function runInputChromeChecks(): ContractPayload {
     submitted_transcript_keeps_user_text:
       submittedTranscriptPlain.includes("❯ 你是啥模型"),
     submitted_transcript_omits_status_footer:
-      !submittedTranscriptPlain.includes("? 快捷键")
+      !submittedTranscriptPlain.includes("? shortcuts")
       && !submittedTranscriptPlain.includes("window")
       && !submittedTranscriptPlain.includes("kimi/"),
     submitted_transcript_is_input_frame_only:

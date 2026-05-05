@@ -4,86 +4,88 @@ export function formatTuiErrorClassLabel(value: string): string {
   const normalized = compactSpaces(value);
   switch (normalized) {
     case "bash_command_failed":
-      return "命令执行失败";
+      return "Command failed";
     case "config_missing":
-      return "配置缺失";
+      return "Missing config";
     case "path_not_found":
-      return "路径不存在";
+      return "Path not found";
     case "tool_not_visible":
-      return "工具不可见";
+      return "Tool not visible";
     case "tool_disabled":
-      return "工具已禁用";
+      return "Tool disabled";
+    case "tool_execution_deferred":
+      return "Tool execution deferred";
     case "browser_backend_result_error":
-      return "浏览器后端错误";
+      return "Browser backend error";
     case "edit_stale_target":
-      return "目标文件已变化";
+      return "Target changed";
     case "upstream_timeout":
     case "timeout":
-      return "请求超时";
+      return "Request timed out";
     case "upstream_connect_failed":
-      return "上游连接失败";
+      return "Upstream connection failed";
     case "upstream_http_error":
-      return "上游请求失败";
+      return "Upstream request failed";
     case "upstream_response_read_failed":
-      return "响应读取失败";
+      return "Response read failed";
     case "runtime_error":
-      return "运行时错误";
+      return "Runtime error";
     case "provider_inflight_limited":
-      return "通道并发已满";
+      return "Provider in-flight limit";
     case "provider_rate_limited":
-      return "通道请求过快";
+      return "Provider rate limited";
     case "semantic_index_required":
-      return "语义索引缺失";
+      return "Semantic index missing";
     case "semantic_index_config_invalid":
-      return "语义索引配置无效";
+      return "Semantic index config invalid";
     case "mcp_timeout":
     case "mcp_queue_timeout":
-      return "MCP 调用超时";
+      return "MCP timed out";
     case "mcp_circuit_open":
-      return "MCP 熔断中";
+      return "MCP circuit open";
     case "mcp_server_unready":
-      return "MCP 服务未就绪";
+      return "MCP server not ready";
     case "mcp_server_not_found":
-      return "MCP 服务未找到";
+      return "MCP server not found";
     case "mcp_spawn_failed":
-      return "MCP 启动失败";
+      return "MCP spawn failed";
     case "mcp_rpc_error":
     case "mcp_tool_result_error":
-      return "MCP 调用失败";
+      return "MCP call failed";
     case "mcp_tool_blocked":
-      return "MCP 工具被拦截";
+      return "MCP tool blocked";
     case "mcp_arguments_too_large":
-      return "MCP 参数过大";
+      return "MCP args too large";
     case "invalid_tool_arguments":
-      return "工具参数无效";
+      return "Invalid tool args";
     case "":
       return "";
     default:
       break;
   }
   if (normalized.includes("timeout")) {
-    return "请求超时";
+    return "Request timed out";
   }
   if (normalized.includes("rate")) {
-    return "请求限流";
+    return "Request rate limited";
   }
   if (normalized.includes("connect")) {
-    return "连接失败";
+    return "Connection failed";
   }
   if (normalized.includes("config")) {
-    return "配置错误";
+    return "Config error";
   }
   if (normalized.includes("semantic")) {
-    return "语义上下文错误";
+    return "Semantic context error";
   }
   if (normalized.includes("mcp")) {
-    return "MCP 调用失败";
+    return "MCP call failed";
   }
   if (normalized.includes("tool")) {
-    return "工具调用失败";
+    return "Tool call failed";
   }
   if (normalized.includes("browser")) {
-    return "浏览器工具失败";
+    return "Browser tool failed";
   }
-  return normalized.replace(/[_-]+/g, " ") || "运行时错误";
+  return normalized.replace(/[_-]+/g, " ") || "Runtime error";
 }
