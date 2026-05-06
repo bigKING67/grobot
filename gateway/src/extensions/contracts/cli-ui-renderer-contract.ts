@@ -5,8 +5,11 @@ import {
   compactVerticalMenuInput,
   directLargeMenuInput,
   directLargeModelPickerInput,
+  emptyFilteredMenuInput,
   emptyPlanApprovalMenuInput,
   expandedMenuInput,
+  filteredMenuInput,
+  filteredModelPickerInput,
   hideIndexInlineMenuInput,
   longMenuInput,
   longModelPickerInput,
@@ -97,8 +100,13 @@ const startupRegisteredSymbolSingleWidth = measureDisplayWidth("®") === 1;
 const menuInteractive = interactiveRenderer.renderSelectMenu(menuInput, 0);
 const menuPlain = plainRenderer.renderSelectMenu(menuInput, 0);
 const menuNonTty = nonTtyRenderer.renderSelectMenu(menuInput, 0);
+const filteredMenuInteractive = interactiveRenderer.renderSelectMenu(filteredMenuInput, 0);
+const filteredMenuPlainText = stripAnsi(plainRenderer.renderSelectMenu(filteredMenuInput, 0));
+const emptyFilteredMenuInteractive = interactiveRenderer.renderSelectMenu(emptyFilteredMenuInput, 0);
+const emptyFilteredMenuPlainText = stripAnsi(plainRenderer.renderSelectMenu(emptyFilteredMenuInput, 0));
 const modelPickerInteractive = interactiveRenderer.renderSelectMenu(modelPickerInput, 0);
 const modelPickerPlain = plainRenderer.renderSelectMenu(modelPickerInput, 0);
+const filteredModelPickerPlainText = stripAnsi(plainRenderer.renderSelectMenu(filteredModelPickerInput, 0));
 const askUserMenuInteractive = interactiveRenderer.renderSelectMenu(askUserMenuInput, 0);
 const askUserMenuPlain = plainRenderer.renderSelectMenu(askUserMenuInput, 0);
 const planApprovalMenuInteractive = interactiveRenderer.renderSelectMenu(planApprovalMenuInput, 0);
@@ -218,6 +226,20 @@ const payload = {
     && !stripAnsi(directLargeMenuPlain).includes("6."),
   menu_direct_render_has_row_scroll_marker:
     renderedMenuRows(directLargeMenuPlain).some((line) => line.trimStart().startsWith("↓")),
+  menu_filter_has_compact_status_row:
+    filteredMenuPlainText.includes("Filter: mod  matched 1/4"),
+  menu_filter_status_not_in_subtitle:
+    filteredMenuPlainText.includes("Command palette")
+    && !filteredMenuPlainText.includes("Command palette · Filter"),
+  menu_filter_footer_is_compact:
+    filteredMenuPlainText.includes("Type to filter · Ctrl-U clear · Esc back")
+    && !filteredMenuPlainText.includes("Ctrl+f or / toggle filter"),
+  menu_filter_has_no_match_row:
+    emptyFilteredMenuPlainText.includes('No matches for "zzz"'),
+  menu_filter_no_match_row_is_muted:
+    emptyFilteredMenuInteractive.includes('\x1b[90mNo matches for "zzz"\x1b[0m'),
+  menu_filter_status_is_muted:
+    filteredMenuInteractive.includes("\x1b[90mFilter: mod  matched 1/4\x1b[0m"),
   model_picker_has_claude_pointer: stripAnsi(modelPickerPlain).includes("❯"),
   model_picker_has_no_thin_pointer: !stripAnsi(modelPickerPlain).includes("›"),
   model_picker_has_pane_divider:
@@ -251,6 +273,14 @@ const payload = {
   model_picker_has_no_reset_badge: !stripAnsi(modelPickerPlain).includes("RESET"),
   model_picker_has_no_frame: !stripAnsi(modelPickerPlain).includes("╭"),
   model_picker_interactive_has_no_current_badge: !modelPickerInteractive.includes("CURRENT"),
+  model_picker_filter_preserves_pane_divider:
+    /^─+$/.test(filteredModelPickerPlainText.split("\n").find((line) =>
+      line.trim().length > 0
+    ) ?? ""),
+  model_picker_filter_has_compact_status_row:
+    filteredModelPickerPlainText.includes("Filter: model-a  matched 1/2"),
+  model_picker_filter_hides_original_hidden_count:
+    !filteredModelPickerPlainText.includes("and 1 more..."),
   ask_user_menu_uses_panel_divider: /^─+$/.test(stripAnsi(askUserMenuPlain).split("\n")[0] ?? ""),
   ask_user_menu_uses_warm_brand_color:
     askUserMenuInteractive.includes("\x1b[38;2;202;124;94m"),

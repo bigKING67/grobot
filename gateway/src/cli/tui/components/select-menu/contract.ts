@@ -48,6 +48,13 @@ export interface TerminalSelectMenuViewport {
   totalCount: number;
 }
 
+export interface TerminalSelectMenuSearchMeta {
+  active: boolean;
+  query: string;
+  matchedCount: number;
+  totalCount: number;
+}
+
 export type TerminalSelectMenuLayout = "compact" | "expanded" | "compact-vertical";
 
 export interface TerminalSelectMenuInput {
@@ -61,6 +68,7 @@ export interface TerminalSelectMenuInput {
   layout?: TerminalSelectMenuLayout;
   inlineDescriptions?: boolean;
   viewport?: TerminalSelectMenuViewport;
+  search?: TerminalSelectMenuSearchMeta;
   variant?: "default" | "model_picker" | "ask_user" | "plan_approval";
   modelPickerMeta?: TerminalSelectMenuModelPickerMeta;
   planApprovalMeta?: TerminalSelectMenuPlanApprovalMeta;

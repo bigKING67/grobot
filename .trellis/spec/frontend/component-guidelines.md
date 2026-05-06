@@ -56,6 +56,12 @@ Public imports should use these role files directly:
    transition env parsing.
 6. `controller.ts`: `runTerminalSelectMenu()` and terminal lifecycle behavior.
 
+Search/filter state must render as a compact menu row and a muted no-match row,
+not as appended subtitle or long footer copy. Keep this surface aligned with the
+reference `SearchBox`/`FuzzyPicker` style: `Filter: <query> matched N/M`, `No
+matches for "<query>"`, and a short active-search footer such as `Type to filter
+· Ctrl-U clear · Esc back`. All user-visible menu copy must remain English.
+
 The former `gateway/src/cli/tui/screens/select-menu-screen.ts` compatibility
 re-export has been removed. Do not recreate screen-path imports.
 `gateway/src/cli/start/tui-compat.ts` must not be used as the owner or import

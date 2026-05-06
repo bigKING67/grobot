@@ -107,6 +107,38 @@ export const menuInput: TerminalSelectMenuInput = {
   ],
 };
 
+export const filteredMenuInput: TerminalSelectMenuInput = {
+  title: "Select command",
+  subtitle: "Command palette",
+  hint: "Use arrows",
+  search: {
+    active: true,
+    query: "mod",
+    matchedCount: 1,
+    totalCount: 4,
+  },
+  items: [
+    {
+      id: "model",
+      label: "/model",
+      description: "Switch model",
+    },
+  ],
+};
+
+export const emptyFilteredMenuInput: TerminalSelectMenuInput = {
+  title: "Select command",
+  subtitle: "Command palette",
+  hint: "Use arrows",
+  search: {
+    active: true,
+    query: "zzz",
+    matchedCount: 0,
+    totalCount: 4,
+  },
+  items: [],
+};
+
 export const modelPickerInput: TerminalSelectMenuInput = {
   title: "Select model",
   subtitle: "Switch the configured model for future sessions; use /model use <id> for custom models.",
@@ -137,6 +169,29 @@ export const modelPickerInput: TerminalSelectMenuInput = {
       description: "Startup model",
     },
   ],
+};
+
+export const filteredModelPickerInput: TerminalSelectMenuInput = {
+  ...modelPickerInput,
+  search: {
+    active: true,
+    query: "model-a",
+    matchedCount: 1,
+    totalCount: 2,
+  },
+  items: [
+    {
+      id: "model-a",
+      label: "model-a",
+      current: true,
+      description: "Current active model",
+    },
+  ],
+  viewport: {
+    startIndex: 0,
+    visibleCount: 1,
+    totalCount: 1,
+  },
 };
 
 export const askUserMenuInput: TerminalSelectMenuInput = {

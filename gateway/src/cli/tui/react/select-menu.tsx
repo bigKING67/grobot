@@ -12,6 +12,7 @@ import {
   type TerminalSelectMenuEffortLevel,
   type TerminalSelectMenuItem,
   type TerminalSelectMenuModelPickerMeta,
+  type TerminalSelectMenuSearchMeta,
 } from "../components/select-menu/contract";
 import {
   ASK_USER_DIVIDER_MAX_WIDTH,
@@ -109,6 +110,74 @@ function buildModelPickerContextLine(input: {
 
 function buildModelPickerHiddenCountLine(hiddenCount: number): string {
   return `and ${String(hiddenCount)} more...`;
+}
+
+function resolveMenuSearchMeta(input: RenderTerminalSelectMenuInput): TerminalSelectMenuSearchMeta | undefined {
+  const search = input.menu.search;
+  if (!search) {
+    return undefined;
+  }
+  const query = sanitizeMenuText(search.query, "");
+  const rawMatchedCount =
+    typeof search.matchedCount === "number" && Number.isFinite(search.matchedCount)
+      ? search.matchedCount
+      : 0;
+  const rawTotalCount =
+    typeof search.totalCount === "number" && Number.isFinite(search.totalCount)
+      ? search.totalCount
+      : input.menu.items.length;
+  const matchedCount = Math.max(0, Math.floor(rawMatchedCount));
+  const totalCount = Math.max(
+    matchedCount,
+    Math.floor(rawTotalCount),
+  );
+  if (search.active !== true && query.length === 0) {
+    return undefined;
+  }
+  return {
+    active: search.active === true,
+    query,
+    matchedCount,
+    totalCount,
+  };
+}
+
+function buildMenuSearchStatusLine(input: {
+  search: TerminalSelectMenuSearchMeta;
+  maxWidth: number;
+  theme: ReturnType<typeof createCliTheme>;
+}): string {
+  const query = sanitizeMenuText(input.search.query, "");
+  const queryLabel = query.length > 0 ? query : "type to narrow";
+  const line = `Filter: ${queryLabel}  matched ${String(input.search.matchedCount)}/${String(input.search.totalCount)}`;
+  return `  ${input.theme.color("muted", truncateDisplayWidth(line, input.maxWidth - 2))}`;
+}
+
+function buildMenuNoMatchLine(input: {
+  search: TerminalSelectMenuSearchMeta;
+  maxWidth: number;
+  theme: ReturnType<typeof createCliTheme>;
+}): string {
+  const query = sanitizeMenuText(input.search.query, "");
+  const message = query.length > 0 ? `No matches for "${query}"` : "Type to filter";
+  return `  ${input.theme.color("muted", truncateDisplayWidth(message, input.maxWidth - 2))}`;
+}
+
+function buildMenuFooterHint(input: {
+  hint?: string;
+  search?: TerminalSelectMenuSearchMeta;
+  fallback?: string;
+}): string {
+  if (!input.search) {
+    return input.fallback ?? buildCompactMenuHint(input.hint);
+  }
+  if (input.search.active) {
+    return "Type to filter · Ctrl-U clear · Esc back";
+  }
+  if (input.search.query.length > 0) {
+    return "Enter confirm · Ctrl-U clear · Esc clear";
+  }
+  return input.fallback ?? buildCompactMenuHint(input.hint);
 }
 
 function normalizeEffortLevel(
@@ -209,12 +278,16 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
   const title = sanitizeMenuText(input.menu.title, "Select");
   const subtitle = sanitizeMenuText(input.menu.subtitle, MODEL_PICKER_DEFAULT_SUBTITLE);
   const dividerWidth = Math.max(44, Math.min(MODEL_PICKER_DIVIDER_MAX_WIDTH, columns));
+  const search = resolveMenuSearchMeta(input);
 
   lines.push("");
   lines.push(theme.color("brand", "─".repeat(dividerWidth)));
   lines.push(theme.color("brand", theme.bold(`  ${title}`)));
   if (surfaceWidth >= 56 && subtitle.length > 0) {
     lines.push(`  ${theme.color("muted", truncateDisplayWidth(subtitle, surfaceWidth - 2))}`);
+  }
+  if (search) {
+    lines.push(buildMenuSearchStatusLine({ search, maxWidth: surfaceWidth, theme }));
   }
   lines.push("");
 
@@ -266,11 +339,15 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
       descriptionIndentWidth: measureDisplayWidth(prefixPlain),
     });
   }
-  lines.push(...renderTwoColumnRows({
-    rows,
-    maxWidth: surfaceWidth,
-    theme,
-  }));
+  if (rows.length === 0 && search) {
+    lines.push(buildMenuNoMatchLine({ search, maxWidth: surfaceWidth, theme }));
+  } else {
+    lines.push(...renderTwoColumnRows({
+      rows,
+      maxWidth: surfaceWidth,
+      theme,
+    }));
+  }
 
   const hiddenCount = Math.max(0, viewport.totalCount - viewport.visibleCount);
   if (hiddenCount > 0) {
@@ -297,7 +374,7 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
   }
 
   lines.push("");
-  lines.push(theme.color("muted", `  ${hint}`));
+  lines.push(theme.color("muted", `  ${buildMenuFooterHint({ hint, search, fallback: hint })}`));
   return renderLineStack(lines, theme);
 }
 
@@ -318,12 +395,16 @@ function renderAskUserMenu(input: RenderTerminalSelectMenuInput): string {
   const title = sanitizeMenuText(input.menu.title, "Confirmation needed");
   const subtitle = sanitizeMenuText(input.menu.subtitle);
   const hint = sanitizeMenuText(input.menu.hint, "↑/↓ select · Enter confirm · Esc back to input");
+  const search = resolveMenuSearchMeta(input);
   const lines: string[] = [];
 
   lines.push(theme.color("brand", "─".repeat(dividerWidth)));
   lines.push(`  ${theme.color("brand", theme.bold(title))}`);
   if (surfaceWidth >= 56 && subtitle.length > 0) {
     lines.push(`  ${theme.color("muted", truncateDisplayWidth(subtitle, surfaceWidth - 2))}`);
+  }
+  if (search) {
+    lines.push(buildMenuSearchStatusLine({ search, maxWidth: surfaceWidth, theme }));
   }
   lines.push("");
 
@@ -374,14 +455,18 @@ function renderAskUserMenu(input: RenderTerminalSelectMenuInput): string {
       descriptionIndentWidth: measureDisplayWidth(prefixPlain),
     });
   }
-  lines.push(...renderTwoColumnRows({
-    rows,
-    maxWidth: surfaceWidth,
-    theme,
-  }));
+  if (rows.length === 0 && search) {
+    lines.push(buildMenuNoMatchLine({ search, maxWidth: surfaceWidth, theme }));
+  } else {
+    lines.push(...renderTwoColumnRows({
+      rows,
+      maxWidth: surfaceWidth,
+      theme,
+    }));
+  }
 
   lines.push("");
-  lines.push(theme.color("muted", `  ${hint}`));
+  lines.push(theme.color("muted", `  ${buildMenuFooterHint({ hint, search, fallback: hint })}`));
   return renderLineStack(lines, theme);
 }
 
@@ -511,9 +596,13 @@ function renderDefaultMenu(input: RenderTerminalSelectMenuInput): string {
     hideIndexes: !renderIndexes,
   });
   const lines: string[] = [];
+  const search = resolveMenuSearchMeta(input);
   lines.push(`  ${theme.bold(input.menu.title)}`);
   if (surfaceWidth >= 56 && input.menu.subtitle && input.menu.subtitle.trim().length > 0) {
     lines.push(`  ${theme.color("muted", truncateDisplayWidth(input.menu.subtitle.trim(), surfaceWidth - 2))}`);
+  }
+  if (search) {
+    lines.push(buildMenuSearchStatusLine({ search, maxWidth: surfaceWidth, theme }));
   }
   lines.push("");
   const rows: RenderMenuRow[] = [];
@@ -576,20 +665,27 @@ function renderDefaultMenu(input: RenderTerminalSelectMenuInput): string {
       descriptionIndentWidth: verticalDescriptionIndentWidth,
     });
   }
-  lines.push(...(verticalLayout
-    ? renderVerticalRows({
-      rows,
-      maxWidth: surfaceWidth,
-      theme,
-      expanded: menuLayout === "expanded",
-    })
-    : renderTwoColumnRows({
-      rows,
-      maxWidth: surfaceWidth,
-      theme,
-    })));
+  if (rows.length === 0 && search) {
+    lines.push(buildMenuNoMatchLine({ search, maxWidth: surfaceWidth, theme }));
+  } else {
+    lines.push(...(verticalLayout
+      ? renderVerticalRows({
+        rows,
+        maxWidth: surfaceWidth,
+        theme,
+        expanded: menuLayout === "expanded",
+      })
+      : renderTwoColumnRows({
+        rows,
+        maxWidth: surfaceWidth,
+        theme,
+      })));
+  }
   lines.push("");
-  lines.push(theme.color("muted", `  ${buildCompactMenuHint(input.menu.hint)}`));
+  lines.push(theme.color("muted", `  ${buildMenuFooterHint({
+    hint: input.menu.hint,
+    search,
+  })}`));
   return renderLineStack(lines, theme);
 }
 
