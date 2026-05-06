@@ -174,7 +174,7 @@ export function createInteractiveActivityController(input: {
       thinkingStatus: statusMode === "thinking" && stalledDetail.length === 0
         ? "thinking"
         : undefined,
-      reducedMotion: stall.stalledIntensity >= 1,
+      stalledIntensity: stall.stalledIntensity,
     }));
     inlineActivityTick += 1;
   };

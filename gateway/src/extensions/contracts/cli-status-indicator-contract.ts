@@ -136,6 +136,23 @@ const activityDetailLine = renderStatusIndicatorLine({
   terminalColumns: 80,
   thinkingText: "selected=alpha",
 });
+const toolUseLine = renderStatusIndicatorLine({
+  message: "Running bash command",
+  startedAtMs,
+  nowMs: startedAtMs + 9_000,
+  tick: 4,
+  terminalColumns: 80,
+  mode: "tool-use",
+});
+const stalledLine = renderStatusIndicatorLine({
+  message: "Waiting for model output",
+  startedAtMs,
+  nowMs: startedAtMs + 9_000,
+  tick: 4,
+  terminalColumns: 80,
+  mode: "responding",
+  stalledIntensity: 1,
+});
 const richPartsNarrow = resolveStatusIndicatorParts({
   spinner: "⠼",
   message: "Preparing context and tool calls",
@@ -290,6 +307,15 @@ const payload = {
     stripAnsi(activityDetailLine).includes("7s · Selected alpha · esc to interrupt")
     && !stripAnsi(activityDetailLine).includes("selected=alpha"),
   activity_detail_width_within_columns: measureDisplayWidth(activityDetailLine) <= 80,
+  tool_use_flashes_whole_message_not_per_grapheme:
+    stripAnsi(toolUseLine).includes("Running bash command")
+    && (toolUseLine.match(/\u001B\[38;2;/g) ?? []).length <= 3,
+  stalled_line_turns_spinner_and_message_error_red:
+    stripAnsi(stalledLine).includes("Waiting for model output")
+    && (stalledLine.match(/\u001B\[38;2;171;43;63m/g) ?? []).length >= 2,
+  stalled_line_keeps_reference_spinner_animation:
+    /^✻ /.test(stripAnsi(stalledLine))
+    && !stripAnsi(stalledLine).startsWith("● "),
   rich_narrow_preserves_interrupt_over_optional_parts:
     richPartsNarrow.showInterruptHint
     && richPartsNarrow.showElapsed

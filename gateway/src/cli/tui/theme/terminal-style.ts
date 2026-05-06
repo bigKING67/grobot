@@ -1,13 +1,27 @@
+export const TERMINAL_RGB = {
+  brand: { r: 202, g: 124, b: 94 },
+  success: { r: 112, g: 178, b: 126 },
+  error: { r: 190, g: 72, b: 88 },
+  info: { r: 176, g: 150, b: 134 },
+  remember: { r: 174, g: 141, b: 123 },
+  planMode: { r: 72, g: 150, b: 140 },
+  muted: { r: 153, g: 153, b: 153 },
+} as const;
+
+function ansiRgb(color: { r: number; g: number; b: number }): string {
+  return `\x1b[38;2;${color.r};${color.g};${color.b}m`;
+}
+
 export const TERMINAL_ANSI = {
   reset: "\x1b[0m",
   bold: "\x1b[1m",
-  brand: "\x1b[38;2;202;124;94m",
-  accent: "\x1b[38;2;202;124;94m",
-  success: "\x1b[38;2;112;178;126m",
-  error: "\x1b[38;2;190;72;88m",
-  info: "\x1b[38;2;176;150;134m",
-  remember: "\x1b[38;2;174;141;123m",
-  planMode: "\x1b[38;2;72;150;140m",
+  brand: ansiRgb(TERMINAL_RGB.brand),
+  accent: ansiRgb(TERMINAL_RGB.brand),
+  success: ansiRgb(TERMINAL_RGB.success),
+  error: ansiRgb(TERMINAL_RGB.error),
+  info: ansiRgb(TERMINAL_RGB.info),
+  remember: ansiRgb(TERMINAL_RGB.remember),
+  planMode: ansiRgb(TERMINAL_RGB.planMode),
   muted: "\x1b[90m",
 } as const;
 

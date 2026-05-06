@@ -5,7 +5,7 @@ import {
   splitGraphemes,
   truncateDisplayWidth,
 } from "../../terminal/display-width";
-import { TERMINAL_ANSI, TERMINAL_SYMBOL, terminalStyle } from "../../theme/terminal-style";
+import { TERMINAL_ANSI, TERMINAL_RGB, TERMINAL_SYMBOL, terminalStyle } from "../../theme/terminal-style";
 
 export type StatusIndicatorMode =
   | "requesting"
@@ -28,6 +28,7 @@ export interface StatusIndicatorInput {
   tokenText?: string;
   verbose?: boolean;
   showTokensAfterMs?: number;
+  stalledIntensity?: number;
   thinkingStatus?: "thinking" | number | null;
   effortSuffix?: string;
   thinkingText?: string;
@@ -81,10 +82,18 @@ const STATUS_REDUCED_MOTION_SPINNER = "●";
 const GLIMMER_PADDING_WIDTH = 20;
 const GLIMMER_HOTSPOT_RADIUS = 1;
 export const STATUS_INDICATOR_SHOW_TOKENS_AFTER_MS = 30_000;
+const STATUS_REDUCED_MOTION_CYCLE_MS = 2_000;
 const STALLED_AFTER_MS = 3_000;
 const STALLED_FADE_MS = 2_000;
 const STALLED_SMOOTH_STEP_MS = 50;
 const STALLED_SMOOTH_FACTOR = 0.1;
+const STATUS_STALLED_ERROR_RGB = { r: 171, g: 43, b: 63 } as const;
+
+interface RgbColor {
+  r: number;
+  g: number;
+  b: number;
+}
 
 function getDefaultStatusSpinnerCharacters(): readonly string[] {
   if (process.env.TERM === "xterm-ghostty") {
@@ -115,6 +124,33 @@ function normalizeTimestamp(value: number | undefined, fallback: number): number
     return fallback;
   }
   return Math.max(0, Math.floor(value));
+}
+
+function normalizeTick(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(value));
+}
+
+function clampUnit(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.min(1, Math.max(0, value));
+}
+
+function interpolateRgb(left: RgbColor, right: RgbColor, amount: number): RgbColor {
+  const normalized = clampUnit(amount);
+  return {
+    r: Math.round(left.r + (right.r - left.r) * normalized),
+    g: Math.round(left.g + (right.g - left.g) * normalized),
+    b: Math.round(left.b + (right.b - left.b) * normalized),
+  };
+}
+
+function styleRgb(value: string, color: RgbColor): string {
+  return `\x1b[38;2;${color.r};${color.g};${color.b}m${value}${TERMINAL_ANSI.reset}`;
 }
 
 function normalizeTokenLength(value: number | undefined): number {
@@ -300,10 +336,29 @@ function resolveSpinnerFrame(input: StatusIndicatorInput): string {
   const frames = input.spinnerFrames && input.spinnerFrames.length > 0
     ? input.spinnerFrames
     : DEFAULT_STATUS_SPINNER_FRAMES;
-  const tick = typeof input.tick === "number" && Number.isFinite(input.tick)
-    ? Math.max(0, Math.floor(input.tick))
-    : 0;
+  const tick = normalizeTick(input.tick);
   return frames[tick % frames.length] ?? "-";
+}
+
+function renderStatusIndicatorSpinner(input: {
+  spinner: string;
+  tick?: number;
+  reducedMotion?: boolean;
+  stalledIntensity?: number;
+}): string {
+  const stalledIntensity = clampUnit(input.stalledIntensity);
+  if (stalledIntensity > 0) {
+    return styleRgb(
+      input.spinner,
+      interpolateRgb(TERMINAL_RGB.brand, STATUS_STALLED_ERROR_RGB, stalledIntensity),
+    );
+  }
+  if (input.reducedMotion) {
+    const tickMs = normalizeTick(input.tick) * 120;
+    const isDim = Math.floor(tickMs / (STATUS_REDUCED_MOTION_CYCLE_MS / 2)) % 2 === 1;
+    return isDim ? terminalStyle.muted(input.spinner) : terminalStyle.brand(input.spinner);
+  }
+  return terminalStyle.brand(input.spinner);
 }
 
 function normalizeOptionalPart(value: string | undefined): string {
@@ -471,19 +526,33 @@ export function renderStatusIndicatorMessage(input: {
   tick?: number;
   reducedMotion?: boolean;
   mode?: StatusIndicatorMode;
+  stalledIntensity?: number;
 }): string {
   const message = input.message;
   if (!message) {
     return "";
   }
+  const stalledIntensity = clampUnit(input.stalledIntensity);
+  if (stalledIntensity > 0) {
+    return styleRgb(
+      message,
+      interpolateRgb(TERMINAL_RGB.brand, STATUS_STALLED_ERROR_RGB, stalledIntensity),
+    );
+  }
   if (input.reducedMotion) {
     return terminalStyle.muted(message);
   }
+  if (input.mode === "tool-use") {
+    const tickMs = normalizeTick(input.tick) * 120;
+    const flashOpacity = (Math.sin((tickMs / 1000) * Math.PI) + 1) / 2;
+    return styleRgb(
+      message,
+      interpolateRgb(TERMINAL_RGB.muted, TERMINAL_RGB.brand, flashOpacity),
+    );
+  }
   const messageWidth = measureDisplayWidth(message);
   const cycleLength = Math.max(1, messageWidth + GLIMMER_PADDING_WIDTH);
-  const tick = typeof input.tick === "number" && Number.isFinite(input.tick)
-    ? Math.max(0, Math.floor(input.tick))
-    : 0;
+  const tick = normalizeTick(input.tick);
   const cyclePosition = tick % cycleLength;
   const glimmerIndex = input.mode === "requesting"
     ? cyclePosition - Math.floor(GLIMMER_PADDING_WIDTH / 2)
@@ -546,8 +615,15 @@ export function renderStatusIndicatorLine(input: StatusIndicatorInput): string {
     tick: input.tick,
     reducedMotion: input.reducedMotion,
     mode: input.mode,
+    stalledIntensity: input.stalledIntensity,
   });
-  const line = `${terminalStyle.brand(spinner)} ${styledMessage}${terminalStyle.muted(statusParts.suffix)}`;
+  const styledSpinner = renderStatusIndicatorSpinner({
+    spinner,
+    tick: input.tick,
+    reducedMotion: input.reducedMotion,
+    stalledIntensity: input.stalledIntensity,
+  });
+  const line = `${styledSpinner} ${styledMessage}${terminalStyle.muted(statusParts.suffix)}`;
   if (terminalColumns <= 0 || measureDisplayWidth(line) <= terminalColumns) {
     return line;
   }

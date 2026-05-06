@@ -495,38 +495,39 @@ export async function runTuiContracts() {
     "cli-status-indicator-contract",
     cliStatusIndicatorContractResult.stdout,
   );
-  assert.equal(cliStatusIndicatorPayload.line_contains_elapsed, true);
-  assert.equal(cliStatusIndicatorPayload.line_uses_reference_spinner, true);
-  assert.equal(cliStatusIndicatorPayload.line_has_brand_shimmer, true);
-  assert.equal(cliStatusIndicatorPayload.line_has_muted_base, true);
-  assert.equal(cliStatusIndicatorPayload.deterministic_for_same_tick, true);
-  assert.equal(cliStatusIndicatorPayload.narrow_keeps_interrupt_hint, true);
-  assert.equal(cliStatusIndicatorPayload.narrow_width_within_columns, true);
-  assert.equal(cliStatusIndicatorPayload.wide_width_within_columns, true);
-  assert.equal(cliStatusIndicatorPayload.reduced_motion_no_brand_sweep, true);
-  assert.equal(cliStatusIndicatorPayload.no_invalid_tokens, true);
-  assert.equal(cliStatusIndicatorPayload.elapsed_formats_minutes, true);
-  assert.equal(cliStatusIndicatorPayload.elapsed_formats_hours, true);
-  assert.equal(cliStatusIndicatorPayload.mode_glyph_requesting_is_up, true);
-  assert.equal(cliStatusIndicatorPayload.mode_glyph_responding_is_down, true);
-  assert.equal(cliStatusIndicatorPayload.thinking_status_formats_active, true);
-  assert.equal(cliStatusIndicatorPayload.thinking_status_formats_completed_duration, true);
-  assert.equal(cliStatusIndicatorPayload.token_count_formats_after_gate, true);
-  assert.equal(cliStatusIndicatorPayload.token_count_hidden_before_gate, true);
-  assert.equal(cliStatusIndicatorPayload.rich_wide_shows_thinking_tokens_elapsed_interrupt, true);
-  assert.equal(cliStatusIndicatorPayload.rich_wide_width_within_columns, true);
-  assert.equal(cliStatusIndicatorPayload.token_gate_hides_tokens_before_30s, true);
-  assert.equal(cliStatusIndicatorPayload.token_gate_shows_down_tokens_after_30s, true);
-  assert.equal(cliStatusIndicatorPayload.requesting_mode_shows_up_token_glyph, true);
-  assert.equal(cliStatusIndicatorPayload.thinking_status_line_shows_effort, true);
-  assert.equal(cliStatusIndicatorPayload.thought_status_line_shows_duration, true);
-  assert.equal(cliStatusIndicatorPayload.rich_narrow_preserves_interrupt_over_optional_parts, true);
-  assert.equal(cliStatusIndicatorPayload.rich_narrow_width_within_columns, true);
-  assert.equal(cliStatusIndicatorPayload.rich_tiny_keeps_interrupt_before_elapsed, true);
-  assert.equal(cliStatusIndicatorPayload.stall_detects_no_token_progress, true);
-  assert.equal(cliStatusIndicatorPayload.stall_active_tools_resets_timer, true);
-  assert.equal(cliStatusIndicatorPayload.stall_token_progress_resets_intensity, true);
-  assert.equal(cliStatusIndicatorPayload.stall_smoothing_is_gradual, true);
+  assertPayloadFlags(cliStatusIndicatorPayload, [
+    "line_contains_elapsed",
+    "line_uses_reference_spinner",
+    "line_has_brand_shimmer",
+    "line_has_muted_base",
+    "deterministic_for_same_tick", "narrow_keeps_interrupt_hint",
+    "narrow_width_within_columns", "wide_width_within_columns",
+    "reduced_motion_no_brand_sweep",
+    "no_invalid_tokens",
+    "elapsed_formats_minutes", "elapsed_formats_hours",
+    "mode_glyph_requesting_is_up", "mode_glyph_responding_is_down",
+    "thinking_status_formats_active",
+    "thinking_status_formats_completed_duration",
+    "token_count_formats_after_gate",
+    "token_count_hidden_before_gate",
+    "rich_wide_shows_thinking_tokens_elapsed_interrupt",
+    "rich_wide_width_within_columns",
+    "token_gate_hides_tokens_before_30s",
+    "token_gate_shows_down_tokens_after_30s",
+    "requesting_mode_shows_up_token_glyph",
+    "thinking_status_line_shows_effort",
+    "thought_status_line_shows_duration",
+    "rich_narrow_preserves_interrupt_over_optional_parts",
+    "rich_narrow_width_within_columns",
+    "rich_tiny_keeps_interrupt_before_elapsed",
+    "tool_use_flashes_whole_message_not_per_grapheme",
+    "stalled_line_turns_spinner_and_message_error_red",
+    "stalled_line_keeps_reference_spinner_animation",
+    "stall_detects_no_token_progress",
+    "stall_active_tools_resets_timer",
+    "stall_token_progress_resets_intensity",
+    "stall_smoothing_is_gradual",
+  ]);
   logStep("cli-status-indicator-contract");
 
   const cliStatusLineStabilityContractResult = runCommand("npx", [

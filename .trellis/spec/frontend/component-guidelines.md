@@ -143,6 +143,9 @@ screen monoliths:
    key/value log lines in `/health` output.
 6. `components/status-indicator/`: running-turn inline progress indicator.
    Keep spinner, elapsed time, token/thinking suffix, and stall logic here.
+   Match the reference spinner semantics: tool-use mode flashes the whole
+   message instead of per-grapheme shimmer, and stalled output interpolates the
+   spinner/message toward error red without forcing reduced motion.
 7. `components/help/`: `/help` command guide surface. `react/help-screen.tsx`
    owns the visible adapter surface; keep the output low-noise and
    reference-style with compact command rows, shortcut rows, and muted notes.
