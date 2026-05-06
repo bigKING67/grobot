@@ -1,5 +1,6 @@
 import { AskUserEnvelope } from "./schema";
 import { buildAskUserOptionDisplayLabel } from "./display";
+import { compactAskUserDisplayLine } from "./display-text";
 import {
   ASK_USER_SECRET_DISPLAY_VALUE,
   formatAskUserAnswerForDisplay,
@@ -46,14 +47,7 @@ export function getAskUserOtherOptionId(): string {
 }
 
 function compactSingleLine(value: string, maxChars: number): string {
-  const normalized = value.trim().replace(/\s+/g, " ");
-  if (normalized.length <= maxChars) {
-    return normalized;
-  }
-  if (maxChars <= 1) {
-    return normalized.slice(0, Math.max(0, maxChars));
-  }
-  return `${normalized.slice(0, maxChars - 1)}…`;
+  return compactAskUserDisplayLine(value, maxChars);
 }
 
 function normalizeCount(value: number | undefined): number {
@@ -261,7 +255,7 @@ function buildOptionItems(input: {
       selected: otherIndex === input.state.focusedOptionIndex,
       kind: "other",
       placeholder: ASK_USER_OTHER_OPTION_PLACEHOLDER,
-      inputValue: displayInputValue,
+      inputValue: textInputValue,
       sensitive: isAskUserSecret(input.envelope),
       description: textInputValue.length > 0 ? textInputValue : ASK_USER_OTHER_OPTION_PLACEHOLDER,
     });
@@ -439,10 +433,10 @@ export function buildAskUserQuestionnaireView(input: {
       }
       return {
         ...baseItem,
-        answer: formatAskUserAnswerForDisplay({
+        answer: compactSingleLine(formatAskUserAnswerForDisplay({
           envelope,
           answer,
-        }),
+        }) ?? "", ASK_USER_INTERACTION_OPTION_DESCRIPTION_LIMIT),
       };
     });
     return {
@@ -486,7 +480,7 @@ export function buildAskUserQuestionnaireView(input: {
       queue: input.queue,
       index: currentIndex,
     }),
-    noteValue,
+    noteValue: compactSingleLine(noteValue, ASK_USER_INTERACTION_OPTION_DESCRIPTION_LIMIT),
     textInputMode: normalizedState.textInputMode,
     isSecret: isAskUserSecret(envelope),
     visibleOptionCount: Math.min(

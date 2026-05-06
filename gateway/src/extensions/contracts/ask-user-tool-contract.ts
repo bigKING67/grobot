@@ -5,6 +5,7 @@ import {
   buildAskUserBatchAnswerText,
   buildAskUserQueueDisplay,
   buildAskUserDisplay,
+  buildAskUserOptionsPreview,
   buildAskUserReviewMenuDescriptor,
   buildAskUserSelectMenuDescriptor,
   buildAskUserResolutionPrompt,
@@ -137,6 +138,32 @@ if (!overflowEnvelope) {
   throw new Error("failed to normalize overflow ask_user payload");
 }
 const overflowDisplay = runtime.buildAskUserDisplay(overflowEnvelope);
+const unsafeEnvelope = normalizeAskUserEnvelopeFromPayload({
+  blocking_node_id: "node.unsafe.display",
+  questions: [{
+    id: "ask_q_unsafe",
+    header: "\u001B[31mScope\u001B[0m\u202E",
+    question: "Choose\u001B[31m mode\u001B[0m\u202E\tbefore continuing",
+    options: [{
+      label: "\u001B[31m1. safe\u001B[0m\u202E",
+      value: "safe",
+      description: "Run\u001B[31m checks\u001B[0m\u202E before continuing",
+    }, {
+      label: "fast\u001B]0;pwnd\u0007",
+      value: "fast",
+      description: "Skip\u0000 optional\r\nchecks",
+    }],
+  }],
+  default_on_timeout: "safe\u001B[31m now\u001B[0m\u202E",
+  resume_token: "resume_unsafe",
+}, {
+  cleanText: (value) => value,
+});
+if (!unsafeEnvelope) {
+  throw new Error("failed to normalize unsafe ask_user payload");
+}
+const unsafeDisplay = runtime.buildAskUserDisplay(unsafeEnvelope);
+const unsafeOptionsPreview = buildAskUserOptionsPreview(unsafeEnvelope.options);
 const resolutionPrompt = buildAskUserResolutionPrompt({
   envelope: pendingEnvelope,
   answer: "fast",
@@ -255,6 +282,34 @@ const askUserMenuDescriptor = buildAskUserSelectMenuDescriptor({
 const askUserQueueDisplay = buildAskUserQueueDisplay({
   queue: [describedEnvelope, thirdEnvelope],
   state: questionnaireInitialState,
+});
+const unsafeQuestionnaireState = createAskUserQuestionnaireState({
+  answers: {
+    [unsafeEnvelope.askId]: "safe\u001B[31m answer\u001B[0m\u202E",
+  },
+  notes: {
+    [unsafeEnvelope.askId]: "note\u001B[31m red\u001B[0m\u202E",
+  },
+  textInputValue: "custom\u001B[31m value\u001B[0m\u202E",
+});
+const unsafeMenuDescriptor = buildAskUserSelectMenuDescriptor({
+  queue: [unsafeEnvelope],
+  state: unsafeQuestionnaireState,
+});
+const unsafeQueueDisplay = buildAskUserQueueDisplay({
+  queue: [unsafeEnvelope],
+  state: unsafeQuestionnaireState,
+});
+const unsafeReviewMenuDescriptor = buildAskUserReviewMenuDescriptor({
+  queue: [unsafeEnvelope],
+  answers: unsafeQuestionnaireState.answers,
+});
+const unsafeReviewView = buildAskUserQuestionnaireView({
+  queue: [unsafeEnvelope],
+  state: {
+    ...unsafeQuestionnaireState,
+    mode: "review",
+  },
 });
 const selectedAnswerFromInteraction = resolveAskUserAnswerFromSelection(describedEnvelope, 1);
 runtime.registerPendingAsk(sessionKey, nextEnvelope);
@@ -454,6 +509,21 @@ const payload = {
   issued_display_overflow_lists_sixth_option: overflowDisplay.includes("还有 0 项") === false
     && overflowDisplay.includes("Custom  Type custom reply")
     && overflowDisplay.includes("... 1 more"),
+  issued_display_sanitizes_untrusted_text:
+    unsafeDisplay.includes("Input needed · Scope")
+    && unsafeDisplay.includes("Choose mode before continuing")
+    && unsafeDisplay.includes("safe — Run checks before continuing")
+    && unsafeDisplay.includes("fast — Skip optional checks")
+    && !unsafeDisplay.includes("\u001B")
+    && !unsafeDisplay.includes("\u202E")
+    && !unsafeDisplay.includes("\u0000")
+    && !unsafeDisplay.includes("]0;pwnd"),
+  options_preview_sanitizes_untrusted_text:
+    unsafeOptionsPreview.preview.includes("1:1. safe")
+    && unsafeOptionsPreview.preview.includes("2:fast")
+    && !unsafeOptionsPreview.preview.includes("\u001B")
+    && !unsafeOptionsPreview.preview.includes("\u202E")
+    && !unsafeOptionsPreview.preview.includes("]0;pwnd"),
   issued_event_has_ask_id: formatAskUserIssuedEvent(nextEnvelope).includes("ask_id=ask_q_002"),
   ask_user_menu_title_has_progress:
     askUserMenuDescriptor?.title.includes("Scope · 1/2") === true,
@@ -471,6 +541,37 @@ const payload = {
     !askUserQueueDisplay.includes("[ask-user]")
     && !askUserQueueDisplay.includes("question=")
     && !askUserQueueDisplay.includes("resume_token"),
+  ask_user_queue_display_sanitizes_untrusted_text:
+    unsafeQueueDisplay.includes("Input needed · Scope")
+    && unsafeQueueDisplay.includes("Choose mode before continuing")
+    && unsafeQueueDisplay.includes("safe — Run checks before continuing")
+    && unsafeQueueDisplay.includes("Custom — custom value")
+    && !unsafeQueueDisplay.includes("\u001B")
+    && !unsafeQueueDisplay.includes("\u202E")
+    && !unsafeQueueDisplay.includes("\u0000")
+    && !unsafeQueueDisplay.includes("]0;pwnd"),
+  ask_user_menu_descriptor_sanitizes_untrusted_text:
+    unsafeMenuDescriptor?.title.includes("Input needed · Scope") === true
+    && unsafeMenuDescriptor?.subtitle.includes("Choose mode before continuing") === true
+    && unsafeMenuDescriptor?.items.some((item) =>
+      item.label === "safe"
+      && item.description === "Run checks before continuing") === true
+    && unsafeMenuDescriptor?.items.every((item) =>
+      !JSON.stringify(item).includes("\u001B")
+      && !JSON.stringify(item).includes("\u202E")
+      && !JSON.stringify(item).includes("\u0000")
+      && !JSON.stringify(item).includes("]0;pwnd")) === true,
+  ask_user_review_surface_sanitizes_untrusted_text:
+    unsafeReviewView.kind === "review"
+    && unsafeReviewView.reviewItems.some((item) =>
+      item.question === "Choose mode before continuing"
+      && item.answer === "safe answer")
+    && !JSON.stringify(unsafeReviewView).includes("\u001B")
+    && !JSON.stringify(unsafeReviewView).includes("\u202E")
+    && !JSON.stringify(unsafeReviewView).includes("\u0000")
+    && !JSON.stringify(unsafeReviewMenuDescriptor).includes("\u001B")
+    && !JSON.stringify(unsafeReviewMenuDescriptor).includes("\u202E")
+    && !JSON.stringify(unsafeReviewMenuDescriptor).includes("\u0000"),
   questionnaire_navigation_prev_stays_in_bounds:
     questionnairePreviousQuestionState.currentQuestionIndex === 0,
   questionnaire_navigation_option_wraps:

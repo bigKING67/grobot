@@ -1,4 +1,8 @@
 import { AskUserEnvelope } from "./schema";
+import {
+  compactAskUserDisplayLine,
+  sanitizeAskUserDisplayText,
+} from "./display-text";
 
 const ASK_USER_LINE_CHAR_LIMIT = 220;
 const ASK_USER_DEFAULT_OPTION_PREVIEW_LIMIT = 5;
@@ -10,18 +14,11 @@ const ASK_USER_OTHER_OPTION_LABEL = "Custom";
 const ASK_USER_OTHER_OPTION_PLACEHOLDER = "Type custom reply";
 
 function compactSingleLine(value: string, maxChars: number): string {
-  const normalized = value.trim().replace(/\s+/g, " ");
-  if (normalized.length <= maxChars) {
-    return normalized;
-  }
-  if (maxChars <= 1) {
-    return normalized.slice(0, Math.max(0, maxChars));
-  }
-  return `${normalized.slice(0, maxChars - 1)}…`;
+  return compactAskUserDisplayLine(value, maxChars);
 }
 
 function stripLeadingOptionOrdinal(value: string): string {
-  return value
+  return sanitizeAskUserDisplayText(value)
     .trim()
     .replace(/^\s*(?:\d+|[０-９]+)(?:[\uFE0F\u20E3]|[.)、:：-])*\s*/u, "")
     .trim();

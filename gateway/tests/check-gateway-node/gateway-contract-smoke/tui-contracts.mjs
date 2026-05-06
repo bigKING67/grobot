@@ -714,6 +714,8 @@ export async function runTuiContracts() {
   assert.equal(askUserToolContractPayload.issued_display_hides_log_prefix, true);
   assert.equal(askUserToolContractPayload.issued_display_hides_options_preview, true);
   assert.equal(askUserToolContractPayload.issued_display_overflow_lists_sixth_option, true);
+  assert.equal(askUserToolContractPayload.issued_display_sanitizes_untrusted_text, true);
+  assert.equal(askUserToolContractPayload.options_preview_sanitizes_untrusted_text, true);
   assert.equal(askUserToolContractPayload.issued_event_has_ask_id, true);
   assert.equal(askUserToolContractPayload.ask_user_menu_title_has_progress, true);
   assert.equal(askUserToolContractPayload.ask_user_menu_hint_returns_to_input, true);
@@ -721,6 +723,9 @@ export async function runTuiContracts() {
   assert.equal(askUserToolContractPayload.ask_user_menu_preserves_option_descriptions, true);
   assert.equal(askUserToolContractPayload.ask_user_queue_display_shows_progress, true);
   assert.equal(askUserToolContractPayload.ask_user_queue_display_hides_raw_diagnostics, true);
+  assert.equal(askUserToolContractPayload.ask_user_queue_display_sanitizes_untrusted_text, true);
+  assert.equal(askUserToolContractPayload.ask_user_menu_descriptor_sanitizes_untrusted_text, true);
+  assert.equal(askUserToolContractPayload.ask_user_review_surface_sanitizes_untrusted_text, true);
   assert.equal(askUserToolContractPayload.questionnaire_navigation_prev_stays_in_bounds, true);
   assert.equal(askUserToolContractPayload.questionnaire_navigation_option_wraps, true);
   assert.equal(askUserToolContractPayload.questionnaire_answer_focused_advances, true);

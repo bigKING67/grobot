@@ -132,6 +132,16 @@ re-export has been removed. Do not recreate screen-path imports.
 `gateway/src/cli/start/tui-compat.ts` must not be used as the owner or import
 surface for ask-user panel code.
 
+Ask-user tool surfaces under `gateway/src/tools/ask-user/*` also feed visible
+CLI output: non-TTY issued displays, pending queue summaries, select-menu
+descriptors, review descriptors, option previews, and panel view-models. Treat
+question/header/option/description/default-answer/note/answer strings as
+untrusted display payloads. Sanitize ANSI/control/bidi sequences before these
+strings enter visible display models, but do not mutate raw submitted answers,
+secret persistence values, or model-resolution prompts. Keep the tools-local
+display sanitizer inside `tools/ask-user` instead of importing CLI/TUI renderer
+modules upward from the tools layer.
+
 ### Status, Bottom Pane, Activity Feed, And Turn Notices
 
 Developer-facing passive surfaces are owned by component directories, not
