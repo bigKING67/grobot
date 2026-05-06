@@ -1,5 +1,6 @@
 import { splitGraphemes } from "../../terminal/display-width";
 import { resolveCoalescedSubmitChunk } from "../../terminal/keyboard";
+import { sanitizeTerminalDisplayText } from "../../terminal/text-sanitizer";
 import {
   type TerminalSelectMenuInput,
   type TerminalSelectMenuInputAction,
@@ -12,6 +13,7 @@ const DEFAULT_SELECT_VISIBLE_OPTION_COUNT = 5;
 const MODEL_PICKER_VISIBLE_OPTION_COUNT = 10;
 const MENU_SEARCH_QUERY_LIMIT = 80;
 const MENU_SEARCH_CLEAR_CONTROL = "\u0015";
+const MENU_INPUT_TAB_WIDTH = "    ";
 
 export type SelectNavigationInitialPlacement = "end" | "center";
 
@@ -287,13 +289,11 @@ function normalizeMenuSearchDigits(value: string): string {
 }
 
 export function isTerminalSelectMenuPrintableInput(rawInput: string): boolean {
-  if (!rawInput || rawInput.length === 0) {
+  const input = String(rawInput ?? "");
+  if (input.length === 0 || input.includes("\r") || input.includes("\n")) {
     return false;
   }
-  if (rawInput.startsWith("\u001b")) {
-    return false;
-  }
-  return !/[\u0000-\u001f\u007f]/.test(rawInput);
+  return normalizeTerminalSelectMenuTextInput(input).length > 0;
 }
 
 export function trimTerminalSelectMenuSearchQuery(rawQuery: string): string {
@@ -302,6 +302,47 @@ export function trimTerminalSelectMenuSearchQuery(rawQuery: string): string {
     return rawQuery;
   }
   return graphemes.slice(0, MENU_SEARCH_QUERY_LIMIT).join("");
+}
+
+export function normalizeTerminalSelectMenuTextInput(rawInput: string): string {
+  if (!rawInput) {
+    return "";
+  }
+  const visibleWhitespace = String(rawInput)
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\t/g, MENU_INPUT_TAB_WIDTH)
+    .replace(/\n/g, " ");
+  return sanitizeTerminalDisplayText(visibleWhitespace);
+}
+
+function resolveTerminalSelectMenuInlineSubmitText(
+  rawInput: string,
+): { shouldSubmit: boolean; text: string } {
+  const strictSubmit = resolveCoalescedSubmitChunk(rawInput);
+  if (strictSubmit.shouldSubmit) {
+    return {
+      shouldSubmit: true,
+      text: normalizeTerminalSelectMenuTextInput(strictSubmit.normalizedChunk),
+    };
+  }
+  const input = String(rawInput ?? "");
+  const trailingLength = input.endsWith("\r\n")
+    ? 2
+    : input.endsWith("\r") || input.endsWith("\n")
+      ? 1
+      : 0;
+  if (trailingLength === 0) {
+    return { shouldSubmit: false, text: "" };
+  }
+  const payload = input.slice(0, input.length - trailingLength);
+  if (payload.length === 0 || payload.endsWith("\\")) {
+    return { shouldSubmit: false, text: "" };
+  }
+  const normalizedPayload = normalizeTerminalSelectMenuTextInput(payload);
+  return normalizedPayload.length > 0
+    ? { shouldSubmit: true, text: normalizedPayload }
+    : { shouldSubmit: false, text: "" };
 }
 
 export function resolveMenuSearchMatchedIndices(
@@ -359,14 +400,14 @@ export function reduceTerminalSelectMenuInlineInput(input: {
   }
   const rawInput = String(input.rawInput ?? "");
   const currentValue = input.currentValue ?? resolveTerminalSelectMenuItemInputValue(input.item);
+  const inputMode = input.inputMode === true;
   if (rawInput === "\u0007" && input.variant === "plan_approval") {
     return { kind: "edit_plan", value: currentValue };
   }
-  const submitChunk = resolveCoalescedSubmitChunk(rawInput);
+  const submitChunk = resolveTerminalSelectMenuInlineSubmitText(rawInput);
   if (submitChunk.shouldSubmit) {
-    const payload = submitChunk.normalizedChunk;
-    const nextValue = payload.length > 0 && isTerminalSelectMenuPrintableInput(payload)
-      ? `${currentValue}${payload}`
+    const nextValue = submitChunk.text.length > 0
+      ? `${currentValue}${submitChunk.text}`
       : currentValue;
     if (nextValue.trim().length > 0 || input.item.input.allowEmptySubmitToCancel === true) {
       return { kind: "submit", value: nextValue };
@@ -380,9 +421,12 @@ export function reduceTerminalSelectMenuInlineInput(input: {
     return { kind: "activate", value: currentValue };
   }
   if (rawInput === "\u001b") {
-    return input.inputMode === true
+    return inputMode
       ? { kind: "exit_input", value: currentValue }
       : { kind: "ignored" };
+  }
+  if (!inputMode) {
+    return { kind: "ignored" };
   }
   if (rawInput === "\u007f" || rawInput === "\b") {
     const graphemes = splitGraphemes(currentValue);
@@ -391,8 +435,12 @@ export function reduceTerminalSelectMenuInlineInput(input: {
   if (rawInput === MENU_SEARCH_CLEAR_CONTROL) {
     return { kind: "update", value: "" };
   }
-  if (isTerminalSelectMenuPrintableInput(rawInput)) {
-    return { kind: "update", value: `${currentValue}${rawInput}` };
+  if (rawInput.includes("\r") || rawInput.includes("\n")) {
+    return { kind: "ignored" };
+  }
+  const normalizedInput = normalizeTerminalSelectMenuTextInput(rawInput);
+  if (normalizedInput.length > 0) {
+    return { kind: "update", value: `${currentValue}${normalizedInput}` };
   }
   return { kind: "ignored" };
 }

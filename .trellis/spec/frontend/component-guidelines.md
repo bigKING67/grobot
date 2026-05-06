@@ -67,6 +67,17 @@ sanitized at the final render boundary before width calculation or truncation.
 Plan-approval metadata is display payload too: `planPath` must be sanitized and
 compacted before header/footer rendering, and `planContent` lines must strip
 ANSI/control/bidi sequences while preserving visible tab spacing as spaces.
+Inline input inside select-menu rows must normalize typed/pasted text at the
+reducer boundary before state updates: strip ANSI/control/bidi sequences,
+render tabs as four spaces, and collapse pasted newline separators to visible
+spaces for the single-line menu input field. This normalization applies only to
+the menu input value; it must not mutate unrelated prompt raw submissions or
+ask-user secret persistence.
+Focused input options follow reference select behavior: `Enter` on an empty
+input activates edit mode first, then text/digit/backspace updates are accepted
+only while that input mode is active. This prevents focused input rows from
+stealing numeric shortcuts before the user intentionally starts editing. Search
+mode uses the same text normalizer before appending typed/pasted query text.
 All user-visible menu copy must remain English.
 
 The former `gateway/src/cli/tui/screens/select-menu-screen.ts` compatibility

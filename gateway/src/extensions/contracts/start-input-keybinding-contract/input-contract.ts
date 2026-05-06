@@ -12,6 +12,7 @@ import {
 } from "../../../cli/tui/components/prompt-input/reducer";
 import {
   isPlanApprovalInlineFeedbackApproveShortcut,
+  normalizeTerminalSelectMenuTextInput,
   shouldEnableTerminalSelectMenuNumericSelection,
 } from "../../../cli/tui/components/select-menu/controller";
 import {
@@ -108,6 +109,13 @@ export function runInputKeybindingChecks(): ContractPayload {
     rawInput: "\u007f",
     item: inlineInputOption,
     currentValue: "abc",
+    inputMode: true,
+    variant: "plan_approval",
+  });
+  const inlineInputBackspaceBeforeMode = reduceTerminalSelectMenuInlineInput({
+    rawInput: "\u007f",
+    item: inlineInputOption,
+    currentValue: "abc",
     inputMode: false,
     variant: "plan_approval",
   });
@@ -125,6 +133,30 @@ export function runInputKeybindingChecks(): ContractPayload {
     inputMode: true,
     variant: "plan_approval",
   });
+  const inlineInputTab = reduceTerminalSelectMenuInlineInput({
+    rawInput: "\t",
+    item: inlineInputOption,
+    currentValue: "step",
+    inputMode: true,
+    variant: "plan_approval",
+  });
+  const inlineInputUnsafePaste = reduceTerminalSelectMenuInlineInput({
+    rawInput: "Run\tchecks\u001B[31m now\u001B[0m\u202E!",
+    item: inlineInputOption,
+    currentValue: "",
+    inputMode: true,
+    variant: "plan_approval",
+  });
+  const inlineInputUnsafeCoalescedSubmit = reduceTerminalSelectMenuInlineInput({
+    rawInput: "Line 1\t\u001B[31mred\u001B[0m\u202E\nLine 2\r\n",
+    item: inlineInputOption,
+    currentValue: "",
+    inputMode: true,
+    variant: "plan_approval",
+  });
+  const normalizedInlineInputText = normalizeTerminalSelectMenuTextInput(
+    "A\tB\u001B]0;pwnd\u0007\u202EC\nD",
+  );
   const inlineInputEscExitsInput = reduceTerminalSelectMenuInlineInput({
     rawInput: "\u001b",
     item: inlineInputOption,
@@ -290,15 +322,28 @@ export function runInputKeybindingChecks(): ContractPayload {
     menu_inline_input_printable_updates:
       inlineInputPrintable.kind === "update"
       && inlineInputPrintable.value === "补",
-    menu_inline_input_backspace_updates_even_before_mode:
+    menu_inline_input_backspace_updates_in_input_mode:
       inlineInputBackspace.kind === "update"
       && inlineInputBackspace.value === "ab",
+    menu_inline_input_backspace_ignored_before_mode:
+      inlineInputBackspaceBeforeMode.kind === "ignored",
     menu_inline_input_ctrl_u_clears:
       inlineInputClear.kind === "update"
       && inlineInputClear.value === "",
     menu_inline_input_coalesced_submit:
       inlineInputCoalescedSubmit.kind === "submit"
       && inlineInputCoalescedSubmit.value === "please revise",
+    menu_inline_input_tab_visible_spacing:
+      inlineInputTab.kind === "update"
+      && inlineInputTab.value === "step    ",
+    menu_inline_input_sanitizes_unsafe_text:
+      inlineInputUnsafePaste.kind === "update"
+      && inlineInputUnsafePaste.value === "Run    checks now!",
+    menu_inline_input_sanitizes_coalesced_submit:
+      inlineInputUnsafeCoalescedSubmit.kind === "submit"
+      && inlineInputUnsafeCoalescedSubmit.value === "Line 1    red Line 2",
+    menu_inline_input_text_normalizer_removes_terminal_controls:
+      normalizedInlineInputText === "A    BC D",
     menu_inline_input_esc_exits_input_first:
       inlineInputEscExitsInput.kind === "exit_input"
       && inlineInputEscExitsInput.value === "abc",

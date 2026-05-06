@@ -95,6 +95,25 @@ export async function runPlanCommandContracts() {
   assert.equal(startInputKeybindingContractPayload.ask_user_panel_other_backspace, true);
   assert.equal(startInputKeybindingContractPayload.submit_coalesced_backslash_ignored, true);
   assert.equal(startInputKeybindingContractPayload.submit_coalesced_escape_ignored, true);
+  assert.equal(startInputKeybindingContractPayload.menu_inline_input_empty_enter_activates, true);
+  assert.equal(startInputKeybindingContractPayload.menu_inline_input_printable_updates, true);
+  assert.equal(startInputKeybindingContractPayload.menu_inline_input_backspace_updates_in_input_mode, true);
+  assert.equal(startInputKeybindingContractPayload.menu_inline_input_backspace_ignored_before_mode, true);
+  assert.equal(startInputKeybindingContractPayload.menu_inline_input_ctrl_u_clears, true);
+  assert.equal(startInputKeybindingContractPayload.menu_inline_input_coalesced_submit, true);
+  assert.equal(startInputKeybindingContractPayload.menu_inline_input_tab_visible_spacing, true);
+  assert.equal(startInputKeybindingContractPayload.menu_inline_input_sanitizes_unsafe_text, true);
+  assert.equal(startInputKeybindingContractPayload.menu_inline_input_sanitizes_coalesced_submit, true);
+  assert.equal(
+    startInputKeybindingContractPayload.menu_inline_input_text_normalizer_removes_terminal_controls,
+    true,
+  );
+  assert.equal(startInputKeybindingContractPayload.menu_inline_input_esc_exits_input_first, true);
+  assert.equal(startInputKeybindingContractPayload.menu_inline_input_esc_without_input_falls_through, true);
+  assert.equal(startInputKeybindingContractPayload.menu_inline_input_ctrl_g_keeps_plan_editor, true);
+  assert.equal(startInputKeybindingContractPayload.menu_inline_input_shift_tab_approves_feedback, true);
+  assert.equal(startInputKeybindingContractPayload.menu_numeric_selection_default_enabled, true);
+  assert.equal(startInputKeybindingContractPayload.menu_numeric_selection_hidden_indexes_disabled, true);
   assert.equal(startInputKeybindingContractPayload.submit_chunk_only_lf_detected, true);
   assert.equal(startInputKeybindingContractPayload.interactive_plain_enter_defers_to_keypress, true);
   assert.equal(startInputKeybindingContractPayload.interactive_plain_enter_recent_keypress_ignored, true);

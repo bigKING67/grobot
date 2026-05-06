@@ -2,6 +2,7 @@ import {
   decodeTerminalSelectMenuInput,
   hasMenuDigitsContinuation,
   isTerminalSelectMenuPrintableInput,
+  normalizeTerminalSelectMenuTextInput,
   normalizeTerminalSelectMenuIndex,
   normalizeSelectNavigationState,
   normalizeTerminalSelectMenuVisibleOptionCount,
@@ -72,6 +73,7 @@ export {
   decodeTerminalSelectMenuInput as decodeMenuInput,
   hasMenuDigitsContinuation,
   isTerminalSelectMenuPrintableInput,
+  normalizeTerminalSelectMenuTextInput,
   normalizeTerminalSelectMenuIndex,
   normalizeTerminalSelectMenuVisibleOptionCount,
   reduceTerminalSelectMenuInlineInput,
@@ -520,7 +522,12 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
         return;
       }
       const activeInputItem = resolveActiveInputItem();
-      if (!menuSearchMode && activeInputItem && handleInlineInputData(rawInput, activeInputItem)) {
+      if (
+        !menuSearchMode
+        && menuInlineInputMode
+        && activeInputItem
+        && handleInlineInputData(rawInput, activeInputItem)
+      ) {
         return;
       }
       if (rawInput === MENU_SEARCH_TOGGLE_CONTROL || (!menuSearchMode && rawInput === "/")) {
@@ -543,8 +550,9 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
           dropMenuSearchLastGrapheme();
           return;
         }
-        if (isTerminalSelectMenuPrintableInput(rawInput)) {
-          applyMenuSearchQuery(`${menuSearchQuery}${rawInput}`);
+        const normalizedSearchInput = normalizeTerminalSelectMenuTextInput(rawInput);
+        if (normalizedSearchInput.length > 0) {
+          applyMenuSearchQuery(`${menuSearchQuery}${normalizedSearchInput}`);
           return;
         }
       }
