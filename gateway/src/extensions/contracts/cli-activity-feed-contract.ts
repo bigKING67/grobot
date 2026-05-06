@@ -409,6 +409,89 @@ const queuedAndPermissionRendered = renderRuntimeActivityFeed({
     }),
   ],
 });
+const toolUseIdDedupeRendered = renderRuntimeActivityFeed({
+  terminalColumns: 120,
+  detailMode: "full",
+  events: [
+    event({
+      eventType: "tool_start",
+      payload: {
+        tool_name: "read",
+        tool_use_id: "tool-use-id-alias",
+        input_summary: {
+          path: "gateway/src/stale-start.ts",
+        },
+      },
+    }),
+    event({
+      eventType: "tool_end",
+      payload: {
+        tool_name: "read",
+        tool_use_id: "tool-use-id-alias",
+        status: "ok",
+        output_summary: {
+          tool: "read",
+          path: "gateway/src/resolved-result.ts",
+          line_start: 1,
+          line_end: 2,
+        },
+      },
+    }),
+  ],
+});
+const maxItemsLatestRendered = renderRuntimeActivityFeed({
+  terminalColumns: 120,
+  detailMode: "compact",
+  maxItems: 2,
+  events: [
+    event({
+      eventType: "tool_end",
+      payload: {
+        tool_name: "read",
+        status: "ok",
+        output_summary: {
+          tool: "read",
+          path: "gateway/src/oldest-1.ts",
+        },
+      },
+    }),
+    event({
+      eventType: "tool_end",
+      payload: {
+        tool_name: "write",
+        status: "ok",
+        output_summary: {
+          tool: "write",
+          path: "gateway/src/old-2.ts",
+          line_count: 1,
+          content_preview: "line",
+        },
+      },
+    }),
+    event({
+      eventType: "tool_end",
+      payload: {
+        tool_name: "read",
+        status: "ok",
+        output_summary: {
+          tool: "read",
+          path: "gateway/src/latest-3.ts",
+        },
+      },
+    }),
+    event({
+      eventType: "tool_end",
+      payload: {
+        tool_name: "read",
+        status: "ok",
+        output_summary: {
+          tool: "read",
+          path: "gateway/src/latest-4.ts",
+        },
+      },
+    }),
+  ],
+});
 
 const emptyRendered = renderRuntimeActivityFeed({
   events: [
@@ -458,6 +541,8 @@ const truncatedBashPlain = stripAnsi(truncatedBashRendered);
 const ansiBashPlain = stripAnsi(ansiBashRendered);
 const failedMixedBashPlain = stripAnsi(failedMixedBashRendered);
 const queuedAndPermissionPlain = stripAnsi(queuedAndPermissionRendered);
+const toolUseIdDedupePlain = stripAnsi(toolUseIdDedupeRendered);
+const maxItemsLatestPlain = stripAnsi(maxItemsLatestRendered);
 const turnTranscriptPlain = stripAnsi(turnOutputTranscript.activityFeed);
 const lines = rendered.trimEnd().split("\n");
 const referenceToolStatusDot = process.platform === "darwin" ? "⏺" : "●";
@@ -555,6 +640,14 @@ const payload = {
     && queuedAndPermissionPlain.includes("  ⎿  Bash classifier checking…")
     && !queuedAndPermissionPlain.includes("classifier_checking")
     && !queuedAndPermissionPlain.includes("waiting_for_permission"),
+  tool_use_id_alias_dedupes_resolved_start:
+    toolUseIdDedupePlain.includes("Read gateway/src/resolved-result.ts")
+    && !toolUseIdDedupePlain.includes("gateway/src/stale-start.ts"),
+  max_items_keeps_latest_rows:
+    maxItemsLatestPlain.includes("Read gateway/src/latest-3.ts")
+    && maxItemsLatestPlain.includes("Read gateway/src/latest-4.ts")
+    && !maxItemsLatestPlain.includes("gateway/src/oldest-1.ts")
+    && !maxItemsLatestPlain.includes("gateway/src/old-2.ts"),
   renders_recovery_row:
     plain.includes("Recovery · Run")
     && fullPlain.includes("  ⎿  Switch strategy · Inspect error, then switch strategy · Error Command failed")

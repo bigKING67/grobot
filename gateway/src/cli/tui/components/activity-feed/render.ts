@@ -657,7 +657,11 @@ function buildToolEndRow(
 }
 
 function payloadToolCallId(payload: Record<string, unknown>): string {
-  return firstString(payloadString(payload, "tool_call_id"), payloadString(payload, "id"));
+  return firstString(
+    payloadString(payload, "tool_call_id"),
+    payloadString(payload, "tool_use_id"),
+    payloadString(payload, "id"),
+  );
 }
 
 function buildRecoveryRow(event: RuntimeEvent): ActivityFeedRow | undefined {
@@ -722,7 +726,7 @@ function buildRows(input: RuntimeActivityFeedInput): ActivityFeedRow[] {
   const maxItems = typeof input.maxItems === "number" && Number.isFinite(input.maxItems)
     ? Math.max(1, Math.floor(input.maxItems))
     : DEFAULT_MAX_ITEMS;
-  return rows.slice(0, maxItems);
+  return rows.slice(Math.max(0, rows.length - maxItems));
 }
 
 export function renderRuntimeActivityFeed(input: RuntimeActivityFeedInput): string {
