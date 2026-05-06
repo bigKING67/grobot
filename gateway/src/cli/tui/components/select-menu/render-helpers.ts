@@ -58,6 +58,16 @@ export interface TruncatedMenuLabel {
   suffix: string;
 }
 
+export interface RenderMenuOptionLabelInput {
+  isActive: boolean;
+  isDisabled?: boolean;
+  labelParts: TruncatedMenuLabel;
+  highlightQuery: string;
+  theme: ReturnType<typeof createCliTheme>;
+  activeToken?: "accent" | "planMode";
+  suffixToken?: "accent" | "muted" | "current";
+}
+
 interface PreparedRenderMenu {
   menu: TerminalSelectMenuInput;
   activeIndex: number;
@@ -394,6 +404,65 @@ export function truncateMenuLabelWithSuffix(input: {
     label: plain,
     suffix: "",
   };
+}
+
+export function renderMenuOptionLabel(input: RenderMenuOptionLabelInput): string {
+  const activeToken = input.activeToken ?? "accent";
+  if (input.isDisabled === true) {
+    return input.theme.color("muted", input.labelParts.plain);
+  }
+  if (input.isActive) {
+    return input.theme.color(activeToken, input.labelParts.plain);
+  }
+  const label = renderSearchHighlightedMenuLabel({
+    label: input.labelParts.label,
+    query: input.highlightQuery,
+    theme: input.theme,
+  });
+  if (!input.labelParts.suffix) {
+    return label;
+  }
+  if (input.suffixToken === "accent") {
+    return `${label}${input.theme.color("accent", input.labelParts.suffix)}`;
+  }
+  if (input.suffixToken === "muted") {
+    return `${label}${input.theme.color("muted", input.labelParts.suffix)}`;
+  }
+  return `${label}${input.theme.currentTag(input.labelParts.suffix)}`;
+}
+
+export function renderSearchHighlightedMenuLabel(input: {
+  label: string;
+  query: string;
+  theme: ReturnType<typeof createCliTheme>;
+}): string {
+  if (input.query.length === 0 || input.label.length === 0) {
+    return input.label;
+  }
+  const labelLower = input.label.toLowerCase();
+  const queryLower = input.query.toLowerCase();
+  if (queryLower.length === 0) {
+    return input.label;
+  }
+  const parts: string[] = [];
+  let offset = 0;
+  let matchIndex = labelLower.indexOf(queryLower, offset);
+  if (matchIndex === -1) {
+    return input.label;
+  }
+  while (matchIndex !== -1) {
+    if (matchIndex > offset) {
+      parts.push(input.label.slice(offset, matchIndex));
+    }
+    const match = input.label.slice(matchIndex, matchIndex + input.query.length);
+    parts.push(input.theme.color("accent", input.theme.bold(match)));
+    offset = matchIndex + input.query.length;
+    matchIndex = labelLower.indexOf(queryLower, offset);
+  }
+  if (offset < input.label.length) {
+    parts.push(input.label.slice(offset));
+  }
+  return parts.join("");
 }
 
 function resolveDescriptionColumn(input: {

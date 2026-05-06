@@ -5,6 +5,7 @@ export interface TerminalSelectMenuItem {
   label: string;
   description?: string;
   current?: boolean;
+  disabled?: boolean;
   input?: {
     placeholder?: string;
     initialValue?: string;
@@ -65,6 +66,7 @@ export interface TerminalSelectMenuInput {
   initialIndex?: number;
   visibleOptionCount?: number;
   hideIndexes?: boolean;
+  disableSelection?: boolean | "numeric";
   layout?: TerminalSelectMenuLayout;
   inlineDescriptions?: boolean;
   viewport?: TerminalSelectMenuViewport;

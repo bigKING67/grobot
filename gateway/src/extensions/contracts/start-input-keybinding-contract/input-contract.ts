@@ -13,7 +13,9 @@ import {
 import {
   isPlanApprovalInlineFeedbackApproveShortcut,
   normalizeTerminalSelectMenuTextInput,
+  shouldAllowTerminalSelectMenuItemSelection,
   shouldRouteTerminalSelectMenuInlineInputBeforeMode,
+  shouldEnableTerminalSelectMenuSelection,
   shouldEnableTerminalSelectMenuNumericSelection,
 } from "../../../cli/tui/components/select-menu/controller";
 import {
@@ -208,6 +210,63 @@ export function runInputKeybindingChecks(): ContractPayload {
   const numericSelectionHiddenIndexDisabled = shouldEnableTerminalSelectMenuNumericSelection({
     hideIndexes: true,
   });
+  const numericSelectionDisableSelectionDisabled = shouldEnableTerminalSelectMenuNumericSelection({
+    disableSelection: true,
+  });
+  const numericSelectionNumericModeDisabled = shouldEnableTerminalSelectMenuNumericSelection({
+    disableSelection: "numeric",
+  });
+  const enterSelectionDefaultEnabled = shouldEnableTerminalSelectMenuSelection({
+    source: "enter",
+  });
+  const enterSelectionDisableSelectionDisabled = shouldEnableTerminalSelectMenuSelection({
+    disableSelection: true,
+    source: "enter",
+  });
+  const enterSelectionNumericModeAllowed = shouldEnableTerminalSelectMenuSelection({
+    disableSelection: "numeric",
+    source: "enter",
+  });
+  const numericSelectionNumericModeRejected = shouldEnableTerminalSelectMenuSelection({
+    disableSelection: "numeric",
+    source: "numeric",
+  });
+  const disabledMenuOption = {
+    id: "deploy",
+    label: "Deploy",
+    disabled: true,
+  };
+  const enabledMenuOption = {
+    id: "run",
+    label: "Run",
+  };
+  const disabledItemEnterRejected = shouldAllowTerminalSelectMenuItemSelection({
+    item: disabledMenuOption,
+    source: "enter",
+  });
+  const disabledItemNumericRejected = shouldAllowTerminalSelectMenuItemSelection({
+    item: disabledMenuOption,
+    source: "numeric",
+  });
+  const enabledItemEnterAllowed = shouldAllowTerminalSelectMenuItemSelection({
+    item: enabledMenuOption,
+    source: "enter",
+  });
+  const enabledItemDisableSelectionRejected = shouldAllowTerminalSelectMenuItemSelection({
+    item: enabledMenuOption,
+    disableSelection: true,
+    source: "enter",
+  });
+  const enabledItemNumericModeEnterAllowed = shouldAllowTerminalSelectMenuItemSelection({
+    item: enabledMenuOption,
+    disableSelection: "numeric",
+    source: "enter",
+  });
+  const enabledItemNumericModeNumericRejected = shouldAllowTerminalSelectMenuItemSelection({
+    item: enabledMenuOption,
+    disableSelection: "numeric",
+    source: "numeric",
+  });
   const submitChunkOnlyLf = resolveSubmitKeyAction({
     chunk: "\n",
     key: {},
@@ -389,6 +448,18 @@ export function runInputKeybindingChecks(): ContractPayload {
       !inlineInputTabDoesNotRouteDuringSearch,
     menu_numeric_selection_default_enabled: numericSelectionDefaultEnabled,
     menu_numeric_selection_hidden_indexes_disabled: !numericSelectionHiddenIndexDisabled,
+    menu_numeric_selection_disable_selection_disabled: !numericSelectionDisableSelectionDisabled,
+    menu_numeric_selection_numeric_mode_disabled: !numericSelectionNumericModeDisabled,
+    menu_enter_selection_default_enabled: enterSelectionDefaultEnabled,
+    menu_enter_selection_disable_selection_disabled: !enterSelectionDisableSelectionDisabled,
+    menu_enter_selection_numeric_mode_allowed: enterSelectionNumericModeAllowed,
+    menu_numeric_selection_numeric_mode_rejected: !numericSelectionNumericModeRejected,
+    menu_disabled_item_enter_rejected: !disabledItemEnterRejected,
+    menu_disabled_item_numeric_rejected: !disabledItemNumericRejected,
+    menu_enabled_item_enter_allowed: enabledItemEnterAllowed,
+    menu_enabled_item_disable_selection_rejected: !enabledItemDisableSelectionRejected,
+    menu_enabled_item_numeric_mode_enter_allowed: enabledItemNumericModeEnterAllowed,
+    menu_enabled_item_numeric_mode_numeric_rejected: !enabledItemNumericModeNumericRejected,
     submit_chunk_only_lf_detected: submitChunkOnlyLf === "submit",
     interactive_plain_enter_defers_to_keypress:
       interactivePlainEnterDefersToKeypress === "defer_to_keypress",

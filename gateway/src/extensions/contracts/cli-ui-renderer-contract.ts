@@ -4,6 +4,7 @@ import {
   askUserMenuInput,
   compactVerticalMenuInput,
   directLargeMenuInput,
+  disabledMenuInput,
   directLargeModelPickerInput,
   emptyFilteredMenuInput,
   emptyPlanApprovalMenuInput,
@@ -104,6 +105,8 @@ const startupRegisteredSymbolSingleWidth = measureDisplayWidth("®") === 1;
 const menuInteractive = interactiveRenderer.renderSelectMenu(menuInput, 0);
 const menuPlain = plainRenderer.renderSelectMenu(menuInput, 0);
 const menuNonTty = nonTtyRenderer.renderSelectMenu(menuInput, 0);
+const disabledMenuInteractive = interactiveRenderer.renderSelectMenu(disabledMenuInput, 1);
+const disabledMenuPlainText = stripAnsi(plainRenderer.renderSelectMenu(disabledMenuInput, 1));
 const filteredMenuInteractive = interactiveRenderer.renderSelectMenu(filteredMenuInput, 0);
 const filteredMenuPlainText = stripAnsi(plainRenderer.renderSelectMenu(filteredMenuInput, 0));
 const highlightedFilteredMenuInteractive = interactiveRenderer.renderSelectMenu(highlightedFilteredMenuInput, 0);
@@ -213,6 +216,14 @@ const payload = {
   menu_plain_has_no_thin_pointer: !menuPlain.includes("›"),
   menu_interactive_has_current_check: menuInteractive.includes("✓"),
   menu_plain_has_secondary_description: menuPlain.includes("Current active model"),
+  menu_disabled_row_preserves_plain_label:
+    disabledMenuPlainText.includes("❯ 2. Deploy")
+    && disabledMenuPlainText.includes("Requires a release build"),
+  menu_disabled_row_uses_muted_label:
+    disabledMenuInteractive.includes("\x1b[90mDeploy\x1b[0m")
+    && !disabledMenuInteractive.includes("\x1b[38;2;202;124;94mDeploy\x1b[0m"),
+  menu_disabled_row_description_is_muted:
+    disabledMenuInteractive.includes("\x1b[90mRequires a release build\x1b[0m"),
   menu_hint_is_compact: menuPlain.includes("·"),
   menu_hint_has_escape_back: menuPlain.includes("Esc back"),
   menu_hint_has_enter_action: menuPlain.includes("Enter confirm"),

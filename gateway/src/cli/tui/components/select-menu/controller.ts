@@ -13,6 +13,8 @@ import {
   resolveMenuSearchMatchedIndices,
   resolveTerminalSelectMenuItemInputValue,
   resolveTerminalSelectMenuViewport,
+  shouldAllowTerminalSelectMenuItemSelection,
+  shouldEnableTerminalSelectMenuSelection,
   shouldEnableTerminalSelectMenuNumericSelection,
   trimTerminalSelectMenuSearchQuery,
   type SelectNavigationAction,
@@ -92,6 +94,8 @@ export {
   resolveMenuSearchMatchedIndices,
   resolveTerminalSelectMenuItemInputValue,
   resolveTerminalSelectMenuViewport,
+  shouldAllowTerminalSelectMenuItemSelection,
+  shouldEnableTerminalSelectMenuSelection,
   shouldEnableTerminalSelectMenuNumericSelection,
   trimTerminalSelectMenuSearchQuery,
 } from "./reducer";
@@ -314,7 +318,10 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
       transitionController.runClose(result, finalizeTeardown);
     };
 
-    const selectAndFinish = (nextVisibleIndex: number): void => {
+    const selectAndFinish = (
+      nextVisibleIndex: number,
+      source: "enter" | "numeric" = "enter",
+    ): void => {
       if (visibleItemIndices.length === 0) {
         return;
       }
@@ -325,6 +332,17 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
       }
       const item = input.items[sourceIndex];
       if (!item) {
+        return;
+      }
+      if (!shouldAllowTerminalSelectMenuItemSelection({
+        item,
+        disableSelection: input.disableSelection,
+        source,
+      })) {
+        if (item.disabled === true && source !== "numeric") {
+          activeIndex = resolvedVisibleIndex;
+          render();
+        }
         return;
       }
       activeIndex = resolvedVisibleIndex;
@@ -355,7 +373,7 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
           visibleItemIndices.length,
         );
         if (typeof index === "number") {
-          selectAndFinish(index);
+          selectAndFinish(index, "numeric");
           return;
         }
         clearNumericSelectionBuffer();
@@ -373,7 +391,6 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
         return false;
       }
       numericSelectionBuffer = nextDigits;
-      activeIndex = firstMatchIndex;
       const exactIndex = resolveMenuIndexFromDigits(
         numericSelectionBuffer,
         visibleItemIndices.length,
@@ -383,9 +400,17 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
         visibleItemIndices.length,
       );
       if (typeof exactIndex === "number" && !canContinue) {
-        selectAndFinish(exactIndex);
+        const sourceIndex = visibleItemIndices[exactIndex];
+        const item = typeof sourceIndex === "number" ? input.items[sourceIndex] : undefined;
+        if (item?.disabled === true) {
+          clearNumericSelectionBuffer();
+          return true;
+        }
+        activeIndex = firstMatchIndex;
+        selectAndFinish(exactIndex, "numeric");
         return true;
       }
+      activeIndex = firstMatchIndex;
       scheduleNumericSelectionCommit();
       render();
       return true;
@@ -596,7 +621,7 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
           visibleItemIndices.length,
         );
         if (typeof bufferedIndex === "number") {
-          selectAndFinish(bufferedIndex);
+          selectAndFinish(bufferedIndex, "numeric");
         }
         return;
       }
@@ -621,7 +646,7 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
         if (!numericSelectionEnabled) {
           return;
         }
-        selectAndFinish(action.index);
+        selectAndFinish(action.index, "numeric");
         return;
       }
       if (action.kind === "enter") {

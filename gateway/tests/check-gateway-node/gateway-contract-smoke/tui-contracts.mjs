@@ -219,6 +219,8 @@ export async function runTuiContracts() {
     "startup_registered_symbol_single_width", "menu_interactive_has_ansi",
     "menu_plain_has_pointer", "menu_plain_has_no_thin_pointer",
     "menu_interactive_has_current_check", "menu_plain_has_secondary_description",
+    "menu_disabled_row_preserves_plain_label", "menu_disabled_row_uses_muted_label",
+    "menu_disabled_row_description_is_muted",
     "menu_hint_is_compact", "menu_hint_has_escape_back",
     "menu_hint_has_enter_action", "menu_hint_has_navigation_hint",
     "menu_hint_omits_secondary_key_chords", "menu_viewport_has_full_ordinal",

@@ -80,6 +80,12 @@ stealing numeric shortcuts before the user intentionally starts editing. `Tab`
 must toggle input mode for the focused input row instead of inserting literal
 spaces. Search mode uses the same text normalizer before appending
 typed/pasted query text.
+Disabled select-menu rows must stay visible but non-selectable: `Enter`, direct
+digit selection, delayed numeric selection, and space-style confirmation must
+not finish on disabled rows. Render disabled labels and descriptions with muted
+styling, and keep `disableSelection: true | "numeric"` semantics aligned with
+the reference select input (`true` blocks Enter and numeric selection;
+`"numeric"` blocks only numeric shortcuts).
 All user-visible menu copy must remain English.
 
 The former `gateway/src/cli/tui/screens/select-menu-screen.ts` compatibility

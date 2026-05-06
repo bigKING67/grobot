@@ -450,8 +450,38 @@ export function reduceTerminalSelectMenuInlineInput(input: {
 
 export function shouldEnableTerminalSelectMenuNumericSelection(input: {
   hideIndexes?: boolean;
+  disableSelection?: boolean | "numeric";
 }): boolean {
-  return input.hideIndexes !== true;
+  return input.hideIndexes !== true
+    && input.disableSelection !== true
+    && input.disableSelection !== "numeric";
+}
+
+export function shouldEnableTerminalSelectMenuSelection(input: {
+  disableSelection?: boolean | "numeric";
+  source?: "enter" | "numeric";
+}): boolean {
+  if (input.disableSelection === true) {
+    return false;
+  }
+  if (input.source === "numeric" && input.disableSelection === "numeric") {
+    return false;
+  }
+  return true;
+}
+
+export function shouldAllowTerminalSelectMenuItemSelection(input: {
+  item?: TerminalSelectMenuItem;
+  disableSelection?: boolean | "numeric";
+  source?: "enter" | "numeric";
+}): boolean {
+  if (!input.item || input.item.disabled === true) {
+    return false;
+  }
+  return shouldEnableTerminalSelectMenuSelection({
+    disableSelection: input.disableSelection,
+    source: input.source,
+  });
 }
 
 export function decodeTerminalSelectMenuInput(

@@ -118,6 +118,18 @@ export async function runPlanCommandContracts() {
   assert.equal(startInputKeybindingContractPayload.menu_inline_input_tab_does_not_route_during_search, true);
   assert.equal(startInputKeybindingContractPayload.menu_numeric_selection_default_enabled, true);
   assert.equal(startInputKeybindingContractPayload.menu_numeric_selection_hidden_indexes_disabled, true);
+  assert.equal(startInputKeybindingContractPayload.menu_numeric_selection_disable_selection_disabled, true);
+  assert.equal(startInputKeybindingContractPayload.menu_numeric_selection_numeric_mode_disabled, true);
+  assert.equal(startInputKeybindingContractPayload.menu_enter_selection_default_enabled, true);
+  assert.equal(startInputKeybindingContractPayload.menu_enter_selection_disable_selection_disabled, true);
+  assert.equal(startInputKeybindingContractPayload.menu_enter_selection_numeric_mode_allowed, true);
+  assert.equal(startInputKeybindingContractPayload.menu_numeric_selection_numeric_mode_rejected, true);
+  assert.equal(startInputKeybindingContractPayload.menu_disabled_item_enter_rejected, true);
+  assert.equal(startInputKeybindingContractPayload.menu_disabled_item_numeric_rejected, true);
+  assert.equal(startInputKeybindingContractPayload.menu_enabled_item_enter_allowed, true);
+  assert.equal(startInputKeybindingContractPayload.menu_enabled_item_disable_selection_rejected, true);
+  assert.equal(startInputKeybindingContractPayload.menu_enabled_item_numeric_mode_enter_allowed, true);
+  assert.equal(startInputKeybindingContractPayload.menu_enabled_item_numeric_mode_numeric_rejected, true);
   assert.equal(startInputKeybindingContractPayload.submit_chunk_only_lf_detected, true);
   assert.equal(startInputKeybindingContractPayload.interactive_plain_enter_defers_to_keypress, true);
   assert.equal(startInputKeybindingContractPayload.interactive_plain_enter_recent_keypress_ignored, true);

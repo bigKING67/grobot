@@ -32,6 +32,8 @@ import {
   resolveMenuColumns,
   resolveMenuLabelBudget,
   resolveMenuLayout,
+  renderMenuOptionLabel,
+  renderSearchHighlightedMenuLabel,
   resolveModelPickerMarker,
   resolveRenderViewport,
   resolveScrollAwareMarker,
@@ -42,7 +44,6 @@ import {
   shouldRenderMenuDescriptions,
   truncateMenuLabelWithSuffix,
   type RenderMenuRow,
-  type TruncatedMenuLabel,
 } from "../components/select-menu/render-helpers";
 
 function capitalizeAscii(value: string): string {
@@ -191,40 +192,6 @@ function resolveSearchHighlightQuery(search?: TerminalSelectMenuSearchMeta): str
   return sanitizeMenuText(search.query, "").trim();
 }
 
-function renderSearchHighlightedMenuLabel(input: {
-  label: string;
-  query: string;
-  theme: ReturnType<typeof createCliTheme>;
-}): string {
-  if (input.query.length === 0 || input.label.length === 0) {
-    return input.label;
-  }
-  const labelLower = input.label.toLowerCase();
-  const queryLower = input.query.toLowerCase();
-  if (queryLower.length === 0) {
-    return input.label;
-  }
-  const parts: string[] = [];
-  let offset = 0;
-  let matchIndex = labelLower.indexOf(queryLower, offset);
-  if (matchIndex === -1) {
-    return input.label;
-  }
-  while (matchIndex !== -1) {
-    if (matchIndex > offset) {
-      parts.push(input.label.slice(offset, matchIndex));
-    }
-    const match = input.label.slice(matchIndex, matchIndex + input.query.length);
-    parts.push(input.theme.color("accent", input.theme.bold(match)));
-    offset = matchIndex + input.query.length;
-    matchIndex = labelLower.indexOf(queryLower, offset);
-  }
-  if (offset < input.label.length) {
-    parts.push(input.label.slice(offset));
-  }
-  return parts.join("");
-}
-
 function normalizeEffortLevel(
   value: TerminalSelectMenuEffortLevel | undefined,
 ): TerminalSelectMenuEffortLevel | undefined {
@@ -264,38 +231,16 @@ function buildModelPickerEffortLine(input: {
   return `${MODEL_PICKER_EFFORT_SYMBOL[effortLevel]} ${capitalizeAscii(effortLevel)} effort${defaultSuffix}  ${hint}`;
 }
 
-function renderModelPickerLabel(input: {
+function renderPlanApprovalOptionLabel(input: {
   isActive: boolean;
-  isCurrent: boolean;
-  labelParts: TruncatedMenuLabel;
-  highlightQuery: string;
+  isDisabled?: boolean;
+  label: string;
   theme: ReturnType<typeof createCliTheme>;
 }): string {
-  if (input.isCurrent) {
-    const label = input.isActive
-      ? input.theme.color("accent", input.labelParts.label)
-      : renderSearchHighlightedMenuLabel({
-        label: input.labelParts.label,
-        query: input.highlightQuery,
-        theme: input.theme,
-      });
-    const suffix = input.labelParts.suffix
-      ? input.theme.color("accent", input.labelParts.suffix)
-      : "";
-    return `${label}${suffix}`;
+  if (input.isDisabled === true) {
+    return input.theme.color("muted", input.label);
   }
-  if (input.isActive) {
-    return input.theme.color("accent", input.labelParts.plain);
-  }
-  const suffix = input.labelParts.suffix
-    ? input.theme.color("muted", input.labelParts.suffix)
-    : "";
-  const label = renderSearchHighlightedMenuLabel({
-    label: input.labelParts.label,
-    query: input.highlightQuery,
-    theme: input.theme,
-  });
-  return `${label}${suffix}`;
+  return input.isActive ? input.theme.color("planMode", input.label) : input.label;
 }
 
 function resolveRenderContext(input: RenderTerminalSelectMenuInput): {
@@ -351,6 +296,7 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
   for (let index = 0; index < visibleItems.length; index += 1) {
     const item = visibleItems[index]!;
     const isActive = index === input.activeIndex;
+    const isOptionDisabled = item.disabled === true;
     const marker = resolveModelPickerMarker({
       isActive,
       showScrollUp: shouldShowViewportScrollUp({ rowIndex: index, viewport }),
@@ -376,12 +322,13 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
       suffix: statusSuffix,
       maxWidth: labelBudget,
     });
-    const renderedLabel = renderModelPickerLabel({
+    const renderedLabel = renderMenuOptionLabel({
       isActive,
-      isCurrent,
+      isDisabled: isOptionDisabled,
       labelParts,
       highlightQuery,
       theme,
+      suffixToken: isCurrent ? "accent" : "muted",
     });
     const prefixPlain = hideIndexes
       ? `${marker.plain} `
@@ -470,6 +417,7 @@ function renderAskUserMenu(input: RenderTerminalSelectMenuInput): string {
   for (let index = 0; index < input.menu.items.length; index += 1) {
     const item = input.menu.items[index]!;
     const isActive = index === input.activeIndex;
+    const isOptionDisabled = item.disabled === true;
     const marker = resolveModelPickerMarker({
       isActive,
       showScrollUp: shouldShowViewportScrollUp({ rowIndex: index, viewport }),
@@ -497,13 +445,13 @@ function renderAskUserMenu(input: RenderTerminalSelectMenuInput): string {
       suffix: currentSuffix,
       maxWidth: labelBudget,
     });
-    const renderedLabel = isActive
-      ? theme.color("accent", labelParts.plain)
-      : `${renderSearchHighlightedMenuLabel({
-        label: labelParts.label,
-        query: highlightQuery,
-        theme,
-      })}${labelParts.suffix ? theme.currentTag(labelParts.suffix) : ""}`;
+    const renderedLabel = renderMenuOptionLabel({
+      isActive,
+      isDisabled: isOptionDisabled,
+      labelParts,
+      highlightQuery,
+      theme,
+    });
     const prefixPlain = hideIndexes
       ? `${marker.plain} `
       : `${marker.plain} ${ordinalPlain} `;
@@ -560,12 +508,18 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
     for (let index = 0; index < input.menu.items.length; index += 1) {
       const item = input.menu.items[index]!;
       const isActive = index === input.activeIndex;
+      const isOptionDisabled = item.disabled === true;
       const marker = isActive ? theme.color("planMode", "❯") : " ";
       const label = truncateDisplayWidth(
         sanitizeMenuText(item.label, item.id),
         optionLabelBudget,
       );
-      const renderedLabel = isActive ? theme.color("planMode", label) : label;
+      const renderedLabel = renderPlanApprovalOptionLabel({
+        isActive,
+        isDisabled: isOptionDisabled,
+        label,
+        theme,
+      });
       lines.push(`  ${marker} ${renderedLabel}`);
     }
     if (viewport.totalCount > input.menu.items.length) {
@@ -614,6 +568,7 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
   for (let index = 0; index < input.menu.items.length; index += 1) {
     const item = input.menu.items[index]!;
     const isActive = index === input.activeIndex;
+    const isOptionDisabled = item.disabled === true;
     const marker = isActive ? theme.color("planMode", "❯") : " ";
     const labelRaw = resolveInputOptionDisplayText({
       item,
@@ -622,7 +577,12 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
       fallbackSeparator: ": ",
     });
     const label = truncateDisplayWidth(labelRaw, optionLabelBudget);
-    const renderedLabel = isActive ? theme.color("planMode", label) : label;
+    const renderedLabel = renderPlanApprovalOptionLabel({
+      isActive,
+      isDisabled: isOptionDisabled,
+      label,
+      theme,
+    });
     lines.push(`  ${marker} ${renderedLabel}`);
     const description = sanitizeMenuText(item.description);
     if (isActive && description.length > 0) {
@@ -677,6 +637,7 @@ function renderDefaultMenu(input: RenderTerminalSelectMenuInput): string {
   for (let index = 0; index < input.menu.items.length; index += 1) {
     const item = input.menu.items[index]!;
     const isActive = index === input.activeIndex;
+    const isOptionDisabled = item.disabled === true;
     const marker = resolveScrollAwareMarker({
       isActive,
       showScrollUp: shouldShowViewportScrollUp({ rowIndex: index, viewport }),
@@ -708,13 +669,13 @@ function renderDefaultMenu(input: RenderTerminalSelectMenuInput): string {
       suffix: currentSuffix,
       maxWidth: labelBudget,
     });
-    const label = isActive
-      ? theme.color("accent", labelParts.plain)
-      : `${renderSearchHighlightedMenuLabel({
-        label: labelParts.label,
-        query: highlightQuery,
-        theme,
-      })}${labelParts.suffix ? theme.currentTag(labelParts.suffix) : ""}`;
+    const label = renderMenuOptionLabel({
+      isActive,
+      isDisabled: isOptionDisabled,
+      labelParts,
+      highlightQuery,
+      theme,
+    });
     const prefixPlain = !renderIndexes
       ? `${marker.plain} `
       : `${marker.plain} ${ordinalPlain} `;

@@ -107,6 +107,25 @@ export const menuInput: TerminalSelectMenuInput = {
   ],
 };
 
+export const disabledMenuInput: TerminalSelectMenuInput = {
+  title: "Select action",
+  subtitle: "Disabled row contract",
+  hint: "Use arrows",
+  items: [
+    {
+      id: "run-checks",
+      label: "Run checks",
+      description: "Available action",
+    },
+    {
+      id: "deploy",
+      label: "Deploy",
+      description: "Requires a release build",
+      disabled: true,
+    },
+  ],
+};
+
 export const filteredMenuInput: TerminalSelectMenuInput = {
   title: "Select command",
   subtitle: "Command palette",
