@@ -8,6 +8,7 @@ import {
   buildTurnTerminalOutputSegments,
   resolveRuntimeActivityFeedTranscriptEnabled,
 } from "../../cli/start/turn";
+import { buildGroupedToolFlowFixturePlain } from "./cli-activity-feed-contract/grouped-tool-flow-fixtures";
 
 function stripAnsi(value: string): string {
   return value.replace(/\u001B\[[0-9;]*m/g, "");
@@ -492,6 +493,7 @@ const maxItemsLatestRendered = renderRuntimeActivityFeed({
     }),
   ],
 });
+const groupedToolFlow = buildGroupedToolFlowFixturePlain();
 
 const emptyRendered = renderRuntimeActivityFeed({
   events: [
@@ -648,6 +650,28 @@ const payload = {
     && maxItemsLatestPlain.includes("Read gateway/src/latest-4.ts")
     && !maxItemsLatestPlain.includes("gateway/src/oldest-1.ts")
     && !maxItemsLatestPlain.includes("gateway/src/old-2.ts"),
+  grouped_resolved_reads_compact_to_reference_summary:
+    groupedToolFlow.groupedReads.includes("Read 3 files")
+    && groupedToolFlow.groupedReads.includes("Read gateway/src/cli/tui/a.ts · lines 1-4")
+    && groupedToolFlow.groupedReads.includes("Read gateway/src/cli/tui/b.ts · lines 8-12")
+    && groupedToolFlow.groupedReads.includes("Read gateway/src/cli/tui/c.ts · lines 20-24")
+    && !groupedToolFlow.groupedReads.includes("group-read-")
+    && !groupedToolFlow.groupedReads.includes("tool_call_id"),
+  mixed_running_and_resolved_tool_calls_remain_separate:
+    groupedToolFlow.mixedResolvedRunning.includes("Read gateway/src/resolved-result.ts")
+    && groupedToolFlow.mixedResolvedRunning.includes("Read gateway/src/running-now.ts")
+    && !groupedToolFlow.mixedResolvedRunning.includes("gateway/src/resolved-start.ts")
+    && !groupedToolFlow.mixedResolvedRunning.includes("Read 2 files"),
+  failed_tool_calls_are_not_swallowed_by_grouping:
+    groupedToolFlow.failedGroupGuard.includes("Run failed")
+    && groupedToolFlow.failedGroupGuard.includes("failure detail")
+    && groupedToolFlow.failedGroupGuard.includes("$ npm run fail · exit 1")
+    && !groupedToolFlow.failedGroupGuard.includes("Run 2 items"),
+  recovery_with_same_tool_call_id_stays_next_to_failed_tool:
+    groupedToolFlow.attachedRecovery.includes("Run failed")
+    && groupedToolFlow.attachedRecovery.includes("recoverable failure")
+    && groupedToolFlow.attachedRecovery.includes("Recovery · Run")
+    && groupedToolFlow.attachedRecovery.indexOf("Run failed") < groupedToolFlow.attachedRecovery.indexOf("Recovery · Run"),
   renders_recovery_row:
     plain.includes("Recovery · Run")
     && fullPlain.includes("  ⎿  Switch strategy · Inspect error, then switch strategy · Error Command failed")

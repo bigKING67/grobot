@@ -2,39 +2,15 @@ import type { RuntimeEvent } from "../../../../models/types";
 import { compactSpaces } from "../../terminal/display-width";
 import type { ActivityFeedRow } from "./contract";
 import { formatBashCommandDisplay } from "./bash-format";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function normalizePayload(event: RuntimeEvent): Record<string, unknown> {
-  const raw = isRecord(event.payload) ? event.payload : {};
-  const nested = isRecord(raw.payload) ? raw.payload : {};
-  return {
-    ...raw,
-    ...nested,
-  };
-}
-
-function payloadRecord(payload: Record<string, unknown>, key: string): Record<string, unknown> {
-  const value = payload[key];
-  return isRecord(value) ? value : {};
-}
-
-function payloadString(payload: Record<string, unknown>, key: string): string {
-  const value = payload[key];
-  return typeof value === "string" ? value : "";
-}
-
-function firstString(...values: string[]): string {
-  for (const value of values) {
-    const normalized = compactSpaces(value);
-    if (normalized) {
-      return normalized;
-    }
-  }
-  return "";
-}
+import {
+  firstString,
+  humanToolLabel,
+  normalizeActivityPayload,
+  normalizeToolName,
+  payloadRecord,
+  payloadString,
+  payloadToolCallId,
+} from "./tool-event";
 
 function compactPath(path: string): string {
   const normalized = compactSpaces(path);
@@ -42,37 +18,6 @@ function compactPath(path: string): string {
     return "";
   }
   return normalized.replace(/^\.?\//, "");
-}
-
-function humanToolLabel(toolName: string): string {
-  switch (toolName) {
-    case "search":
-    case "semantic_search":
-    case "$web_search":
-    case "web_search":
-      return "Search";
-    case "read":
-      return "Read";
-    case "glob":
-    case "list":
-      return "Explore";
-    case "edit":
-      return "Edit";
-    case "write":
-      return "Write";
-    case "bash":
-      return "Run";
-    default:
-      return toolName
-        .split(/[_-]+/g)
-        .filter(Boolean)
-        .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
-        .join(" ") || "Tool";
-  }
-}
-
-function normalizeToolName(payload: Record<string, unknown>): string {
-  return firstString(payloadString(payload, "tool_name")) || "unknown_tool";
 }
 
 function resolveCommandPreview(payload: Record<string, unknown>, inputSummary: Record<string, unknown>): string {
@@ -134,7 +79,7 @@ function resolveToolStartState(input: {
 }
 
 export function buildActivityToolStartRow(event: RuntimeEvent): ActivityFeedRow | undefined {
-  const payload = normalizePayload(event);
+  const payload = normalizeActivityPayload(event);
   const toolName = normalizeToolName(payload);
   const inputSummary = payloadRecord(payload, "input_summary");
   const label = humanToolLabel(toolName);
@@ -165,5 +110,8 @@ export function buildActivityToolStartRow(event: RuntimeEvent): ActivityFeedRow 
     detailLines: startState.detailLines,
     severity: "ok",
     state: startState.state,
+    kind: "tool",
+    toolName,
+    toolCallId: payloadToolCallId(payload) || undefined,
   };
 }

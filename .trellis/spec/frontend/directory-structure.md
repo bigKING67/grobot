@@ -104,7 +104,12 @@ gateway/src/
 │       │   │   └── render.ts
 │       │   ├── activity-feed/
 │       │   │   ├── contract.ts
-│       │   │   └── render.ts
+│       │   │   ├── render.ts
+│       │   │   ├── tool-event.ts
+│       │   │   ├── tool-start-row.ts
+│       │   │   ├── tool-end-row.ts
+│       │   │   ├── tool-recovery-row.ts
+│       │   │   └── tool-group.ts
 │       │   ├── provider-health/
 │       │   │   ├── contract.ts
 │       │   │   └── render.ts
