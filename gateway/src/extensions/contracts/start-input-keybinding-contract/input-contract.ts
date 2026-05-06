@@ -13,6 +13,7 @@ import {
 import {
   isPlanApprovalInlineFeedbackApproveShortcut,
   normalizeTerminalSelectMenuTextInput,
+  shouldRouteTerminalSelectMenuInlineInputBeforeMode,
   shouldEnableTerminalSelectMenuNumericSelection,
 } from "../../../cli/tui/components/select-menu/controller";
 import {
@@ -140,6 +141,13 @@ export function runInputKeybindingChecks(): ContractPayload {
     inputMode: true,
     variant: "plan_approval",
   });
+  const inlineInputTabBeforeMode = reduceTerminalSelectMenuInlineInput({
+    rawInput: "\t",
+    item: inlineInputOption,
+    currentValue: "step",
+    inputMode: false,
+    variant: "plan_approval",
+  });
   const inlineInputUnsafePaste = reduceTerminalSelectMenuInlineInput({
     rawInput: "Run\tchecks\u001B[31m now\u001B[0m\u202E!",
     item: inlineInputOption,
@@ -180,6 +188,22 @@ export function runInputKeybindingChecks(): ContractPayload {
   });
   const inlineInputShiftTabApproveFeedback =
     isPlanApprovalInlineFeedbackApproveShortcut("\u001b[Z");
+  const inlineInputTabRoutesBeforeMode =
+    shouldRouteTerminalSelectMenuInlineInputBeforeMode({
+      rawInput: "\t",
+      hasActiveInputItem: true,
+    });
+  const inlineInputDigitDoesNotRouteBeforeMode =
+    shouldRouteTerminalSelectMenuInlineInputBeforeMode({
+      rawInput: "1",
+      hasActiveInputItem: true,
+    });
+  const inlineInputTabDoesNotRouteDuringSearch =
+    shouldRouteTerminalSelectMenuInlineInputBeforeMode({
+      rawInput: "\t",
+      hasActiveInputItem: true,
+      menuSearchMode: true,
+    });
   const numericSelectionDefaultEnabled = shouldEnableTerminalSelectMenuNumericSelection({});
   const numericSelectionHiddenIndexDisabled = shouldEnableTerminalSelectMenuNumericSelection({
     hideIndexes: true,
@@ -333,9 +357,12 @@ export function runInputKeybindingChecks(): ContractPayload {
     menu_inline_input_coalesced_submit:
       inlineInputCoalescedSubmit.kind === "submit"
       && inlineInputCoalescedSubmit.value === "please revise",
-    menu_inline_input_tab_visible_spacing:
-      inlineInputTab.kind === "update"
-      && inlineInputTab.value === "step    ",
+    menu_inline_input_tab_toggles_input_mode:
+      inlineInputTab.kind === "toggle_input"
+      && inlineInputTab.value === "step",
+    menu_inline_input_tab_toggles_before_mode:
+      inlineInputTabBeforeMode.kind === "toggle_input"
+      && inlineInputTabBeforeMode.value === "step",
     menu_inline_input_sanitizes_unsafe_text:
       inlineInputUnsafePaste.kind === "update"
       && inlineInputUnsafePaste.value === "Run    checks now!",
@@ -354,6 +381,12 @@ export function runInputKeybindingChecks(): ContractPayload {
       && inlineInputCtrlGEditPlan.value === "abc",
     menu_inline_input_shift_tab_approves_feedback:
       inlineInputShiftTabApproveFeedback,
+    menu_inline_input_tab_routes_before_mode:
+      inlineInputTabRoutesBeforeMode,
+    menu_inline_input_digit_does_not_route_before_mode:
+      !inlineInputDigitDoesNotRouteBeforeMode,
+    menu_inline_input_tab_does_not_route_during_search:
+      !inlineInputTabDoesNotRouteDuringSearch,
     menu_numeric_selection_default_enabled: numericSelectionDefaultEnabled,
     menu_numeric_selection_hidden_indexes_disabled: !numericSelectionHiddenIndexDisabled,
     submit_chunk_only_lf_detected: submitChunkOnlyLf === "submit",

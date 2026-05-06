@@ -48,6 +48,16 @@ export function isPlanApprovalInlineFeedbackApproveShortcut(rawInput: string): b
   return String(rawInput ?? "") === "\u001b[Z";
 }
 
+export function shouldRouteTerminalSelectMenuInlineInputBeforeMode(input: {
+  rawInput: string;
+  menuSearchMode?: boolean;
+  hasActiveInputItem?: boolean;
+}): boolean {
+  return input.menuSearchMode !== true
+    && input.hasActiveInputItem === true
+    && String(input.rawInput ?? "") === "\t";
+}
+
 function isPlanApprovalExternalEditEnabled(input: TerminalSelectMenuInput): boolean {
   return input.variant === "plan_approval" && input.planApprovalMeta?.emptyPlan !== true;
 }
@@ -486,6 +496,12 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
         render();
         return true;
       }
+      if (reduction.kind === "toggle_input") {
+        menuInlineInputValues.set(item.id, reduction.value);
+        menuInlineInputMode = !menuInlineInputMode;
+        render();
+        return true;
+      }
       menuInlineInputValues.set(item.id, reduction.value);
       menuInlineInputMode = true;
       render();
@@ -522,6 +538,17 @@ export async function runTerminalSelectMenu(input: TerminalSelectMenuInput): Pro
         return;
       }
       const activeInputItem = resolveActiveInputItem();
+      if (
+        shouldRouteTerminalSelectMenuInlineInputBeforeMode({
+          rawInput,
+          menuSearchMode,
+          hasActiveInputItem: Boolean(activeInputItem),
+        })
+        && activeInputItem
+        && handleInlineInputData(rawInput, activeInputItem)
+      ) {
+        return;
+      }
       if (
         !menuSearchMode
         && menuInlineInputMode

@@ -93,6 +93,7 @@ export type TerminalSelectMenuInputAction =
 export type TerminalSelectMenuInlineInputReduction =
   | { kind: "ignored" }
   | { kind: "activate"; value: string }
+  | { kind: "toggle_input"; value: string }
   | { kind: "update"; value: string }
   | { kind: "exit_input"; value: string }
   | { kind: "submit"; value: string }

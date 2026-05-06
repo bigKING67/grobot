@@ -404,6 +404,9 @@ export function reduceTerminalSelectMenuInlineInput(input: {
   if (rawInput === "\u0007" && input.variant === "plan_approval") {
     return { kind: "edit_plan", value: currentValue };
   }
+  if (rawInput === "\t") {
+    return { kind: "toggle_input", value: currentValue };
+  }
   const submitChunk = resolveTerminalSelectMenuInlineSubmitText(rawInput);
   if (submitChunk.shouldSubmit) {
     const nextValue = submitChunk.text.length > 0

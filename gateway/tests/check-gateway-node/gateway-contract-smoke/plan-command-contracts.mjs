@@ -101,7 +101,8 @@ export async function runPlanCommandContracts() {
   assert.equal(startInputKeybindingContractPayload.menu_inline_input_backspace_ignored_before_mode, true);
   assert.equal(startInputKeybindingContractPayload.menu_inline_input_ctrl_u_clears, true);
   assert.equal(startInputKeybindingContractPayload.menu_inline_input_coalesced_submit, true);
-  assert.equal(startInputKeybindingContractPayload.menu_inline_input_tab_visible_spacing, true);
+  assert.equal(startInputKeybindingContractPayload.menu_inline_input_tab_toggles_input_mode, true);
+  assert.equal(startInputKeybindingContractPayload.menu_inline_input_tab_toggles_before_mode, true);
   assert.equal(startInputKeybindingContractPayload.menu_inline_input_sanitizes_unsafe_text, true);
   assert.equal(startInputKeybindingContractPayload.menu_inline_input_sanitizes_coalesced_submit, true);
   assert.equal(
@@ -112,6 +113,9 @@ export async function runPlanCommandContracts() {
   assert.equal(startInputKeybindingContractPayload.menu_inline_input_esc_without_input_falls_through, true);
   assert.equal(startInputKeybindingContractPayload.menu_inline_input_ctrl_g_keeps_plan_editor, true);
   assert.equal(startInputKeybindingContractPayload.menu_inline_input_shift_tab_approves_feedback, true);
+  assert.equal(startInputKeybindingContractPayload.menu_inline_input_tab_routes_before_mode, true);
+  assert.equal(startInputKeybindingContractPayload.menu_inline_input_digit_does_not_route_before_mode, true);
+  assert.equal(startInputKeybindingContractPayload.menu_inline_input_tab_does_not_route_during_search, true);
   assert.equal(startInputKeybindingContractPayload.menu_numeric_selection_default_enabled, true);
   assert.equal(startInputKeybindingContractPayload.menu_numeric_selection_hidden_indexes_disabled, true);
   assert.equal(startInputKeybindingContractPayload.submit_chunk_only_lf_detected, true);

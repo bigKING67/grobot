@@ -76,8 +76,10 @@ ask-user secret persistence.
 Focused input options follow reference select behavior: `Enter` on an empty
 input activates edit mode first, then text/digit/backspace updates are accepted
 only while that input mode is active. This prevents focused input rows from
-stealing numeric shortcuts before the user intentionally starts editing. Search
-mode uses the same text normalizer before appending typed/pasted query text.
+stealing numeric shortcuts before the user intentionally starts editing. `Tab`
+must toggle input mode for the focused input row instead of inserting literal
+spaces. Search mode uses the same text normalizer before appending
+typed/pasted query text.
 All user-visible menu copy must remain English.
 
 The former `gateway/src/cli/tui/screens/select-menu-screen.ts` compatibility
