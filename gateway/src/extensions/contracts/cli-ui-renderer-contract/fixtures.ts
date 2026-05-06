@@ -420,6 +420,19 @@ export const expandedMenuInput: TerminalSelectMenuInput = {
   ],
 };
 
+export const unsafeDefaultMenuInput: TerminalSelectMenuInput = {
+  title: "\u001B[31mSelect command\u001B[0m\u202E",
+  subtitle: "Command\u001B[31m palette\u001B[0m\u202E",
+  hint: "Use\u001B[31m arrows\u001B[0m\u202E",
+  items: [
+    {
+      id: "unsafe",
+      label: "\u001B[31m/unsafe\u001B[0m\u202E",
+      description: "Open\u001B[31m hidden\u001B[0m\u202E command",
+    },
+  ],
+};
+
 export const viewportMenuInput: TerminalSelectMenuInput = {
   title: "Select command",
   subtitle: "Viewport contract",

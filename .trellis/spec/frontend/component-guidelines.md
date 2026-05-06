@@ -61,8 +61,10 @@ not as appended subtitle or long footer copy. Keep this surface aligned with the
 reference `SearchBox`/`FuzzyPicker` style: `Filter: <query> matched N/M`, `No
 matches for "<query>"`, and a short active-search footer such as `Type to filter
 · Ctrl-U clear · Esc back`. Matching label text should be highlighted in-place
-after truncation without changing row width or suffix semantics. All
-user-visible menu copy must remain English.
+after truncation without changing row width or suffix semantics. Title,
+subtitle, hint, label, inline input value, and description payloads must be
+sanitized at the final render boundary before width calculation or truncation.
+All user-visible menu copy must remain English.
 
 The former `gateway/src/cli/tui/screens/select-menu-screen.ts` compatibility
 re-export has been removed. Do not recreate screen-path imports.

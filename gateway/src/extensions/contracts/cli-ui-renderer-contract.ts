@@ -20,6 +20,7 @@ import {
   planApprovalMenuInput,
   startupBrandSymbolViewModel,
   startupViewModel,
+  unsafeDefaultMenuInput,
   viewportMenuInput,
 } from "./cli-ui-renderer-contract/fixtures";
 import {
@@ -157,6 +158,8 @@ const longMenuPlain = renderSelectAtColumns(plainRenderer, longMenuInput, 0, 72)
 const hideIndexInlineMenuPlain = plainRenderer.renderSelectMenu(hideIndexInlineMenuInput, 0);
 const compactVerticalMenuPlain = plainRenderer.renderSelectMenu(compactVerticalMenuInput, 0);
 const expandedMenuPlain = plainRenderer.renderSelectMenu(expandedMenuInput, 0);
+const unsafeDefaultMenuPlain = plainRenderer.renderSelectMenu(unsafeDefaultMenuInput, 0);
+const unsafeDefaultMenuPlainText = stripAnsi(unsafeDefaultMenuPlain);
 
 const payload = {
   interactive_mode: interactiveRenderer.mode,
@@ -413,6 +416,15 @@ const payload = {
     stripAnsi(compactVerticalMenuPlain).includes("❯ 1. Apply changes\n     Review the plan"),
   menu_expanded_adds_blank_line_between_options:
     stripAnsi(expandedMenuPlain).includes("Run all verification before applying.\n\n  Fast path"),
+  menu_default_sanitizes_render_text:
+    unsafeDefaultMenuPlainText.includes("Select command")
+    && unsafeDefaultMenuPlainText.includes("Command palette")
+    && unsafeDefaultMenuPlainText.includes("/unsafe")
+    && unsafeDefaultMenuPlainText.includes("Open hidden command")
+    && unsafeDefaultMenuPlainText.includes("Enter confirm")
+    && !unsafeDefaultMenuPlain.includes("\u001B[31m")
+    && !unsafeDefaultMenuPlainText.includes("\u202E")
+    && renderedLinesWithinColumns(unsafeDefaultMenuPlain, 80),
 };
 
 process.stdout.write(`${JSON.stringify(payload)}\n`);

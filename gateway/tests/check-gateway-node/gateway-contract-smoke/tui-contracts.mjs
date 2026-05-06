@@ -260,6 +260,7 @@ export async function runTuiContracts() {
     "model_picker_long_default_suffix_preserved", "model_picker_long_effort_unsupported_line",
     "model_picker_narrow_rows_within_width", "model_picker_narrow_hides_description",
     "menu_long_rows_within_width", "menu_long_current_suffix_preserved",
+    "menu_default_sanitizes_render_text",
   ]);
   logStep("cli-ui-renderer-contract");
 

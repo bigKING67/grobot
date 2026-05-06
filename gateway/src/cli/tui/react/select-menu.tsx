@@ -656,9 +656,12 @@ function renderDefaultMenu(input: RenderTerminalSelectMenuInput): string {
   const lines: string[] = [];
   const search = resolveMenuSearchMeta(input);
   const highlightQuery = resolveSearchHighlightQuery(search);
-  lines.push(`  ${theme.bold(input.menu.title)}`);
-  if (surfaceWidth >= 56 && input.menu.subtitle && input.menu.subtitle.trim().length > 0) {
-    lines.push(`  ${theme.color("muted", truncateDisplayWidth(input.menu.subtitle.trim(), surfaceWidth - 2))}`);
+  const title = sanitizeMenuText(input.menu.title, "Select");
+  const subtitle = sanitizeMenuText(input.menu.subtitle);
+  const hint = sanitizeMenuText(input.menu.hint);
+  lines.push(`  ${theme.bold(title)}`);
+  if (surfaceWidth >= 56 && subtitle.length > 0) {
+    lines.push(`  ${theme.color("muted", truncateDisplayWidth(subtitle, surfaceWidth - 2))}`);
   }
   if (search) {
     lines.push(buildMenuSearchStatusLine({ search, maxWidth: surfaceWidth, theme }));
@@ -746,7 +749,7 @@ function renderDefaultMenu(input: RenderTerminalSelectMenuInput): string {
   }
   lines.push("");
   lines.push(theme.color("muted", `  ${buildMenuFooterHint({
-    hint: input.menu.hint,
+    hint,
     search,
   })}`));
   return renderLineStack(lines, theme);
