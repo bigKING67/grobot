@@ -6,6 +6,7 @@ import {
   splitGraphemes,
   truncateDisplayWidth,
 } from "./display-width";
+import { sanitizeTerminalDisplayText } from "../terminal/text-sanitizer";
 import { TERMINAL_SYMBOL, terminalStyle } from "../theme/terminal-style";
 
 export const OVERLAY_MAX_ITEMS = 5;
@@ -96,6 +97,25 @@ export interface FormatPromptSuggestionPanelInput {
   maxColumnWidth?: number;
   showDescription?: boolean;
   showSelectionPointer?: boolean;
+}
+
+function sanitizeSuggestionText(value: string | undefined, fallback = ""): string {
+  const sanitized = compactSpaces(sanitizeTerminalDisplayText(compactSpaces(value ?? fallback)));
+  if (sanitized.length > 0) {
+    return sanitized;
+  }
+  return compactSpaces(sanitizeTerminalDisplayText(compactSpaces(fallback)));
+}
+
+function sanitizePromptSuggestionItem(item: PromptSuggestionItem): PromptSuggestionItem {
+  return {
+    ...item,
+    displayText: sanitizeSuggestionText(item.displayText, item.id),
+    tag: item.tag === undefined ? undefined : sanitizeSuggestionText(item.tag),
+    description: item.description === undefined
+      ? undefined
+      : sanitizeSuggestionText(item.description),
+  };
 }
 
 function resolveTerminalColumns(value: number): number {
@@ -230,7 +250,10 @@ function formatUnifiedSuggestionRow(input: {
   showDescription: boolean;
 }): string {
   const icon = getUnifiedSuggestionIcon(input.item);
-  const rawDescription = input.showDescription ? compactSpaces(input.item.description ?? "") : "";
+  const displayTextRaw = sanitizeSuggestionText(input.item.displayText);
+  const rawDescription = input.showDescription
+    ? sanitizeSuggestionText(input.item.description)
+    : "";
   const separatorWidth = rawDescription ? 3 : 0;
   const iconWidth = measureDisplayWidth(`${icon} `);
   const paddingReserve = rawDescription ? 4 : 0;
@@ -243,14 +266,14 @@ function formatUnifiedSuggestionRow(input: {
   );
   const displayText = (() => {
     if (isFileLikeSuggestion(input.item)) {
-      return truncateDisplayWidthMiddle(input.item.displayText, textBudget);
+      return truncateDisplayWidthMiddle(displayTextRaw, textBudget);
     }
     if (isMcpResourceSuggestion(input.item)) {
-      return truncateDisplayWidth(input.item.displayText, Math.min(30, textBudget), {
+      return truncateDisplayWidth(displayTextRaw, Math.min(30, textBudget), {
         compact: false,
       });
     }
-    return truncateDisplayWidth(input.item.displayText, textBudget, {
+    return truncateDisplayWidth(displayTextRaw, textBudget, {
       compact: false,
     });
   })();
@@ -279,25 +302,26 @@ function formatStandardSuggestionRow(input: {
   maxColumnWidth: number;
   showDescription: boolean;
 }): string {
+  const displayTextRaw = sanitizeSuggestionText(input.item.displayText);
   const maxNameWidth = Math.max(8, Math.floor(input.contentColumns * 0.4));
   const displayTextWidth = Math.max(
     8,
     Math.min(input.maxColumnWidth, maxNameWidth, input.contentColumns),
   );
   const nameBudget = Math.max(1, displayTextWidth - 2);
-  const displayText = truncateDisplayWidth(input.item.displayText, nameBudget, {
+  const displayText = truncateDisplayWidth(displayTextRaw, nameBudget, {
     compact: false,
   });
   const paddedDisplayText = input.showDescription
     ? padToDisplayWidth(displayText, displayTextWidth)
     : displayText;
-  const tagText = input.item.tag ? `[${compactSpaces(input.item.tag)}] ` : "";
+  const tagText = input.item.tag ? `[${sanitizeSuggestionText(input.item.tag)}] ` : "";
   const tagWidth = measureDisplayWidth(tagText);
   const descriptionWidth = input.showDescription
     ? Math.max(0, input.contentColumns - displayTextWidth - tagWidth - 4)
     : 0;
   const description = input.showDescription && input.item.description
-    ? truncateDisplayWidth(compactSpaces(input.item.description), descriptionWidth, {
+    ? truncateDisplayWidth(sanitizeSuggestionText(input.item.description), descriptionWidth, {
       compact: false,
     })
     : "";
@@ -351,6 +375,7 @@ export function formatPromptSuggestionPanel(input: FormatPromptSuggestionPanelIn
   if (input.suggestions.length === 0) {
     return "";
   }
+  const suggestions = input.suggestions.map((item) => sanitizePromptSuggestionItem(item));
   const terminalColumns = resolveTerminalColumns(input.terminalColumns);
   const visibleCount = resolveVisibleCount({
     terminalRows: input.terminalRows,
@@ -359,10 +384,10 @@ export function formatPromptSuggestionPanel(input: FormatPromptSuggestionPanelIn
   const maxColumnWidth = input.maxColumnWidth
     ?? Math.max(
       1,
-      ...input.suggestions.map((item) => measureDisplayWidth(item.displayText)),
+      ...suggestions.map((item) => measureDisplayWidth(item.displayText)),
     ) + 5;
   const visibleWindow = resolveVisibleSuggestionWindow({
-    items: input.suggestions,
+    items: suggestions,
     selectedIndex: input.selectedIndex,
     visibleCount,
   });

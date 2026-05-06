@@ -72,6 +72,8 @@ export async function runPlanCommandContracts() {
   assert.equal(startInputKeybindingContractPayload.suggestion_window_reusable_selected_centered, true);
   assert.equal(startInputKeybindingContractPayload.slash_overlay_narrow_hides_description, true);
   assert.equal(startInputKeybindingContractPayload.slash_overlay_narrow_lines_within_width, true);
+  assert.equal(startInputKeybindingContractPayload.slash_overlay_sanitize_render_text, true);
+  assert.equal(startInputKeybindingContractPayload.prompt_suggestions_sanitize_render_text, true);
   assert.equal(startInputKeybindingContractPayload.slash_input_with_args_highlighted, true);
   assert.equal(startInputKeybindingContractPayload.submit_return_detected, true);
   assert.equal(startInputKeybindingContractPayload.submit_enter_detected, true);

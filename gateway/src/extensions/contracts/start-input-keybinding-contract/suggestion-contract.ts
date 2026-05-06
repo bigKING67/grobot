@@ -213,6 +213,19 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
     overlay: true,
   });
   const promptSuggestionTaggedPlain = stripAnsi(promptSuggestionTagged);
+  const promptSuggestionSanitized = formatPromptSuggestionPanel({
+    suggestions: [{
+      id: "command-unsafe",
+      displayText: "\u001B[31m/unsafe\u001B[0m\u202E",
+      tag: "u\u001B[31mser\u001B[0m",
+      description: "Open\u001B[31m hidden\u001B[0m\u202E command",
+      type: "command",
+    }],
+    selectedIndex: 0,
+    terminalColumns: 72,
+    overlay: true,
+  });
+  const promptSuggestionSanitizedPlain = stripAnsi(promptSuggestionSanitized);
   const promptSuggestionPointer = formatPromptSuggestionPanel({
     suggestions: [
       { id: "command-model", displayText: "/model", description: "Switch model", type: "command" },
@@ -234,6 +247,17 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
     0,
     96,
   );
+  const slashOverlaySanitized = formatSlashSuggestionPanel(
+    [{
+      command: "\u001B[31m/unsafe\u001B[0m\u202E",
+      description: "Open\u001B[31m hidden\u001B[0m\u202E command",
+      source: "u\u001B[31mser\u001B[0m",
+    }],
+    "/",
+    0,
+    72,
+  );
+  const slashOverlaySanitizedPlain = stripAnsi(slashOverlaySanitized);
   const slashInputPartialHighlight = shouldHighlightSlashInputToken({
     activeLineInput: "/e",
     suggestions: [{ command: "/exit", description: "Exit interactive mode" }],
@@ -391,6 +415,12 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
     prompt_suggestions_tags_and_description_flatten:
       promptSuggestionTaggedPlain.includes("[user]")
       && promptSuggestionTaggedPlain.includes("Create weekly operator summary"),
+    prompt_suggestions_sanitize_render_text:
+      promptSuggestionSanitizedPlain.includes("/unsafe")
+      && promptSuggestionSanitizedPlain.includes("[user]")
+      && promptSuggestionSanitizedPlain.includes("Open hidden command")
+      && !promptSuggestionSanitized.includes("\u001B[31m")
+      && !promptSuggestionSanitizedPlain.includes("\u202E"),
     prompt_suggestions_selection_pointer_optional:
       promptSuggestionPointerPlain
         .split("\n")
@@ -405,6 +435,12 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
       slashOverlayNarrowLines.every((line) => measureDisplayWidth(line) <= 52),
     slash_overlay_hidden_when_has_args:
       slashOverlayWithArgs.length === 0,
+    slash_overlay_sanitize_render_text:
+      slashOverlaySanitizedPlain.includes("/unsafe")
+      && slashOverlaySanitizedPlain.includes("[user]")
+      && slashOverlaySanitizedPlain.includes("Open hidden command")
+      && !slashOverlaySanitized.includes("\u001B[31m")
+      && !slashOverlaySanitizedPlain.includes("\u202E"),
     slash_fixture_descriptions_avoid_plan_mode_copy:
       !promptSuggestionPointerPlain.includes("计划模式")
       && !slashOverlayWithArgs.includes("plan mode"),
