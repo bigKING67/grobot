@@ -21,6 +21,7 @@ import {
   startupBrandSymbolViewModel,
   startupViewModel,
   unsafeDefaultMenuInput,
+  unsafePlanApprovalMenuInput,
   viewportMenuInput,
 } from "./cli-ui-renderer-contract/fixtures";
 import {
@@ -160,6 +161,8 @@ const compactVerticalMenuPlain = plainRenderer.renderSelectMenu(compactVerticalM
 const expandedMenuPlain = plainRenderer.renderSelectMenu(expandedMenuInput, 0);
 const unsafeDefaultMenuPlain = plainRenderer.renderSelectMenu(unsafeDefaultMenuInput, 0);
 const unsafeDefaultMenuPlainText = stripAnsi(unsafeDefaultMenuPlain);
+const unsafePlanApprovalPlain = plainRenderer.renderSelectMenu(unsafePlanApprovalMenuInput, 0);
+const unsafePlanApprovalPlainText = stripAnsi(unsafePlanApprovalPlain);
 
 const payload = {
   interactive_mode: interactiveRenderer.mode,
@@ -354,6 +357,19 @@ const payload = {
     planApprovalMenuInteractive.includes("\x1b[38;2;72;150;140m"),
   plan_approval_menu_has_no_default_thin_pointer:
     !planApprovalMenuPlainText.includes("›"),
+  plan_approval_menu_sanitizes_untrusted_payload:
+    unsafePlanApprovalPlainText.includes("Ready to implement?")
+    && unsafePlanApprovalPlainText.includes("Plan file .grobot/plans/demo/unsafe.md")
+    && unsafePlanApprovalPlainText.includes("# Unsafe Plan")
+    && unsafePlanApprovalPlainText.includes("Run checks    before continuing")
+    && unsafePlanApprovalPlainText.includes("OSC title")
+    && unsafePlanApprovalPlainText.includes("NUL marker")
+    && unsafePlanApprovalPlainText.includes("Ctrl-G edit plan · vim")
+    && unsafePlanApprovalPlainText.includes("❯ Confirm")
+    && !unsafePlanApprovalPlainText.includes("\u001B")
+    && !unsafePlanApprovalPlainText.includes("\u202E")
+    && !unsafePlanApprovalPlainText.includes("\u0000")
+    && !unsafePlanApprovalPlainText.includes("]0;pwnd"),
   plan_approval_empty_uses_exit_title:
     emptyPlanApprovalPlainText.includes("Exit plan mode?"),
   plan_approval_empty_uses_reference_copy:

@@ -292,6 +292,41 @@ export const planApprovalMenuInput: TerminalSelectMenuInput = {
   ],
 };
 
+export const unsafePlanApprovalMenuInput: TerminalSelectMenuInput = {
+  title: "\u001B[31mReady to implement?\u001B[0m\u202E",
+  subtitle: "Confirm\u001B[31m hidden\u001B[0m\u202E plan",
+  hint: "Enter\u001B[31m confirm\u001B[0m\u202E",
+  variant: "plan_approval",
+  planApprovalMeta: {
+    agentName: "\u001B[31mGrobot\u001B[0m\u202E",
+    editorName: "vim\u001B]0;pwnd\u0007",
+    planPath: ".grobot/plans/demo/\u001B[31munsafe\u001B[0m\u202E.md",
+    planContent: [
+      "# \u001B[31mUnsafe\u001B[0m\u202E Plan",
+      "Run\u001B[31m checks\u001B[0m\u202E\tbefore continuing",
+      "OSC\u001B]0;pwnd\u0007 title",
+      "NUL\u0000 marker",
+    ].join("\n"),
+  },
+  items: [
+    {
+      id: "approve",
+      label: "\u001B[31mConfirm\u001B[0m\u202E",
+    },
+    {
+      id: "keep_planning",
+      label: "Refine\u001B[31m plan\u001B[0m\u202E",
+      description: "Add\u001B[31m feedback\u001B[0m\u202E",
+      input: {
+        placeholder: "Tell\u001B[31m Grobot\u001B[0m\u202E what to adjust",
+        showLabelWithValue: true,
+        labelValueSeparator: ": ",
+        resetCursorOnUpdate: true,
+      },
+    },
+  ],
+};
+
 export const emptyPlanApprovalMenuInput: TerminalSelectMenuInput = {
   title: "Exit plan mode?",
   hint: "Enter confirm · Esc back to input",

@@ -64,6 +64,9 @@ matches for "<query>"`, and a short active-search footer such as `Type to filter
 after truncation without changing row width or suffix semantics. Title,
 subtitle, hint, label, inline input value, and description payloads must be
 sanitized at the final render boundary before width calculation or truncation.
+Plan-approval metadata is display payload too: `planPath` must be sanitized and
+compacted before header/footer rendering, and `planContent` lines must strip
+ANSI/control/bidi sequences while preserving visible tab spacing as spaces.
 All user-visible menu copy must remain English.
 
 The former `gateway/src/cli/tui/screens/select-menu-screen.ts` compatibility

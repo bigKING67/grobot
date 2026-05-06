@@ -112,6 +112,10 @@ function buildModelPickerHiddenCountLine(hiddenCount: number): string {
   return `and ${String(hiddenCount)} more...`;
 }
 
+function sanitizePlanApprovalLine(value: string): string {
+  return sanitizeTerminalDisplayText(value.replace(/\t/g, "    "));
+}
+
 function resolveMenuSearchMeta(input: RenderTerminalSelectMenuInput): TerminalSelectMenuSearchMeta | undefined {
   const search = input.menu.search;
   if (!search) {
@@ -537,7 +541,9 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
   const agentName = sanitizeMenuText(input.menu.planApprovalMeta?.agentName, "Grobot");
   const editorName = sanitizeMenuText(input.menu.planApprovalMeta?.editorName, "editor");
   const planContent = input.menu.planApprovalMeta?.planContent ?? "";
-  const planPath = sanitizeTerminalDisplayText(input.menu.planApprovalMeta?.planPath ?? "").trim();
+  const planPath = sanitizePlanApprovalLine(input.menu.planApprovalMeta?.planPath ?? "")
+    .trim()
+    .replace(/\s+/g, " ");
   const hintBase = sanitizeMenuText(input.menu.hint, "↑/↓ select · Enter confirm · Esc back to input");
   const isEmptyPlanApproval =
     input.menu.planApprovalMeta?.emptyPlan === true || planContent.trim().length === 0;
@@ -592,7 +598,7 @@ function renderPlanApprovalMenu(input: RenderTerminalSelectMenuInput): string {
   lines.push(`  ${agentName}'s plan:`);
   lines.push("");
   for (const rawLine of planLines) {
-    const sanitizedLine = sanitizeTerminalDisplayText(rawLine).trimEnd();
+    const sanitizedLine = sanitizePlanApprovalLine(rawLine).trimEnd();
     const renderedLine = sanitizedLine.length > 0
       ? truncateDisplayWidth(sanitizedLine, surfaceWidth - 2)
       : "";
