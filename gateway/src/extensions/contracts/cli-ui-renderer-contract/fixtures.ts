@@ -126,6 +126,31 @@ export const filteredMenuInput: TerminalSelectMenuInput = {
   ],
 };
 
+export const highlightedFilteredMenuInput: TerminalSelectMenuInput = {
+  title: "Select command",
+  subtitle: "Command palette",
+  hint: "Use arrows",
+  search: {
+    active: true,
+    query: "mod",
+    matchedCount: 2,
+    totalCount: 4,
+  },
+  items: [
+    {
+      id: "model",
+      label: "/model",
+      description: "Switch model",
+    },
+    {
+      id: "model-routes",
+      label: "/model routes",
+      current: true,
+      description: "Inspect model routing",
+    },
+  ],
+};
+
 export const emptyFilteredMenuInput: TerminalSelectMenuInput = {
   title: "Select command",
   subtitle: "Command palette",
@@ -191,6 +216,21 @@ export const filteredModelPickerInput: TerminalSelectMenuInput = {
     startIndex: 0,
     visibleCount: 1,
     totalCount: 1,
+  },
+};
+
+export const highlightedFilteredModelPickerInput: TerminalSelectMenuInput = {
+  ...modelPickerInput,
+  search: {
+    active: true,
+    query: "model",
+    matchedCount: 2,
+    totalCount: 2,
+  },
+  viewport: {
+    startIndex: 0,
+    visibleCount: 2,
+    totalCount: 2,
   },
 };
 

@@ -180,6 +180,47 @@ function buildMenuFooterHint(input: {
   return input.fallback ?? buildCompactMenuHint(input.hint);
 }
 
+function resolveSearchHighlightQuery(search?: TerminalSelectMenuSearchMeta): string {
+  if (!search) {
+    return "";
+  }
+  return sanitizeMenuText(search.query, "").trim();
+}
+
+function renderSearchHighlightedMenuLabel(input: {
+  label: string;
+  query: string;
+  theme: ReturnType<typeof createCliTheme>;
+}): string {
+  if (input.query.length === 0 || input.label.length === 0) {
+    return input.label;
+  }
+  const labelLower = input.label.toLowerCase();
+  const queryLower = input.query.toLowerCase();
+  if (queryLower.length === 0) {
+    return input.label;
+  }
+  const parts: string[] = [];
+  let offset = 0;
+  let matchIndex = labelLower.indexOf(queryLower, offset);
+  if (matchIndex === -1) {
+    return input.label;
+  }
+  while (matchIndex !== -1) {
+    if (matchIndex > offset) {
+      parts.push(input.label.slice(offset, matchIndex));
+    }
+    const match = input.label.slice(matchIndex, matchIndex + input.query.length);
+    parts.push(input.theme.color("accent", input.theme.bold(match)));
+    offset = matchIndex + input.query.length;
+    matchIndex = labelLower.indexOf(queryLower, offset);
+  }
+  if (offset < input.label.length) {
+    parts.push(input.label.slice(offset));
+  }
+  return parts.join("");
+}
+
 function normalizeEffortLevel(
   value: TerminalSelectMenuEffortLevel | undefined,
 ): TerminalSelectMenuEffortLevel | undefined {
@@ -223,12 +264,17 @@ function renderModelPickerLabel(input: {
   isActive: boolean;
   isCurrent: boolean;
   labelParts: TruncatedMenuLabel;
+  highlightQuery: string;
   theme: ReturnType<typeof createCliTheme>;
 }): string {
   if (input.isCurrent) {
     const label = input.isActive
       ? input.theme.color("accent", input.labelParts.label)
-      : input.labelParts.label;
+      : renderSearchHighlightedMenuLabel({
+        label: input.labelParts.label,
+        query: input.highlightQuery,
+        theme: input.theme,
+      });
     const suffix = input.labelParts.suffix
       ? input.theme.color("accent", input.labelParts.suffix)
       : "";
@@ -240,7 +286,12 @@ function renderModelPickerLabel(input: {
   const suffix = input.labelParts.suffix
     ? input.theme.color("muted", input.labelParts.suffix)
     : "";
-  return `${input.labelParts.label}${suffix}`;
+  const label = renderSearchHighlightedMenuLabel({
+    label: input.labelParts.label,
+    query: input.highlightQuery,
+    theme: input.theme,
+  });
+  return `${label}${suffix}`;
 }
 
 function resolveRenderContext(input: RenderTerminalSelectMenuInput): {
@@ -279,6 +330,7 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
   const subtitle = sanitizeMenuText(input.menu.subtitle, MODEL_PICKER_DEFAULT_SUBTITLE);
   const dividerWidth = Math.max(44, Math.min(MODEL_PICKER_DIVIDER_MAX_WIDTH, columns));
   const search = resolveMenuSearchMeta(input);
+  const highlightQuery = resolveSearchHighlightQuery(search);
 
   lines.push("");
   lines.push(theme.color("brand", "─".repeat(dividerWidth)));
@@ -324,6 +376,7 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
       isActive,
       isCurrent,
       labelParts,
+      highlightQuery,
       theme,
     });
     const prefixPlain = hideIndexes
@@ -396,6 +449,7 @@ function renderAskUserMenu(input: RenderTerminalSelectMenuInput): string {
   const subtitle = sanitizeMenuText(input.menu.subtitle);
   const hint = sanitizeMenuText(input.menu.hint, "↑/↓ select · Enter confirm · Esc back to input");
   const search = resolveMenuSearchMeta(input);
+  const highlightQuery = resolveSearchHighlightQuery(search);
   const lines: string[] = [];
 
   lines.push(theme.color("brand", "─".repeat(dividerWidth)));
@@ -441,7 +495,11 @@ function renderAskUserMenu(input: RenderTerminalSelectMenuInput): string {
     });
     const renderedLabel = isActive
       ? theme.color("accent", labelParts.plain)
-      : `${labelParts.label}${labelParts.suffix ? theme.currentTag(labelParts.suffix) : ""}`;
+      : `${renderSearchHighlightedMenuLabel({
+        label: labelParts.label,
+        query: highlightQuery,
+        theme,
+      })}${labelParts.suffix ? theme.currentTag(labelParts.suffix) : ""}`;
     const prefixPlain = hideIndexes
       ? `${marker.plain} `
       : `${marker.plain} ${ordinalPlain} `;
@@ -597,6 +655,7 @@ function renderDefaultMenu(input: RenderTerminalSelectMenuInput): string {
   });
   const lines: string[] = [];
   const search = resolveMenuSearchMeta(input);
+  const highlightQuery = resolveSearchHighlightQuery(search);
   lines.push(`  ${theme.bold(input.menu.title)}`);
   if (surfaceWidth >= 56 && input.menu.subtitle && input.menu.subtitle.trim().length > 0) {
     lines.push(`  ${theme.color("muted", truncateDisplayWidth(input.menu.subtitle.trim(), surfaceWidth - 2))}`);
@@ -642,7 +701,11 @@ function renderDefaultMenu(input: RenderTerminalSelectMenuInput): string {
     });
     const label = isActive
       ? theme.color("accent", labelParts.plain)
-      : `${labelParts.label}${labelParts.suffix ? theme.currentTag(labelParts.suffix) : ""}`;
+      : `${renderSearchHighlightedMenuLabel({
+        label: labelParts.label,
+        query: highlightQuery,
+        theme,
+      })}${labelParts.suffix ? theme.currentTag(labelParts.suffix) : ""}`;
     const prefixPlain = !renderIndexes
       ? `${marker.plain} `
       : `${marker.plain} ${ordinalPlain} `;

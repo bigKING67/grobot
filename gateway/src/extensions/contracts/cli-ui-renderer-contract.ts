@@ -10,6 +10,8 @@ import {
   expandedMenuInput,
   filteredMenuInput,
   filteredModelPickerInput,
+  highlightedFilteredMenuInput,
+  highlightedFilteredModelPickerInput,
   hideIndexInlineMenuInput,
   longMenuInput,
   longModelPickerInput,
@@ -102,11 +104,15 @@ const menuPlain = plainRenderer.renderSelectMenu(menuInput, 0);
 const menuNonTty = nonTtyRenderer.renderSelectMenu(menuInput, 0);
 const filteredMenuInteractive = interactiveRenderer.renderSelectMenu(filteredMenuInput, 0);
 const filteredMenuPlainText = stripAnsi(plainRenderer.renderSelectMenu(filteredMenuInput, 0));
+const highlightedFilteredMenuInteractive = interactiveRenderer.renderSelectMenu(highlightedFilteredMenuInput, 0);
+const highlightedFilteredMenuPlainText = stripAnsi(plainRenderer.renderSelectMenu(highlightedFilteredMenuInput, 0));
 const emptyFilteredMenuInteractive = interactiveRenderer.renderSelectMenu(emptyFilteredMenuInput, 0);
 const emptyFilteredMenuPlainText = stripAnsi(plainRenderer.renderSelectMenu(emptyFilteredMenuInput, 0));
 const modelPickerInteractive = interactiveRenderer.renderSelectMenu(modelPickerInput, 0);
 const modelPickerPlain = plainRenderer.renderSelectMenu(modelPickerInput, 0);
 const filteredModelPickerPlainText = stripAnsi(plainRenderer.renderSelectMenu(filteredModelPickerInput, 0));
+const highlightedFilteredModelPickerInteractive = interactiveRenderer.renderSelectMenu(highlightedFilteredModelPickerInput, 0);
+const highlightedFilteredModelPickerPlainText = stripAnsi(plainRenderer.renderSelectMenu(highlightedFilteredModelPickerInput, 0));
 const askUserMenuInteractive = interactiveRenderer.renderSelectMenu(askUserMenuInput, 0);
 const askUserMenuPlain = plainRenderer.renderSelectMenu(askUserMenuInput, 0);
 const planApprovalMenuInteractive = interactiveRenderer.renderSelectMenu(planApprovalMenuInput, 0);
@@ -240,6 +246,12 @@ const payload = {
     emptyFilteredMenuInteractive.includes('\x1b[90mNo matches for "zzz"\x1b[0m'),
   menu_filter_status_is_muted:
     filteredMenuInteractive.includes("\x1b[90mFilter: mod  matched 1/4\x1b[0m"),
+  menu_filter_highlights_label_match:
+    highlightedFilteredMenuInteractive.includes("\x1b[38;2;202;124;94m\x1b[1mmod\x1b[0m\x1b[0m"),
+  menu_filter_highlight_keeps_plain_text_copy:
+    highlightedFilteredMenuPlainText.includes("/model routes ✓"),
+  menu_filter_highlight_keeps_current_suffix:
+    highlightedFilteredMenuInteractive.includes("\x1b[38;2;202;124;94m ✓\x1b[0m"),
   model_picker_has_claude_pointer: stripAnsi(modelPickerPlain).includes("❯"),
   model_picker_has_no_thin_pointer: !stripAnsi(modelPickerPlain).includes("›"),
   model_picker_has_pane_divider:
@@ -281,6 +293,11 @@ const payload = {
     filteredModelPickerPlainText.includes("Filter: model-a  matched 1/2"),
   model_picker_filter_hides_original_hidden_count:
     !filteredModelPickerPlainText.includes("and 1 more..."),
+  model_picker_filter_highlights_label_match:
+    highlightedFilteredModelPickerInteractive.includes("\x1b[38;2;202;124;94m\x1b[1mmodel\x1b[0m\x1b[0m"),
+  model_picker_filter_highlight_keeps_default_suffix:
+    highlightedFilteredModelPickerPlainText.includes("model-b (default)")
+    && highlightedFilteredModelPickerInteractive.includes("\x1b[90m (default)\x1b[0m"),
   ask_user_menu_uses_panel_divider: /^─+$/.test(stripAnsi(askUserMenuPlain).split("\n")[0] ?? ""),
   ask_user_menu_uses_warm_brand_color:
     askUserMenuInteractive.includes("\x1b[38;2;202;124;94m"),
