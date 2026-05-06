@@ -8,9 +8,29 @@ import {
   resolveStatusIndicatorStallState,
 } from "../../cli/tui/components/status-indicator/render";
 import { measureDisplayWidth } from "../../cli/tui/terminal/display-width";
+import {
+  createRuntimeActivitySignalState,
+  readRuntimeActivitySignalSnapshot,
+  reduceRuntimeActivitySignalState,
+} from "../../cli/tui/interactive/activity-runtime-signals";
+import type { RuntimeEvent } from "../../models/types";
 
 function stripAnsi(value: string): string {
   return value.replace(/\u001B\[[0-9;]*m/g, "");
+}
+
+function runtimeEvent(
+  eventType: RuntimeEvent["eventType"],
+  payload: Record<string, unknown>,
+): RuntimeEvent {
+  return {
+    traceId: "trace_status_indicator_contract",
+    turnId: "turn_status_indicator_contract",
+    sessionKey: "feishu:contract:dm:status-indicator",
+    eventType,
+    payload,
+    timestampIso: "unix:1",
+  };
 }
 
 const startedAtMs = 1_000_000;
@@ -176,6 +196,43 @@ const stallSmoothed = resolveStatusIndicatorStallState({
   nowMs: 13_600,
   tokenLength: 12,
 });
+let signalState = createRuntimeActivitySignalState();
+signalState = reduceRuntimeActivitySignalState(signalState, runtimeEvent("tool_start", {
+  tool_name: "bash",
+  tool_call_id: "signal_tool_1",
+}));
+const activeToolSignal = readRuntimeActivitySignalSnapshot(signalState);
+signalState = reduceRuntimeActivitySignalState(signalState, runtimeEvent("turn_stream_chunk", {
+  delta: {
+    text: "hello",
+  },
+  usage: {
+    output_tokens: 12,
+  },
+}));
+const streamSignal = readRuntimeActivitySignalSnapshot(signalState);
+signalState = reduceRuntimeActivitySignalState(signalState, runtimeEvent("tool_end", {
+  tool_name: "bash",
+  tool_call_id: "signal_tool_1",
+}));
+const clearedToolSignal = readRuntimeActivitySignalSnapshot(signalState);
+let anonymousSignalState = createRuntimeActivitySignalState();
+anonymousSignalState = reduceRuntimeActivitySignalState(
+  anonymousSignalState,
+  runtimeEvent("tool_start", { tool_name: "read" }),
+);
+anonymousSignalState = reduceRuntimeActivitySignalState(
+  anonymousSignalState,
+  runtimeEvent("tool_end", { tool_name: "read" }),
+);
+const anonymousSignal = readRuntimeActivitySignalSnapshot(anonymousSignalState);
+const activeToolStall = resolveStatusIndicatorStallState({
+  previousState: stallAfterPause.state,
+  nowMs: 16_000,
+  tokenLength: activeToolSignal.tokenLength,
+  hasActiveTools: activeToolSignal.hasActiveTools,
+  reducedMotion: true,
+});
 
 const payload = {
   line_contains_elapsed: stripAnsi(line).includes("(7s · esc to interrupt)"),
@@ -257,6 +314,18 @@ const payload = {
     stallSmoothed.isStalled
     && stallSmoothed.stalledIntensity > 0
     && stallSmoothed.stalledIntensity < stallAfterPause.stalledIntensity,
+  runtime_signal_tool_start_marks_active:
+    activeToolSignal.hasActiveTools,
+  runtime_signal_stream_chunk_tracks_output_progress:
+    streamSignal.tokenLength === 5
+    && streamSignal.tokenCount === 12,
+  runtime_signal_tool_end_clears_active:
+    !clearedToolSignal.hasActiveTools,
+  runtime_signal_anonymous_tool_end_does_not_stick:
+    !anonymousSignal.hasActiveTools,
+  runtime_signal_active_tool_prevents_status_stall:
+    !activeToolStall.isStalled
+    && activeToolStall.state.lastTokenAtMs === 16_000,
 };
 
 process.stdout.write(`${JSON.stringify(payload)}\n`);

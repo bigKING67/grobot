@@ -24,7 +24,7 @@ function resolveFeedWidth(input: RuntimeActivityFeedViewModel): number {
 }
 
 function resolveBulletTone(row: ActivityFeedRow): CliThemeToken {
-  if (row.state === "running") {
+  if (row.state === "queued" || row.state === "running") {
     return "muted";
   }
   if (row.state === "success") {

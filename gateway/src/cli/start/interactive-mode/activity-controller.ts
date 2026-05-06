@@ -2,8 +2,18 @@ import {
   createInteractiveActivityTracker,
   type InteractiveActivityTracker,
 } from "../../tui/interactive/activity-state";
+import {
+  createRuntimeActivitySignalState,
+  readRuntimeActivitySignalSnapshot,
+  reduceRuntimeActivitySignalState,
+  type RuntimeActivitySignalState,
+} from "../../tui/interactive/activity-runtime-signals";
 import type { RuntimeEvent } from "../../../models/types";
-import { renderStatusIndicatorLine } from "../../tui/components/status-indicator/render";
+import {
+  renderStatusIndicatorLine,
+  resolveStatusIndicatorStallState,
+  type StatusIndicatorStallState,
+} from "../../tui/components/status-indicator/render";
 import { TURN_INTERRUPTED_EXIT_CODE } from "../turn";
 import {
   compactSummaryText,
@@ -64,6 +74,8 @@ export function createInteractiveActivityController(input: {
   let stdoutNeedsLineBreak = false;
   let activeTurnStartedAtMs: number | undefined;
   let pendingInputFrame: PendingInputFrameController | undefined;
+  let runtimeSignals: RuntimeActivitySignalState = createRuntimeActivitySignalState();
+  let statusStallState: StatusIndicatorStallState | undefined;
 
   const ensureStdoutLineBoundary = (): void => {
     if (!stdoutNeedsLineBreak) {
@@ -138,17 +150,31 @@ export function createInteractiveActivityController(input: {
       activityKind: activitySnapshot?.kind,
       stageId: activitySnapshot?.stageId,
     });
+    const nowMs = Date.now();
+    const signalSnapshot = readRuntimeActivitySignalSnapshot(runtimeSignals);
+    const stall = resolveStatusIndicatorStallState({
+      previousState: statusStallState,
+      nowMs,
+      tokenLength: signalSnapshot.tokenLength,
+      hasActiveTools: signalSnapshot.hasActiveTools,
+    });
+    statusStallState = stall.state;
+    const stalledDetail = stall.isStalled && activityDetail.length === 0
+      ? "waiting for output"
+      : activityDetail;
     writeProgressLine(renderStatusIndicatorLine({
       message: activityText,
       startedAtMs: activeTurnStartedAtMs,
-      nowMs: Date.now(),
+      nowMs,
       tick: inlineActivityTick,
       terminalColumns: resolveTerminalColumns(),
       mode: statusMode,
-      thinkingText: activityDetail || undefined,
-      thinkingStatus: statusMode === "thinking" && activityDetail.length === 0
+      tokenCount: signalSnapshot.tokenCount,
+      thinkingText: stalledDetail || undefined,
+      thinkingStatus: statusMode === "thinking" && stalledDetail.length === 0
         ? "thinking"
         : undefined,
+      reducedMotion: stall.stalledIntensity >= 1,
     }));
     inlineActivityTick += 1;
   };
@@ -268,6 +294,8 @@ export function createInteractiveActivityController(input: {
     startActivity?: Parameters<InteractiveActivityTracker["markTurnStart"]>[0];
   }): void => {
     activeTurnStartedAtMs = Date.now();
+    runtimeSignals = createRuntimeActivitySignalState();
+    statusStallState = undefined;
     activityTracker.markTurnStart(inputBegin.startActivity);
     startInlineActivityTicker();
     const source = inputBegin.traceEvent ? ` source=${inputBegin.traceEvent}` : "";
@@ -335,6 +363,7 @@ export function createInteractiveActivityController(input: {
         : activitySnapshot.title;
     },
     observeRuntimeEvent: (event) => {
+      runtimeSignals = reduceRuntimeActivitySignalState(runtimeSignals, event);
       activityTracker.observeRuntimeEvent(event);
       if (typeof activeTurnStartedAtMs === "number" && !pendingInputFrame?.isEnabled()) {
         startInlineActivityTicker();

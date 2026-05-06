@@ -11,6 +11,7 @@ import { sanitizeTerminalDisplayText } from "../../terminal/text-sanitizer";
 import { renderReactRuntimeActivityFeed } from "../../react/activity-feed";
 import { formatTuiErrorClassLabel } from "../error-labels";
 import { formatBashCommandDisplay } from "./bash-format";
+import { buildActivityToolStartRow } from "./tool-start-row";
 
 const DEFAULT_MAX_ITEMS = 8;
 const DEFAULT_MAX_DIFF_LINES = 5;
@@ -659,40 +660,6 @@ function payloadToolCallId(payload: Record<string, unknown>): string {
   return firstString(payloadString(payload, "tool_call_id"), payloadString(payload, "id"));
 }
 
-function buildToolStartRow(event: RuntimeEvent): ActivityFeedRow | undefined {
-  const payload = normalizePayload(event);
-  const toolName = normalizeToolName(payload, {});
-  const inputSummary = payloadRecord(payload, "input_summary");
-  const label = humanToolLabel(toolName);
-  const path = compactPath(firstString(
-    payloadString(inputSummary, "path"),
-    payloadString(inputSummary, "file_path"),
-    payloadString(payload, "path"),
-    payloadString(payload, "file_path"),
-  ));
-  const query = firstString(
-    payloadString(inputSummary, "query"),
-    payloadString(inputSummary, "pattern"),
-  );
-  const commandPreview = toolName === "bash"
-    ? resolveBashCommandPreview(payload, inputSummary)
-    : "";
-  const title = compactSpaces(
-    toolName === "bash" && commandPreview
-      ? `${label} $ ${commandPreview.replace(/"/g, "'")}`
-      : `${label}${path ? ` ${path}` : ""}${query ? ` ${query}` : ""}`,
-  );
-  if (!title) {
-    return undefined;
-  }
-  return {
-    title,
-    detailLines: toolName === "bash" ? ["Running…"] : [],
-    severity: "ok",
-    state: "running",
-  };
-}
-
 function buildRecoveryRow(event: RuntimeEvent): ActivityFeedRow | undefined {
   const payload = normalizePayload(event);
   const toolName = payloadString(payload, "tool_name") || "unknown_tool";
@@ -738,7 +705,7 @@ function buildRows(input: RuntimeActivityFeedInput): ActivityFeedRow[] {
         const toolCallId = payloadToolCallId(normalizePayload(event));
         return toolCallId && resolvedToolCallIds.has(toolCallId)
           ? undefined
-          : buildToolStartRow(event);
+          : buildActivityToolStartRow(event);
       }
       if (event.eventType === "tool_end") {
         return buildToolEndRow(event, maxDiffLines);

@@ -369,6 +369,46 @@ const failedMixedBashRendered = renderRuntimeActivityFeed({
     }),
   ],
 });
+const queuedAndPermissionRendered = renderRuntimeActivityFeed({
+  terminalColumns: 120,
+  detailMode: "full",
+  events: [
+    event({
+      eventType: "tool_start",
+      payload: {
+        tool_name: "bash",
+        tool_call_id: "tool-bash-queued",
+        status: "queued",
+        input_summary: {
+          command_preview: "npm run queued-check",
+        },
+      },
+    }),
+    event({
+      eventType: "tool_start",
+      payload: {
+        tool_name: "bash",
+        tool_call_id: "tool-bash-permission",
+        status: "waiting_for_permission",
+        input_summary: {
+          command_preview: "npm run needs-permission",
+        },
+      },
+    }),
+    event({
+      eventType: "tool_start",
+      payload: {
+        tool_name: "bash",
+        tool_call_id: "tool-bash-classifier",
+        status: "classifier_checking",
+        classifier: "bash",
+        input_summary: {
+          command_preview: "npm run classifier-check",
+        },
+      },
+    }),
+  ],
+});
 
 const emptyRendered = renderRuntimeActivityFeed({
   events: [
@@ -417,6 +457,7 @@ const longCommandPlain = stripAnsi(longCommandRendered);
 const truncatedBashPlain = stripAnsi(truncatedBashRendered);
 const ansiBashPlain = stripAnsi(ansiBashRendered);
 const failedMixedBashPlain = stripAnsi(failedMixedBashRendered);
+const queuedAndPermissionPlain = stripAnsi(queuedAndPermissionRendered);
 const turnTranscriptPlain = stripAnsi(turnOutputTranscript.activityFeed);
 const lines = rendered.trimEnd().split("\n");
 const referenceToolStatusDot = process.platform === "darwin" ? "⏺" : "●";
@@ -504,6 +545,16 @@ const payload = {
     failedMixedBashPlain.includes("Run failed")
     && failedMixedBashPlain.includes("error two")
     && !failedMixedBashPlain.includes("ignored stdout"),
+  queued_and_permission_states_match_reference_copy:
+    queuedAndPermissionPlain.includes("Run $ npm run queued-check")
+    && queuedAndPermissionPlain.includes("  ⎿  Waiting…")
+    && queuedAndPermissionPlain.includes("Run $ npm run needs-permission")
+    && queuedAndPermissionPlain.includes("  ⎿  Waiting for permission…"),
+  classifier_state_uses_reference_copy_without_raw_codes:
+    queuedAndPermissionPlain.includes("Run $ npm run classifier-check")
+    && queuedAndPermissionPlain.includes("  ⎿  Bash classifier checking…")
+    && !queuedAndPermissionPlain.includes("classifier_checking")
+    && !queuedAndPermissionPlain.includes("waiting_for_permission"),
   renders_recovery_row:
     plain.includes("Recovery · Run")
     && fullPlain.includes("  ⎿  Switch strategy · Inspect error, then switch strategy · Error Command failed")

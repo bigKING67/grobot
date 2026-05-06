@@ -14,7 +14,7 @@ export interface ActivityFeedRow {
   title: string;
   detailLines: string[];
   severity: "ok" | "warning" | "error";
-  state?: "running" | "success" | "warning" | "error";
+  state?: "queued" | "running" | "success" | "warning" | "error";
 }
 
 export interface RuntimeActivityFeedViewModel {
