@@ -118,6 +118,7 @@ export async function runPlanCommandContracts() {
   assert.equal(startInputKeybindingContractPayload.input_chrome_cursor_column_matches_open_rails, true);
   assert.equal(startInputKeybindingContractPayload.input_chrome_cursor_uses_left_padding, true);
   assert.equal(startInputKeybindingContractPayload.submitted_slash_transcript_preserves_command_highlight, true);
+  assert.equal(startInputKeybindingContractPayload.submitted_transcript_sanitizes_render_text, true);
   assert.equal(startInputKeybindingContractPayload.menu_viewport_keeps_active_visible, true);
   assert.equal(startInputKeybindingContractPayload.menu_viewport_scrolls_one_row_down, true);
   assert.equal(startInputKeybindingContractPayload.menu_viewport_scrolls_one_row_up, true);

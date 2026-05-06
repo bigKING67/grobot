@@ -46,6 +46,12 @@ export function runInputChromeChecks(): ContractPayload {
         ? [{ command: "/plan", description: "Enter plan mode" }]
         : [],
   });
+  const unsafeSubmittedTranscriptLines = renderSubmittedInputTranscriptLines({
+    value: "hello\u001B[31m red\u001B[0m\u202E\r\n\tworld",
+    promptLabel: "❯ ",
+    terminalColumns: 96,
+    theme: "ccline",
+  });
   const submittedTranscriptPlain = submittedTranscriptLines
     .map(stripAnsi)
     .join("\n");
@@ -53,6 +59,10 @@ export function runInputChromeChecks(): ContractPayload {
     .map(stripAnsi)
     .join("\n");
   const submittedPlanTranscriptRaw = submittedPlanTranscriptLines.join("\n");
+  const unsafeSubmittedTranscriptPlain = unsafeSubmittedTranscriptLines
+    .map(stripAnsi)
+    .join("\n");
+  const unsafeSubmittedTranscriptRaw = unsafeSubmittedTranscriptLines.join("\n");
   const expectedPlanHighlight = renderSlashCommandTokenHighlight("/plan");
   const inputChromeTopLinePlain = stripAnsi(inputChromeLines[0] ?? "");
   const inputChromeBodyLine = inputChromeLines[1] ?? "";
@@ -123,6 +133,13 @@ export function runInputChromeChecks(): ContractPayload {
       && submittedTranscriptPlain.split("\n").filter((line) => /^─+$/.test(line)).length === 2,
     submitted_transcript_lines_within_width:
       submittedTranscriptLines.every((line) => measureDisplayWidth(line) <= 96),
+    submitted_transcript_sanitizes_render_text:
+      unsafeSubmittedTranscriptPlain.includes("❯ hello red")
+      && unsafeSubmittedTranscriptPlain.includes("  world")
+      && !unsafeSubmittedTranscriptRaw.includes("\u001B[31m")
+      && !unsafeSubmittedTranscriptPlain.includes("\u202E")
+      && !unsafeSubmittedTranscriptPlain.includes("\r")
+      && unsafeSubmittedTranscriptLines.every((line) => measureDisplayWidth(line) <= 96),
     submitted_slash_transcript_preserves_command_highlight:
       submittedPlanTranscriptPlain.includes("❯ /plan 帮我规划计划模式交互")
       && submittedPlanTranscriptRaw.includes(expectedPlanHighlight)

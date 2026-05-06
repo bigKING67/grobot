@@ -5,6 +5,7 @@ import {
   splitGraphemes,
   stripAnsi,
 } from "../../terminal/display-width";
+import { sanitizeTerminalDisplayText } from "../../terminal/text-sanitizer";
 import {
   formatSlashSuggestionPanel,
   normalizeSuggestionIndex,
@@ -40,6 +41,22 @@ const ANSI_INLINE_IMAGE_TOKEN_NERD = ANSI_BRAND;
 const ANSI_INLINE_IMAGE_TOKEN_CCLINE = `\u001B[1m${ANSI_BRAND}`;
 const INPUT_CHROME_BODY_LEFT_PADDING = 0;
 const SHORTCUT_HINT_TEXT = "? shortcuts";
+
+function sanitizePromptDisplayLine(value: string): string {
+  return sanitizeTerminalDisplayText(value.replace(/\t/g, "    "));
+}
+
+function sanitizePromptDisplayValue(value: string): string {
+  if (!value) {
+    return "";
+  }
+  return value
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => sanitizePromptDisplayLine(line))
+    .join("\n");
+}
 
 export interface PromptInputRenderSnapshot {
   renderedLines: string[];
@@ -217,7 +234,7 @@ export function renderSubmittedInputTranscriptLines(input: {
     promptLabelWidth,
   });
   const wrapWidth = Math.max(1, inputBodyWidth - promptLabelWidth);
-  const graphemes = splitGraphemes(input.value);
+  const graphemes = splitGraphemes(sanitizePromptDisplayValue(input.value));
   const descriptors = resolveInputLineDescriptors({
     valueGraphemes: graphemes,
     wrapWidth,
