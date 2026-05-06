@@ -51,6 +51,7 @@ export interface StatusIndicatorParts {
   showInterruptHint: boolean;
   showTokens: boolean;
   showThinking: boolean;
+  thinkingOnly: boolean;
 }
 
 export interface StatusIndicatorStallState {
@@ -432,6 +433,9 @@ export function resolveStatusIndicatorParts(
     : "";
   const compactThinkingText =
     thinkingText.startsWith("thinking ") ? "thinking" : thinkingText;
+  const activeThinkingText = thinkingText.startsWith("thinking")
+    ? compactThinkingText
+    : "";
 
   const candidates = [
     {
@@ -439,42 +443,58 @@ export function resolveStatusIndicatorParts(
       interruptHint,
       tokenText,
       thinkingText,
+      thinkingOnly: false,
     },
     {
       elapsedText,
       interruptHint,
       tokenText,
       thinkingText: compactThinkingText !== thinkingText ? compactThinkingText : "",
+      thinkingOnly: false,
     },
     {
       elapsedText,
       interruptHint,
       tokenText: "",
       thinkingText: compactThinkingText,
+      thinkingOnly: false,
     },
     {
       elapsedText,
       interruptHint,
       tokenText: "",
       thinkingText: "",
+      thinkingOnly: false,
     },
     {
       elapsedText: "",
       interruptHint,
       tokenText: "",
       thinkingText: "",
+      thinkingOnly: false,
     },
+    ...(activeThinkingText.length > 0
+      ? [{
+        elapsedText: "",
+        interruptHint: "",
+        tokenText: "",
+        thinkingText: activeThinkingText,
+        thinkingOnly: true,
+      }]
+      : []),
     {
       elapsedText,
       interruptHint: "",
       tokenText: "",
       thinkingText: "",
+      thinkingOnly: false,
     },
     {
       elapsedText: "",
       interruptHint: "",
       tokenText: "",
       thinkingText: "",
+      thinkingOnly: false,
     },
   ].map((candidate) => ({
     ...candidate,
@@ -504,6 +524,7 @@ export function resolveStatusIndicatorParts(
     showInterruptHint: (resolved?.interruptHint ?? "").length > 0,
     showTokens: (resolved?.tokenText ?? "").length > 0,
     showThinking: (resolved?.thinkingText ?? "").length > 0,
+    thinkingOnly: resolved?.thinkingOnly === true,
   };
 }
 

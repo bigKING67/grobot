@@ -153,7 +153,9 @@ screen monoliths:
    Keep spinner, elapsed time, token/thinking suffix, and stall logic here.
    Match the reference spinner semantics: tool-use mode flashes the whole
    message instead of per-grapheme shimmer, and stalled output interpolates the
-   spinner/message toward error red without forcing reduced motion.
+   spinner/message toward error red without forcing reduced motion. Narrow
+   thinking-only status should collapse to a parenthesized low-noise byline
+   before dropping entirely.
 7. `components/help/`: `/help` command guide surface. `react/help-screen.tsx`
    owns the visible adapter surface; keep the output low-noise and
    reference-style with compact command rows, shortcut rows, and muted notes.

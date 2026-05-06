@@ -128,6 +128,25 @@ const thoughtStatusLine = renderStatusIndicatorLine({
   mode: "thinking",
   thinkingStatus: 2_400,
 });
+const thinkingOnlyParts = resolveStatusIndicatorParts({
+  spinner: "✻",
+  message: "Designing implementation plan",
+  elapsedText: "4s",
+  interruptHint: "Esc interrupt",
+  tokenText: "",
+  thinkingText: "thinking high",
+  terminalColumns: 15,
+});
+const thinkingOnlyLine = renderStatusIndicatorLine({
+  message: "Designing implementation plan",
+  startedAtMs,
+  nowMs: startedAtMs + 4_200,
+  tick: 2,
+  terminalColumns: 15,
+  mode: "thinking",
+  thinkingStatus: "thinking",
+  effortSuffix: "high",
+});
 const activityDetailLine = renderStatusIndicatorLine({
   message: "Choosing model route",
   startedAtMs,
@@ -303,6 +322,19 @@ const payload = {
     stripAnsi(thinkingStatusLine).includes("thinking high"),
   thought_status_line_shows_duration:
     stripAnsi(thoughtStatusLine).includes("thought for 2s"),
+  thinking_only_compacts_effort_to_bare_thinking:
+    thinkingOnlyParts.thinkingOnly
+    && thinkingOnlyParts.showThinking
+    && !thinkingOnlyParts.showElapsed
+    && !thinkingOnlyParts.showInterruptHint
+    && !thinkingOnlyParts.showTokens
+    && thinkingOnlyParts.suffix === " (thinking)",
+  thinking_only_uses_parenthesized_byline:
+    stripAnsi(thinkingOnlyLine).includes("(thinking)")
+    && !stripAnsi(thinkingOnlyLine).includes("thinking high")
+    && !stripAnsi(thinkingOnlyLine).includes("esc to interrupt")
+    && !stripAnsi(thinkingOnlyLine).includes("4s"),
+  thinking_only_width_within_columns: measureDisplayWidth(thinkingOnlyLine) <= 15,
   activity_detail_renders_before_elapsed:
     stripAnsi(activityDetailLine).includes("7s · Selected alpha · esc to interrupt")
     && !stripAnsi(activityDetailLine).includes("selected=alpha"),
