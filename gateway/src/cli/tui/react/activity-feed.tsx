@@ -5,6 +5,7 @@ import {
   measureDisplayWidth,
   truncateDisplayWidth,
 } from "../terminal/display-width";
+import { sanitizeTerminalDisplayText } from "../terminal/text-sanitizer";
 import type {
   ActivityFeedRow,
   RuntimeActivityFeedViewModel,
@@ -46,12 +47,14 @@ function resolveBulletTone(row: ActivityFeedRow): CliThemeToken {
 }
 
 function fitMainTitle(title: string, width: number): string {
+  const sanitizedTitle = sanitizeTerminalDisplayText(title);
   const titleWidth = Math.max(1, width - measureDisplayWidth(`${REFERENCE_TOOL_STATUS_DOT} `));
-  return truncateDisplayWidth(title, titleWidth, { compact: true });
+  return truncateDisplayWidth(sanitizedTitle, titleWidth, { compact: true });
 }
 
 function fitDetailLine(detail: string, width: number): string {
-  return truncateDisplayWidth(`  ⎿  ${detail}`, width);
+  const sanitizedDetail = sanitizeTerminalDisplayText(detail);
+  return truncateDisplayWidth(`  ⎿  ${sanitizedDetail}`, width);
 }
 
 function renderActivityRow(

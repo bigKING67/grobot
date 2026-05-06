@@ -273,6 +273,21 @@ const runningFullRendered = renderRuntimeActivityFeed({
     }),
   ],
 });
+const sanitizedTitleRendered = renderRuntimeActivityFeed({
+  terminalColumns: 80,
+  detailMode: "full",
+  events: [
+    event({
+      eventType: "tool_start",
+      payload: {
+        tool_name: "read",
+        input_summary: {
+          path: "\u001B[31mgateway/src/unsafe-title.ts\u001B[0m\u202E",
+        },
+      },
+    }),
+  ],
+});
 const longBashCommand = [
   `node ${"a".repeat(80)}`,
   `echo ${"b".repeat(120)}`,
@@ -538,6 +553,7 @@ const fullPlain = stripAnsi(fullRendered);
 const recoveryPlain = stripAnsi(recoveryRendered);
 const runningPlain = stripAnsi(runningRendered);
 const runningFullPlain = stripAnsi(runningFullRendered);
+const sanitizedTitlePlain = stripAnsi(sanitizedTitleRendered);
 const longCommandPlain = stripAnsi(longCommandRendered);
 const truncatedBashPlain = stripAnsi(truncatedBashRendered);
 const ansiBashPlain = stripAnsi(ansiBashRendered);
@@ -574,6 +590,10 @@ const payload = {
     && !runningPlain.includes("command="),
   bash_running_full_detail_shows_progress_placeholder:
     runningFullPlain.includes("  ⎿  Running…"),
+  activity_titles_strip_control_sequences_before_render:
+    sanitizedTitlePlain.includes("Read gateway/src/unsafe-title.ts")
+    && !sanitizedTitleRendered.includes("\u001B[31m")
+    && !sanitizedTitlePlain.includes("\u202E"),
   bash_command_preview_limits_reference_display:
     longCommandPlain.includes("Run $ node")
     && longCommandPlain.includes("echo")

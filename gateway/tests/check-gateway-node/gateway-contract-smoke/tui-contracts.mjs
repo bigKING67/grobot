@@ -337,6 +337,7 @@ export async function runTuiContracts() {
   assertPayloadFlags(cliActivityFeedPayload, [
     "renders_real_tool_rows", "uses_reference_tool_status_dot",
     "renders_unresolved_tool_start_as_dim_status", "unresolved_tool_start_uses_input_summary_without_raw_args",
+    "activity_titles_strip_control_sequences_before_render",
     "resolved_tool_start_deduped_by_tool_end", "compact_hides_key_value_details",
     "renders_edit_with_diff_stats", "renders_failed_bash",
     "bash_exit_code_failure_normalized_from_ok_status", "renders_recovery_row",

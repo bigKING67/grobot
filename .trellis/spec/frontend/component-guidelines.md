@@ -138,10 +138,11 @@ screen monoliths:
    rendering. `react/activity-feed.tsx` owns the visible adapter surface. Keep
    rows terse and reference-style: one tool/action line, dim details only in
    full mode, and no raw key/value diagnostic dumps. The feed must stay out of
-   conversation history. Tool payload normalization, start rows, end rows,
-   recovery rows, and grouped tool-call flow must stay in focused helper files
-   under `components/activity-feed/`; keep `render.ts` as a thin pure
-   composition layer.
+   conversation history. Titles and detail lines must sanitize ANSI/control
+   sequences at the final render boundary before fitting widths. Tool payload
+   normalization, start rows, end rows, recovery rows, and grouped tool-call
+   flow must stay in focused helper files under `components/activity-feed/`;
+   keep `render.ts` as a thin pure composition layer.
 4. `components/turn-notice/`: turn interruption/open-circuit/failure notices.
    `react/turn-notice.tsx` owns the visible adapter surface and should keep
    notices compact, low-noise, and reference-style: one primary line plus only
