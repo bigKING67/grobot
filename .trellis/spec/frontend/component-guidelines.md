@@ -85,12 +85,12 @@ Public imports should use these role files directly:
 3. `reducer.ts`: pure keyboard/shortcut/slash-suggestion decisions such as
    `resolveSubmitKeyAction()` and `resolveSlashSuggestionKeyAction()`.
 4. `render.ts`: input chrome, submitted transcript, slash-token highlight, and
-   footer/body width calculations. Submitted transcript rendering must sanitize
-   ANSI/control/bidi sequences before wrapping or fitting visible lines without
-   mutating the raw submitted model input. Slash/prompt suggestion overlay rows
-   must sanitize ANSI/control/bidi sequences before display-width calculation
-   and truncation; descriptions and tags are untrusted display payloads, not raw
-   terminal markup.
+   footer/body width calculations. Live prompt and submitted transcript
+   rendering must sanitize ANSI/control/bidi sequences before wrapping or
+   fitting visible lines without mutating the raw submitted model input.
+   Slash/prompt suggestion overlay rows must sanitize ANSI/control/bidi
+   sequences before display-width calculation and truncation; descriptions and
+   tags are untrusted display payloads, not raw terminal markup.
 5. `input-buffer.ts`: prompt buffer cursor math, bracketed paste marker
    cleanup, inline-image-token deletion, active-line replacement, and vertical
    cursor movement.

@@ -1,4 +1,5 @@
 import {
+  buildPromptInputRenderSnapshot,
   renderSlashCommandTokenHighlight,
   renderInteractiveInputChromeLines,
   renderSubmittedInputTranscriptLines,
@@ -6,7 +7,7 @@ import {
   resolveInteractiveInputBodyWidth,
   resolveInteractiveInputCursorColumn,
 } from "../../../cli/tui/components/prompt-input/render";
-import { measureDisplayWidth } from "../../../cli/tui/terminal/display-width";
+import { measureDisplayWidth, splitGraphemes } from "../../../cli/tui/terminal/display-width";
 import { stripAnsi, type ContractPayload } from "./helpers";
 
 export function runInputChromeChecks(): ContractPayload {
@@ -30,6 +31,25 @@ export function runInputChromeChecks(): ContractPayload {
     bodyLines: ["❯ hello"],
     inputBodyWidth: 20,
   });
+  const liveUnsafeValue = "hello\u001B[31m red\u001B[0m\u202E\tworld";
+  const liveUnsafeSnapshot = buildPromptInputRenderSnapshot({
+    resolvedPrompt: {
+      prefix: "",
+      inlinePrompt: "❯ ",
+    },
+    footerLines: [],
+    promptLabelWidth: 2,
+    continuationPrefix: "  ",
+    graphemes: splitGraphemes(liveUnsafeValue),
+    cursor: splitGraphemes(liveUnsafeValue).length,
+    historySearchInFlight: false,
+    shortcutOverlayVisible: false,
+    activeSlashSuggestionIndex: 0,
+    lastSlashLineInput: "",
+    slashSuggestionsHiddenForLine: "",
+    terminalColumns: 96,
+    inlineImageTheme: "ccline",
+  }).snapshot;
   const submittedTranscriptLines = renderSubmittedInputTranscriptLines({
     value: "你是啥模型",
     promptLabel: "❯ ",
@@ -67,6 +87,10 @@ export function runInputChromeChecks(): ContractPayload {
   const inputChromeTopLinePlain = stripAnsi(inputChromeLines[0] ?? "");
   const inputChromeBodyLine = inputChromeLines[1] ?? "";
   const inputChromeBodyLinePlain = stripAnsi(inputChromeBodyLine);
+  const liveUnsafePromptPlain = liveUnsafeSnapshot.renderedLines
+    .map(stripAnsi)
+    .join("\n");
+  const liveUnsafePromptRaw = liveUnsafeSnapshot.renderedLines.join("\n");
   const inputChromeBottomLinePlain = stripAnsi(inputChromeLines[2] ?? "");
   const inputChromeLeftPadding =
     inputChromeBodyLinePlain.match(/^ */)?.[0]?.length ?? 0;
@@ -118,6 +142,13 @@ export function runInputChromeChecks(): ContractPayload {
       inputChromeCursorColumn === 4,
     input_chrome_cursor_uses_left_padding:
       inputChromeCursorColumn === inputChromeLeftPadding + 4,
+    input_live_prompt_sanitizes_render_text:
+      liveUnsafePromptPlain.includes("❯ hello red    world")
+      && !liveUnsafePromptRaw.includes("\u001B[31m")
+      && !liveUnsafePromptPlain.includes("\u202E")
+      && liveUnsafeSnapshot.renderedLines.every((line) => measureDisplayWidth(line) <= 96),
+    input_live_prompt_keeps_raw_state_for_submission:
+      liveUnsafeSnapshot.activeLineInput === liveUnsafeValue,
     input_chrome_uses_full_terminal_width:
       inputChromeFullTerminalWidth === 80,
     input_chrome_respects_prompt_minimum_width:

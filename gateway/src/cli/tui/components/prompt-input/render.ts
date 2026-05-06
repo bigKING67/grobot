@@ -651,7 +651,7 @@ export function buildPromptInputRenderSnapshot(
         ? selectedTokenCodeOffset - descriptor.codeStart
         : undefined;
     const renderedText = renderInlineImageTokensForDisplay({
-      text: descriptor.text,
+      text: sanitizePromptDisplayLine(descriptor.text),
       theme: input.inlineImageTheme,
       selectedStartOffset: selectedOffsetInLine,
     });
