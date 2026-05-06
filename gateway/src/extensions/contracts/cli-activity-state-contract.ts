@@ -83,6 +83,34 @@ tracker.observeRuntimeEvent(runtimeEvent("tool_end", {
   },
 }));
 const runtimeToolEndSnapshot = tracker.readActivitySnapshot();
+tracker.observeRuntimeEvent(runtimeEvent("tool_start", {
+  tool_name: "bash",
+  tool_call_id: "call_queued_contract",
+  status: "queued",
+  input_summary: {
+    command_preview: "npm run queued-check",
+  },
+}));
+const runtimeQueuedToolSnapshot = tracker.readActivitySnapshot();
+tracker.observeRuntimeEvent(runtimeEvent("tool_start", {
+  tool_name: "bash",
+  tool_call_id: "call_permission_contract",
+  status: "waiting_for_permission",
+  input_summary: {
+    command_preview: "npm run needs-permission",
+  },
+}));
+const runtimePermissionToolSnapshot = tracker.readActivitySnapshot();
+tracker.observeRuntimeEvent(runtimeEvent("tool_start", {
+  tool_name: "bash",
+  tool_call_id: "call_classifier_contract",
+  status: "classifier_checking",
+  classifier: "bash",
+  input_summary: {
+    command_preview: "npm run classifier-check",
+  },
+}));
+const runtimeClassifierToolSnapshot = tracker.readActivitySnapshot();
 tracker.markTurnFinished("ok");
 const okSnapshot = tracker.readPromptActivitySnapshot();
 
@@ -162,6 +190,21 @@ const payload = {
     && runtimeToolEndSnapshot.text === "Run failed"
     && runtimeToolEndSnapshot.detail === "exit 1 · 1.2s"
     && runtimeToolEndSnapshot.status === "error",
+  runtime_tool_start_queued_uses_reference_detail:
+    runtimeQueuedToolSnapshot?.kind === "tool"
+    && runtimeQueuedToolSnapshot.text === "Run $ npm run queued-check"
+    && runtimeQueuedToolSnapshot.detail === "Waiting…"
+    && !runtimeQueuedToolSnapshot.text.includes("status="),
+  runtime_tool_start_permission_uses_reference_detail:
+    runtimePermissionToolSnapshot?.kind === "tool"
+    && runtimePermissionToolSnapshot.text === "Run $ npm run needs-permission"
+    && runtimePermissionToolSnapshot.detail === "Waiting for permission…"
+    && !String(runtimePermissionToolSnapshot.detail ?? "").includes("waiting_for_permission"),
+  runtime_tool_start_classifier_uses_reference_detail:
+    runtimeClassifierToolSnapshot?.kind === "tool"
+    && runtimeClassifierToolSnapshot.text === "Run $ npm run classifier-check"
+    && runtimeClassifierToolSnapshot.detail === "Bash classifier checking…"
+    && !String(runtimeClassifierToolSnapshot.detail ?? "").includes("classifier_checking"),
   residual_activity_details_avoid_raw_codes:
     [
       semanticPrefetchSnapshot?.detail,
@@ -172,6 +215,9 @@ const payload = {
       interruptSnapshot?.detail,
       runtimeModelRequestSnapshot?.detail,
       runtimeToolEndSnapshot?.detail,
+      runtimeQueuedToolSnapshot?.detail,
+      runtimePermissionToolSnapshot?.detail,
+      runtimeClassifierToolSnapshot?.detail,
     ].every((detail) =>
       !/[a-z]+(?:[_-][a-z]+)+/.test(String(detail ?? ""))
       && !String(detail ?? "").includes("=")

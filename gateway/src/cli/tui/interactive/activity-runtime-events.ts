@@ -27,6 +27,16 @@ function payloadNumber(payload: Record<string, unknown>, key: string): number | 
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function firstString(...values: Array<string | undefined>): string {
+  for (const value of values) {
+    const normalized = (value ?? "").trim();
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return "";
+}
+
 function normalizeToolName(payload: Record<string, unknown>): string {
   return payloadString(payload, "tool_name")?.trim() || "unknown_tool";
 }
@@ -110,6 +120,42 @@ function buildToolInputDetail(toolName: string, payload: Record<string, unknown>
   return query || undefined;
 }
 
+function resolveToolStartDetail(toolName: string, payload: Record<string, unknown>): string | undefined {
+  const inputSummary = payloadRecord(payload, "input_summary");
+  const status = firstString(
+    payloadString(payload, "status"),
+    payloadString(payload, "state"),
+    payloadString(inputSummary, "status"),
+    payloadString(inputSummary, "state"),
+  ).toLowerCase();
+  const permission = firstString(
+    payloadString(payload, "permission_state"),
+    payloadString(payload, "permission_status"),
+    payloadString(inputSummary, "permission_state"),
+    payloadString(inputSummary, "permission_status"),
+  ).toLowerCase();
+  const classifier = firstString(
+    payloadString(payload, "classifier"),
+    payloadString(payload, "classifier_state"),
+    payloadString(inputSummary, "classifier"),
+    payloadString(inputSummary, "classifier_state"),
+  ).toLowerCase();
+  if (status === "queued" || status === "waiting" || status === "pending") {
+    return "Waiting…";
+  }
+  if (status === "waiting_for_permission" || permission === "waiting" || permission === "pending") {
+    return "Waiting for permission…";
+  }
+  if (status === "classifier_checking" || classifier === "checking") {
+    return classifier.includes("auto")
+      ? "Auto classifier checking…"
+      : toolName === "bash" || classifier.includes("bash")
+        ? "Bash classifier checking…"
+        : "Classifier checking…";
+  }
+  return undefined;
+}
+
 export function resolveRuntimeEventActivity(event: RuntimeEvent): ActivityUpdate | undefined {
   const payload = event.payload;
   if (event.eventType === "tool_start") {
@@ -122,6 +168,7 @@ export function resolveRuntimeEventActivity(event: RuntimeEvent): ActivityUpdate
         detail ? `${label} ${detail}` : `${label}${toolName === "bash" ? "" : " tool"}`,
         140,
       ),
+      detail: resolveToolStartDetail(toolName, payload),
       status: "running",
     };
   }
