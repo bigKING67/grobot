@@ -1,4 +1,4 @@
-import type { RuntimeAttachment } from "../../models/types";
+import type { RuntimeAttachment, RuntimeEvent } from "../../models/types";
 import type { RunStartRewindStore } from "./rewind-store";
 import type { RunStartRuntimeState } from "./runtime-state";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./turn";
@@ -13,6 +13,7 @@ export interface TurnExecutionOptions {
   emitDiagnostics?: boolean;
   writeStdout?: (message: string) => void;
   writeStderr?: (message: string) => void;
+  onRuntimeEvent?: (event: RuntimeEvent) => void;
 }
 
 export interface CreateTurnExecutionControllerInput {
@@ -70,6 +71,7 @@ export function createTurnExecutionController(
         emitDiagnostics: options?.emitDiagnostics,
         writeStdout: options?.writeStdout,
         writeStderr,
+        onRuntimeEvent: options?.onRuntimeEvent,
         onTurnRecorded: (turnRecord) => {
           recordedAssistantText = turnRecord.assistantText;
         },

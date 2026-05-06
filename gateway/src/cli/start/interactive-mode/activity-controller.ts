@@ -2,6 +2,7 @@ import {
   createInteractiveActivityTracker,
   type InteractiveActivityTracker,
 } from "../../tui/interactive/activity-state";
+import type { RuntimeEvent } from "../../../models/types";
 import { renderStatusIndicatorLine } from "../../tui/components/status-indicator/render";
 import { TURN_INTERRUPTED_EXIT_CODE } from "../turn";
 import {
@@ -28,6 +29,7 @@ export interface InteractiveActivityController {
   setPendingInputFrame(controller: PendingInputFrameController): void;
   stopInlineActivityTicker(insertNewline: boolean): void;
   readPromptActivityText(): string | undefined;
+  observeRuntimeEvent(event: RuntimeEvent): void;
   runActivityScope(input: {
     traceEvent: string;
     startActivity?: Parameters<InteractiveActivityTracker["markTurnStart"]>[0];
@@ -331,6 +333,12 @@ export function createInteractiveActivityController(input: {
       return activitySnapshot.detail
         ? `${activitySnapshot.title} · ${activitySnapshot.detail}`
         : activitySnapshot.title;
+    },
+    observeRuntimeEvent: (event) => {
+      activityTracker.observeRuntimeEvent(event);
+      if (typeof activeTurnStartedAtMs === "number" && !pendingInputFrame?.isEnabled()) {
+        startInlineActivityTicker();
+      }
     },
     runActivityScope: async (inputScope) => {
       if (typeof activeTurnStartedAtMs === "number") {

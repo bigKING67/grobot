@@ -11,10 +11,11 @@ include!("executor/ask_user_interrupt.rs");
 include!("executor/message_builder.rs");
 
 impl ModelExecutor for OpenAiCompatibleModelExecutor {
-    fn generate_assistant_message(
+    fn generate_assistant_message_with_telemetry(
         &self,
         input: &TurnExecuteInput,
         tools: &dyn ToolExecutor,
+        telemetry_sink: &mut dyn ModelTelemetryEventSink,
     ) -> Result<ModelExecutionOutput, ModelExecutionError> {
         let config = load_runtime_model_config(input.model_config.as_ref())?;
         let endpoint = format!("{}/chat/completions", config.base_url);
@@ -58,16 +59,20 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
             };
             if prompt_cache_enabled {
                 record_prompt_cache_hint_attempt(prompt_cache_applied_messages > 0);
-                telemetry_events.push(ModelTelemetryEvent {
-                    event_type: "prompt_cache_hint_applied".to_string(),
-                    payload: Some(json!({
-                        "supported": prompt_cache_supported,
-                        "capability": prompt_cache_capability,
-                        "strategy": prompt_cache_strategy,
-                        "user_last_n": config.provider_options.kimi.prompt_cache.user_last_n,
-                        "applied_message_count": prompt_cache_applied_messages,
-                    })),
-                });
+                record_model_telemetry_event(
+                    &mut telemetry_events,
+                    telemetry_sink,
+                    ModelTelemetryEvent {
+                        event_type: "prompt_cache_hint_applied".to_string(),
+                        payload: Some(json!({
+                            "supported": prompt_cache_supported,
+                            "capability": prompt_cache_capability,
+                            "strategy": prompt_cache_strategy,
+                            "user_last_n": config.provider_options.kimi.prompt_cache.user_last_n,
+                            "applied_message_count": prompt_cache_applied_messages,
+                        })),
+                    },
+                );
             }
             let mut body = json!({
                 "model": config.model,
@@ -131,18 +136,22 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                 {
                     let mut fallback_body = body.clone();
                     fallback_body["messages"] = Value::Array(unhinted_messages);
-                    telemetry_events.push(ModelTelemetryEvent {
-                        event_type: "prompt_cache_hint_applied".to_string(),
-                        payload: Some(json!({
-                            "supported": false,
-                            "capability": "unsupported",
-                            "strategy": prompt_cache_strategy,
-                            "user_last_n": config.provider_options.kimi.prompt_cache.user_last_n,
-                            "applied_message_count": 0,
-                            "fallback_retry": true,
-                            "fallback_reason": "upstream_rejected_cache_control",
-                        })),
-                    });
+                    record_model_telemetry_event(
+                        &mut telemetry_events,
+                        telemetry_sink,
+                        ModelTelemetryEvent {
+                            event_type: "prompt_cache_hint_applied".to_string(),
+                            payload: Some(json!({
+                                "supported": false,
+                                "capability": "unsupported",
+                                "strategy": prompt_cache_strategy,
+                                "user_last_n": config.provider_options.kimi.prompt_cache.user_last_n,
+                                "applied_message_count": 0,
+                                "fallback_retry": true,
+                                "fallback_reason": "upstream_rejected_cache_control",
+                            })),
+                        },
+                    );
                     send_chat_completion_with_optional_kimi_retry(
                         &client,
                         &endpoint,
@@ -156,10 +165,14 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
             let payload = parse_model_response_payload(&body_text, config.provider_kind)?;
             if let Some(observation) = extract_prompt_cache_usage_observation(&payload) {
                 record_prompt_cache_usage(observation.cached_tokens_total);
-                telemetry_events.push(ModelTelemetryEvent {
-                    event_type: "prompt_cache_usage_observed".to_string(),
-                    payload: Some(observation.payload),
-                });
+                record_model_telemetry_event(
+                    &mut telemetry_events,
+                    telemetry_sink,
+                    ModelTelemetryEvent {
+                        event_type: "prompt_cache_usage_observed".to_string(),
+                        payload: Some(observation.payload),
+                    },
+                );
             }
             let tool_calls = extract_tool_calls(&payload)?;
             if !tool_calls.is_empty() {
@@ -200,12 +213,16 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                 let mut observation_boundary_consumed = false;
                 for (batch_index, tool_call) in tool_calls.into_iter().enumerate() {
                     let risk_class = classify_tool_execution_risk(&tool_call.name);
-                    telemetry_events.push(build_tool_start_event(
-                        &tool_call,
-                        current_tool_round,
-                        batch_index,
-                        risk_class,
-                    ));
+                    record_model_telemetry_event(
+                        &mut telemetry_events,
+                        telemetry_sink,
+                        build_tool_start_event(
+                            &tool_call,
+                            current_tool_round,
+                            batch_index,
+                            risk_class,
+                        ),
+                    );
                     let mut deferred_tool_call = false;
                     let (output, budgeted_output) = if observation_boundary_consumed {
                         deferred_tool_call = true;
@@ -217,23 +234,31 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                         );
                         let budgeted_output =
                             budget_tool_message_content(&tool_call.name, &output.content);
-                        telemetry_events.push(build_tool_end_deferred_event(
-                            &tool_call,
-                            current_tool_round,
-                            batch_index,
-                            risk_class,
-                            &output,
-                            &budgeted_output,
-                        ));
-                        telemetry_events.push(build_tool_recovery_event(
-                            &tool_call,
-                            current_tool_round,
-                            batch_index,
-                            risk_class,
-                            "tool_execution_deferred",
-                            None,
-                            None,
-                        ));
+                        record_model_telemetry_event(
+                            &mut telemetry_events,
+                            telemetry_sink,
+                            build_tool_end_deferred_event(
+                                &tool_call,
+                                current_tool_round,
+                                batch_index,
+                                risk_class,
+                                &output,
+                                &budgeted_output,
+                            ),
+                        );
+                        record_model_telemetry_event(
+                            &mut telemetry_events,
+                            telemetry_sink,
+                            build_tool_recovery_event(
+                                &tool_call,
+                                current_tool_round,
+                                batch_index,
+                                risk_class,
+                                "tool_execution_deferred",
+                                None,
+                                None,
+                            ),
+                        );
                         (output, budgeted_output)
                     } else {
                         let started_at = std::time::Instant::now();
@@ -243,35 +268,47 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                                 let budgeted_output =
                                     budget_tool_message_content(&tool_call.name, &output.content);
                                 if let Some(observed_error) = output.observed_error.as_ref() {
-                                    telemetry_events.push(build_tool_end_observed_failure_event(
-                                        &tool_call,
-                                        current_tool_round,
-                                        batch_index,
-                                        risk_class,
-                                        duration_ms,
-                                        &output,
-                                        &budgeted_output,
-                                        observed_error,
-                                    ));
-                                    telemetry_events.push(build_tool_recovery_event(
-                                        &tool_call,
-                                        current_tool_round,
-                                        batch_index,
-                                        risk_class,
-                                        &observed_error.error_class,
-                                        Some(observed_error.message.as_str()),
-                                        observed_error.data.as_ref(),
-                                    ));
+                                    record_model_telemetry_event(
+                                        &mut telemetry_events,
+                                        telemetry_sink,
+                                        build_tool_end_observed_failure_event(
+                                            &tool_call,
+                                            current_tool_round,
+                                            batch_index,
+                                            risk_class,
+                                            duration_ms,
+                                            &output,
+                                            &budgeted_output,
+                                            observed_error,
+                                        ),
+                                    );
+                                    record_model_telemetry_event(
+                                        &mut telemetry_events,
+                                        telemetry_sink,
+                                        build_tool_recovery_event(
+                                            &tool_call,
+                                            current_tool_round,
+                                            batch_index,
+                                            risk_class,
+                                            &observed_error.error_class,
+                                            Some(observed_error.message.as_str()),
+                                            observed_error.data.as_ref(),
+                                        ),
+                                    );
                                 } else {
-                                    telemetry_events.push(build_tool_end_success_event(
-                                        &tool_call,
-                                        current_tool_round,
-                                        batch_index,
-                                        risk_class,
-                                        duration_ms,
-                                        &output,
-                                        &budgeted_output,
-                                    ));
+                                    record_model_telemetry_event(
+                                        &mut telemetry_events,
+                                        telemetry_sink,
+                                        build_tool_end_success_event(
+                                            &tool_call,
+                                            current_tool_round,
+                                            batch_index,
+                                            risk_class,
+                                            duration_ms,
+                                            &output,
+                                            &budgeted_output,
+                                        ),
+                                    );
                                 }
                                 if tool_requires_observation_boundary(risk_class) {
                                     observation_boundary_consumed = true;
@@ -280,23 +317,31 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                             }
                             Err(error) => {
                                 let duration_ms = tool_duration_ms(started_at);
-                                telemetry_events.push(build_tool_end_failure_event(
-                                    &tool_call,
-                                    current_tool_round,
-                                    batch_index,
-                                    risk_class,
-                                    duration_ms,
-                                    &error,
-                                ));
-                                telemetry_events.push(build_tool_recovery_event(
-                                    &tool_call,
-                                    current_tool_round,
-                                    batch_index,
-                                    risk_class,
-                                    &error.error_class,
-                                    Some(error.message.as_str()),
-                                    error.data.as_ref(),
-                                ));
+                                record_model_telemetry_event(
+                                    &mut telemetry_events,
+                                    telemetry_sink,
+                                    build_tool_end_failure_event(
+                                        &tool_call,
+                                        current_tool_round,
+                                        batch_index,
+                                        risk_class,
+                                        duration_ms,
+                                        &error,
+                                    ),
+                                );
+                                record_model_telemetry_event(
+                                    &mut telemetry_events,
+                                    telemetry_sink,
+                                    build_tool_recovery_event(
+                                        &tool_call,
+                                        current_tool_round,
+                                        batch_index,
+                                        risk_class,
+                                        &error.error_class,
+                                        Some(error.message.as_str()),
+                                        error.data.as_ref(),
+                                    ),
+                                );
                                 let mut model_error = ModelExecutionError::new(
                                     &error.error_class,
                                     error.message.clone(),
@@ -334,16 +379,20 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                 }
                 tool_rounds += 1;
                 if recovery_rounds > 0 {
-                    telemetry_events.push(build_no_tool_fallback_event(
-                        "no_tool_fallback_succeeded",
-                        json!({
-                            "mode": no_tool_fallback_mode_label(no_tool_fallback_mode),
-                            "recovery_rounds": recovery_rounds,
-                            "max_recovery_rounds": max_recovery_rounds,
-                            "terminal": "tool_calls",
-                            "last_reason": last_recovery_reason.clone().unwrap_or_default(),
-                        }),
-                    ));
+                    record_model_telemetry_event(
+                        &mut telemetry_events,
+                        telemetry_sink,
+                        build_no_tool_fallback_event(
+                            "no_tool_fallback_succeeded",
+                            json!({
+                                "mode": no_tool_fallback_mode_label(no_tool_fallback_mode),
+                                "recovery_rounds": recovery_rounds,
+                                "max_recovery_rounds": max_recovery_rounds,
+                                "terminal": "tool_calls",
+                                "last_reason": last_recovery_reason.clone().unwrap_or_default(),
+                            }),
+                        ),
+                    );
                     recovery_rounds = 0;
                     last_recovery_reason = None;
                 }
@@ -366,16 +415,20 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                 });
                 messages.push(assistant_message);
                 recovery_rounds += 1;
-                telemetry_events.push(build_no_tool_fallback_event(
-                    "no_tool_fallback_triggered",
-                    json!({
-                        "mode": no_tool_fallback_mode_label(no_tool_fallback_mode),
-                        "reason": recovery_reason.clone(),
-                        "recovery_round": recovery_rounds,
-                        "max_recovery_rounds": max_recovery_rounds,
-                        "has_tool_context": input.tool_context.is_some(),
-                    }),
-                ));
+                record_model_telemetry_event(
+                    &mut telemetry_events,
+                    telemetry_sink,
+                    build_no_tool_fallback_event(
+                        "no_tool_fallback_triggered",
+                        json!({
+                            "mode": no_tool_fallback_mode_label(no_tool_fallback_mode),
+                            "reason": recovery_reason.clone(),
+                            "recovery_round": recovery_rounds,
+                            "max_recovery_rounds": max_recovery_rounds,
+                            "has_tool_context": input.tool_context.is_some(),
+                        }),
+                    ),
+                );
                 last_recovery_reason = Some(recovery_reason.clone());
                 messages.push(json!({
                     "role": "user",
@@ -388,16 +441,20 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
             }
             if let Some(content) = content {
                 if recovery_rounds > 0 {
-                    telemetry_events.push(build_no_tool_fallback_event(
-                        "no_tool_fallback_succeeded",
-                        json!({
-                            "mode": no_tool_fallback_mode_label(no_tool_fallback_mode),
-                            "recovery_rounds": recovery_rounds,
-                            "max_recovery_rounds": max_recovery_rounds,
-                            "terminal": "assistant_content",
-                            "last_reason": last_recovery_reason.clone().unwrap_or_default(),
-                        }),
-                    ));
+                    record_model_telemetry_event(
+                        &mut telemetry_events,
+                        telemetry_sink,
+                        build_no_tool_fallback_event(
+                            "no_tool_fallback_succeeded",
+                            json!({
+                                "mode": no_tool_fallback_mode_label(no_tool_fallback_mode),
+                                "recovery_rounds": recovery_rounds,
+                                "max_recovery_rounds": max_recovery_rounds,
+                                "terminal": "assistant_content",
+                                "last_reason": last_recovery_reason.clone().unwrap_or_default(),
+                            }),
+                        ),
+                    );
                 }
                 return Ok(ModelExecutionOutput {
                     assistant_message: content,
@@ -406,15 +463,19 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                 });
             }
             if recovery_rounds > 0 {
-                telemetry_events.push(build_no_tool_fallback_event(
-                    "no_tool_fallback_exhausted",
-                    json!({
-                        "mode": no_tool_fallback_mode_label(no_tool_fallback_mode),
-                        "recovery_rounds": recovery_rounds,
-                        "max_recovery_rounds": max_recovery_rounds,
-                        "last_reason": last_recovery_reason.unwrap_or_else(|| "unknown".to_string()),
-                    }),
-                ));
+                record_model_telemetry_event(
+                    &mut telemetry_events,
+                    telemetry_sink,
+                    build_no_tool_fallback_event(
+                        "no_tool_fallback_exhausted",
+                        json!({
+                            "mode": no_tool_fallback_mode_label(no_tool_fallback_mode),
+                            "recovery_rounds": recovery_rounds,
+                            "max_recovery_rounds": max_recovery_rounds,
+                            "last_reason": last_recovery_reason.unwrap_or_else(|| "unknown".to_string()),
+                        }),
+                    ),
+                );
             }
             return Err(ModelExecutionError::new(
                 "upstream_invalid_response",

@@ -14,6 +14,7 @@ const DEFAULT_MAX_ITEMS = 8;
 const DEFAULT_MAX_DIFF_LINES = 5;
 const DEFAULT_TERMINAL_COLUMNS = 96;
 const WRITE_PREVIEW_MAX_LINES = 10;
+const SHELL_OUTPUT_TAIL_LINES = 5;
 
 export function resolveRuntimeActivityFeedDetailMode(
   valueRaw: string | undefined,
@@ -103,6 +104,8 @@ function humanToolLabel(toolName: string): string {
   switch (toolName) {
     case "search":
     case "semantic_search":
+    case "$web_search":
+    case "web_search":
       return "Search";
     case "read":
       return "Read";
@@ -239,12 +242,134 @@ function compactWriteContentPreview(
   };
 }
 
+function parseJsonObject(value: string): Record<string, unknown> {
+  if (!value.trim()) {
+    return {};
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function payloadRecord(payload: Record<string, unknown>, key: string): Record<string, unknown> {
+  const value = payload[key];
+  return isRecord(value) ? value : {};
+}
+
+function formatByteSize(value: number | undefined): string | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+  const bytes = Math.max(0, Math.round(value));
+  const kb = bytes / 1024;
+  if (kb < 1) {
+    return `${String(bytes)} bytes`;
+  }
+  if (kb < 1024) {
+    return `${kb.toFixed(1).replace(/\.0$/, "")}KB`;
+  }
+  const mb = kb / 1024;
+  if (mb < 1024) {
+    return `${mb.toFixed(1).replace(/\.0$/, "")}MB`;
+  }
+  return `${(mb / 1024).toFixed(1).replace(/\.0$/, "")}GB`;
+}
+
+function formatLineStatus(value: number | undefined): string | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+  const lines = Math.floor(value);
+  if (lines <= SHELL_OUTPUT_TAIL_LINES) {
+    return undefined;
+  }
+  return `+${String(lines - SHELL_OUTPUT_TAIL_LINES)} lines`;
+}
+
+function resolveBashCommandPreview(
+  payload: Record<string, unknown>,
+  summary: Record<string, unknown>,
+): string {
+  const audit = payloadRecord(summary, "audit");
+  return firstString(
+    payloadString(summary, "command_preview"),
+    payloadString(audit, "command_preview"),
+    payloadString(summary, "command"),
+    payloadString(payload, "command_preview"),
+    payloadString(payloadRecord(payload, "audit"), "command_preview"),
+  );
+}
+
+function resolveBashOutputPreview(summary: Record<string, unknown>): {
+  lines: string[];
+  lineStatus?: string;
+  byteStatus?: string;
+} {
+  const stdout = firstRawString(
+    payloadString(summary, "stdout"),
+    payloadString(summary, "stdout_preview"),
+  );
+  const stderr = firstRawString(
+    payloadString(summary, "stderr"),
+    payloadString(summary, "stderr_preview"),
+  );
+  const selected = stdout || stderr;
+  const lines = splitVisibleLines(selected.trim())
+    .filter((line) => line.trim().length > 0)
+    .slice(-SHELL_OUTPUT_TAIL_LINES);
+  const truncation = payloadRecord(summary, "truncation");
+  const stdoutTruncation = payloadRecord(truncation, stdout ? "stdout" : "stderr");
+  const totalLines = firstNumber(
+    payloadNumber(summary, stdout ? "stdout_lines" : "stderr_lines"),
+    payloadNumber(summary, "total_lines"),
+    payloadNumber(stdoutTruncation, "total_lines"),
+  );
+  const totalBytes = firstNumber(
+    payloadNumber(summary, stdout ? "stdout_bytes" : "stderr_bytes"),
+    payloadNumber(summary, "total_bytes"),
+    payloadNumber(stdoutTruncation, "total_bytes"),
+  );
+  return {
+    lines,
+    lineStatus: formatLineStatus(totalLines),
+    byteStatus: formatByteSize(totalBytes),
+  };
+}
+
+function buildBashOutputSummaryFromErrorData(payload: Record<string, unknown>): Record<string, unknown> {
+  const errorData = payloadRecord(payload, "error_data");
+  const commandPreview = firstString(
+    payloadString(errorData, "command_preview"),
+    payloadString(payloadRecord(errorData, "audit"), "command_preview"),
+  );
+  if (!commandPreview) {
+    return {};
+  }
+  return {
+    tool: "bash",
+    command_preview: commandPreview,
+  };
+}
+
 function detailFromParts(parts: string[]): string | undefined {
   const detail = parts
     .map((part) => compactSpaces(part))
     .filter(Boolean)
-    .join(" ");
+    .join(" · ");
   return detail || undefined;
+}
+
+function rowStateForSeverity(severity: ActivityFeedRow["severity"]): NonNullable<ActivityFeedRow["state"]> {
+  if (severity === "error") {
+    return "error";
+  }
+  if (severity === "warning") {
+    return "warning";
+  }
+  return "success";
 }
 
 function formatToolStatusTitle(status: string, label: string): string {
@@ -255,6 +380,17 @@ function formatToolStatusTitle(status: string, label: string): string {
     return `${label} deferred`;
   }
   return label;
+}
+
+function normalizeToolEndStatus(toolName: string, payload: Record<string, unknown>, summary: Record<string, unknown>): string {
+  const status = firstString(payloadString(payload, "status"), payloadString(summary, "status"));
+  if (toolName === "bash") {
+    const exitCode = firstNumber(payloadNumber(summary, "exit_code"));
+    if (typeof exitCode === "number" && exitCode !== 0 && status !== "deferred") {
+      return "failed";
+    }
+  }
+  return status;
 }
 
 function formatRecoveryAction(value: string): string {
@@ -326,9 +462,16 @@ function buildToolEndRow(
   maxDiffLines: number,
 ): ActivityFeedRow | undefined {
   const payload = normalizePayload(event);
-  const summary = outputSummary(payload);
-  const toolName = normalizeToolName(payload, summary);
-  const status = firstString(payloadString(payload, "status"), payloadString(summary, "status"));
+  const parsedOutputSummary = outputSummary(payload);
+  const toolName = normalizeToolName(payload, parsedOutputSummary);
+  const summary = toolName === "bash"
+    ? {
+      ...buildBashOutputSummaryFromErrorData(payload),
+      ...parseJsonObject(payloadString(payload, "output_preview")),
+      ...parsedOutputSummary,
+    }
+    : parsedOutputSummary;
+  const status = normalizeToolEndStatus(toolName, payload, summary);
   const errorClass = firstString(
     payloadString(payload, "error_class"),
     payloadString(summary, "error_class"),
@@ -358,6 +501,7 @@ function buildToolEndRow(
           : "Plan updated",
       detailLines,
       severity,
+      state: rowStateForSeverity(severity),
     };
   }
   const titlePrefix = formatToolStatusTitle(status, label);
@@ -369,7 +513,7 @@ function buildToolEndRow(
   let title = compactSpaces(`${titlePrefix}${path ? ` ${path}` : ""}${titleSuffix}`);
   const detailLines: string[] = [];
 
-  if (toolName === "search" || toolName === "semantic_search") {
+  if (toolName === "search" || toolName === "semantic_search" || toolName === "$web_search" || toolName === "web_search") {
     const matches = firstNumber(
       payloadNumber(summary, "matches_count"),
       payloadNumber(summary, "count"),
@@ -446,7 +590,7 @@ function buildToolEndRow(
       detailLines.push(...preview.lines);
       if (preview.hiddenLineCount > 0) {
         detailLines.push(
-          `... ${String(preview.hiddenLineCount)} more lines, Ctrl+O expand`,
+          `... ${String(preview.hiddenLineCount)} more lines`,
         );
       }
     }
@@ -458,15 +602,16 @@ function buildToolEndRow(
       detailLines.push(detail);
     }
   } else if (toolName === "bash") {
-    const commandPreview = firstString(
-      payloadString(summary, "command_preview"),
-      payloadString(summary, "command"),
-    );
+    const commandPreview = resolveBashCommandPreview(payload, summary);
     const exitCode = firstNumber(payloadNumber(summary, "exit_code"));
+    const preview = resolveBashOutputPreview(summary);
+    detailLines.push(...preview.lines);
     const detail = detailFromParts([
-      commandPreview ? `command ${commandPreview.replace(/"/g, "'")}` : "",
+      commandPreview ? `$ ${commandPreview.replace(/"/g, "'")}` : "",
       typeof exitCode === "number" ? `exit ${String(exitCode)}` : "",
       duration ?? "",
+      preview.lineStatus ?? "",
+      preview.byteStatus ?? "",
     ]);
     if (detail) {
       detailLines.push(detail);
@@ -480,6 +625,45 @@ function buildToolEndRow(
     title,
     detailLines,
     severity,
+    state: rowStateForSeverity(severity),
+  };
+}
+
+function payloadToolCallId(payload: Record<string, unknown>): string {
+  return firstString(payloadString(payload, "tool_call_id"), payloadString(payload, "id"));
+}
+
+function buildToolStartRow(event: RuntimeEvent): ActivityFeedRow | undefined {
+  const payload = normalizePayload(event);
+  const toolName = normalizeToolName(payload, {});
+  const inputSummary = payloadRecord(payload, "input_summary");
+  const label = humanToolLabel(toolName);
+  const path = compactPath(firstString(
+    payloadString(inputSummary, "path"),
+    payloadString(inputSummary, "file_path"),
+    payloadString(payload, "path"),
+    payloadString(payload, "file_path"),
+  ));
+  const query = firstString(
+    payloadString(inputSummary, "query"),
+    payloadString(inputSummary, "pattern"),
+  );
+  const commandPreview = toolName === "bash"
+    ? resolveBashCommandPreview(payload, inputSummary)
+    : "";
+  const title = compactSpaces(
+    toolName === "bash" && commandPreview
+      ? `${label} $ ${commandPreview.replace(/"/g, "'")}`
+      : `${label}${path ? ` ${path}` : ""}${query ? ` ${query}` : ""}`,
+  );
+  if (!title) {
+    return undefined;
+  }
+  return {
+    title,
+    detailLines: [],
+    severity: "ok",
+    state: "running",
   };
 }
 
@@ -503,6 +687,7 @@ function buildRecoveryRow(event: RuntimeEvent): ActivityFeedRow | undefined {
       ]) ?? "",
     ].filter(Boolean),
     severity: "warning",
+    state: "warning",
   };
 }
 
@@ -511,12 +696,32 @@ function buildRows(input: RuntimeActivityFeedInput): ActivityFeedRow[] {
   const maxDiffLines = typeof input.maxDiffLines === "number" && Number.isFinite(input.maxDiffLines)
     ? Math.max(0, Math.floor(input.maxDiffLines))
     : DEFAULT_MAX_DIFF_LINES;
+  const resolvedToolCallIds = new Set<string>();
   for (const event of input.events) {
-    const row = event.eventType === "tool_end"
-      ? buildToolEndRow(event, maxDiffLines)
-      : event.eventType === "tool_recovery"
-        ? buildRecoveryRow(event)
-        : undefined;
+    if (event.eventType !== "tool_end") {
+      continue;
+    }
+    const toolCallId = payloadToolCallId(normalizePayload(event));
+    if (toolCallId) {
+      resolvedToolCallIds.add(toolCallId);
+    }
+  }
+  for (const event of input.events) {
+    const row = (() => {
+      if (event.eventType === "tool_start") {
+        const toolCallId = payloadToolCallId(normalizePayload(event));
+        return toolCallId && resolvedToolCallIds.has(toolCallId)
+          ? undefined
+          : buildToolStartRow(event);
+      }
+      if (event.eventType === "tool_end") {
+        return buildToolEndRow(event, maxDiffLines);
+      }
+      if (event.eventType === "tool_recovery") {
+        return buildRecoveryRow(event);
+      }
+      return undefined;
+    })();
     if (row) {
       rows.push(row);
     }

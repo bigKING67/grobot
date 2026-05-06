@@ -83,9 +83,9 @@ export function runInputKeybindingChecks(): ContractPayload {
   const coalescedEscapeSequence = resolveCoalescedSubmitChunk("\u001b\r");
   const inlineInputOption = {
     id: "keep_planning",
-    label: "继续完善计划",
+    label: "Refine plan",
     input: {
-      placeholder: "告诉 Grobot 需要调整什么",
+      placeholder: "Tell Grobot what to adjust",
       showLabelWithValue: true,
       labelValueSeparator: ": ",
     },

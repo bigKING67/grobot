@@ -422,7 +422,7 @@ export function createRunStartModelOps(
     const persisted = await applyModelSelection(modelId);
     if (!persisted.ok) {
       input.writeStdout(buildModelNotice("Switch model failed", [
-        `${persisted.message}。`,
+        `${persisted.message}.`,
       ]));
       return;
     }
@@ -540,7 +540,7 @@ export function createRunStartModelOps(
     const persisted = await applyModelSelection(startupPrimaryModel);
     if (!persisted.ok) {
       input.writeStdout(buildModelNotice("Reset startup model failed", [
-        `${persisted.message}。`,
+        `${persisted.message}.`,
       ]));
       return;
     }
@@ -586,7 +586,7 @@ export function createRunStartModelOps(
         title: "Select model",
         subtitle:
           "Switch the configured model for future sessions; use /model use <id> for custom models.",
-        hint: "Enter confirm · Esc back",
+        hint: "Enter confirm · Esc exit",
         items,
         initialIndex,
         variant: "model_picker",
@@ -598,6 +598,7 @@ export function createRunStartModelOps(
           sessionId: input.getActiveSessionId(),
           sessionTitle: input.getActiveSessionMetadata?.()?.title,
           sessionSummary: input.getActiveSessionMetadata?.()?.summary,
+          effortSupported: false,
         },
       }),
     );

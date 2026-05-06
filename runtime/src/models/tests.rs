@@ -6,7 +6,7 @@ mod tests {
         extract_prompt_cache_usage_observation,
         load_runtime_model_config, parse_model_response_payload, pick_auto_model,
         PromptCacheOptions, PromptCacheStrategy,
-        should_disable_thinking_for_kimi_builtin_web_search, ModelExecutor,
+        should_disable_thinking_for_kimi_builtin_web_search, build_tool_start_event, ModelExecutor,
         OpenAiCompatibleModelExecutor, ProviderKind, ENV_API_KEY, ENV_BASE_URL, ENV_MODEL,
         ENV_RUNTIME_TIMEOUT_MS, TOOL_MESSAGE_BROWSER_MAX_CHARS,
     };
@@ -40,6 +40,31 @@ mod tests {
         base_url: String,
         requests: Arc<Mutex<Vec<RecordedRequest>>>,
         handle: Option<thread::JoinHandle<()>>,
+    }
+
+    #[test]
+    fn tool_start_input_summary_redacts_secret_like_values() {
+        let event = build_tool_start_event(
+            &ToolCallInput {
+                id: "bash_1".to_string(),
+                name: "bash".to_string(),
+                arguments: json!({
+                    "command": "curl -H 'Authorization: Bearer sk-testsecret123456' https://example.test"
+                }),
+            },
+            1,
+            0,
+            "high_risk",
+        );
+        let command_preview = event
+            .payload
+            .as_ref()
+            .and_then(|payload| payload.get("input_summary"))
+            .and_then(|summary| summary.get("command_preview"))
+            .and_then(Value::as_str)
+            .expect("tool_start should expose bounded command preview");
+        assert!(command_preview.contains("Authorization:<redacted>"));
+        assert!(!command_preview.contains("sk-testsecret123456"));
     }
 
     fn env_lock() -> &'static Mutex<()> {

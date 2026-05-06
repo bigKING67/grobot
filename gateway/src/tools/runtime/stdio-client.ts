@@ -36,6 +36,8 @@ const RUNTIME_SPAWN_TIMEOUT_FLOOR_MS = 15_000;
 const RUNTIME_SPAWN_TIMEOUT_CEILING_MS = 300_000;
 const RUNTIME_SPAWN_TIMEOUT_HEADROOM_MS = 3_000;
 const RUNTIME_INTERRUPT_ERROR_CLASS = "turn_interrupted";
+const RUNTIME_EVENT_STREAM_MODE = "stderr_jsonl";
+const RUNTIME_EVENT_STREAM_PREFIX = "[grobot-runtime-event] ";
 
 function removeTrailingSlashes(value: string): string {
   if (/^[\\/]+$/.test(value)) {
@@ -115,11 +117,77 @@ function toEventObjects(
       turnId,
       sessionKey,
       eventType,
-      payload: entry,
+      payload: isRecord(entry.payload) ? entry.payload : entry,
       timestampIso,
     });
   }
   return events;
+}
+
+class RuntimeEventObserver {
+  private readonly sessionKey: string;
+  private readonly onEvent?: (event: RuntimeEvent) => void;
+  private readonly traceId: string;
+  private emittedCount = 0;
+
+  public constructor(input: {
+    traceId: string;
+    sessionKey: string;
+    onEvent?: (event: RuntimeEvent) => void;
+  }) {
+    this.traceId = input.traceId;
+    this.sessionKey = input.sessionKey;
+    this.onEvent = input.onEvent;
+  }
+
+  public ingest(rawEvents: unknown): void {
+    if (!this.onEvent) {
+      this.emittedCount = Array.isArray(rawEvents) ? rawEvents.length : 0;
+      return;
+    }
+    const events = toEventObjects("trace_streaming", this.sessionKey, rawEvents);
+    while (this.emittedCount < events.length) {
+      const event = events[this.emittedCount];
+      this.emittedCount += 1;
+      if (event) {
+        event.traceId = this.traceId;
+        this.onEvent(event);
+      }
+    }
+  }
+
+  public ingestEvent(rawEvent: unknown): void {
+    const event = normalizeRuntimeEventObject({
+      traceId: this.traceId,
+      sessionKey: this.sessionKey,
+      rawEvent,
+    });
+    if (event) {
+      this.emittedCount += 1;
+      this.onEvent?.(event);
+    }
+  }
+}
+
+function normalizeRuntimeEventObject(input: {
+  traceId: string;
+  sessionKey: string;
+  rawEvent: unknown;
+}): RuntimeEvent | undefined {
+  if (!isRecord(input.rawEvent)) {
+    return undefined;
+  }
+  const eventType = normalizeRuntimeEventType(input.rawEvent.event_type);
+  const turnId = asString(input.rawEvent.turn_id, `turn_${Date.now()}`);
+  const timestampIso = asString(input.rawEvent.timestamp_iso, new Date().toISOString());
+  return {
+    traceId: input.traceId,
+    turnId,
+    sessionKey: input.sessionKey,
+    eventType,
+    payload: isRecord(input.rawEvent.payload) ? input.rawEvent.payload : input.rawEvent,
+    timestampIso,
+  };
 }
 
 function parseRuntimeAskUserOptions(raw: unknown): RuntimeAskUserQuestionOption[] {
@@ -241,7 +309,7 @@ function resolveRuntimeBinaryPath(): string {
   return `${process.cwd()}/runtime/target/debug/grobot-runtime${exeSuffix}`;
 }
 
-function toRpcRequestLine(request: RuntimeRequest): string {
+function toRpcRequestLine(request: RuntimeRequest, streamEvents = false): string {
   const runtimeModelConfig = request.modelConfig;
   const runtimeToolContext = request.toolContext;
   const modelConfigPayload = runtimeModelConfig
@@ -309,9 +377,10 @@ function toRpcRequestLine(request: RuntimeRequest): string {
       user_message: request.userMessage,
       context_lines: request.contextLines,
       model_config: modelConfigPayload,
-      tool_context: toolContextPayload,
-      attachments: Array.isArray(request.attachments) && request.attachments.length > 0
-        ? request.attachments.map((item) => ({
+        tool_context: toolContextPayload,
+        event_stream: streamEvents ? RUNTIME_EVENT_STREAM_MODE : undefined,
+        attachments: Array.isArray(request.attachments) && request.attachments.length > 0
+          ? request.attachments.map((item) => ({
             type: item.type,
             source_type: item.sourceType,
             source: item.source,
@@ -351,6 +420,79 @@ function parseRpcResponse(stdout: string): RpcResponseEnvelope {
     id: (typeof parsed.id === "string" || typeof parsed.id === "number" ? parsed.id : null),
     result: parsed.result,
   };
+}
+
+function parseRuntimeEventsFromStdout(stdout: string): unknown {
+  const firstLine = stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  if (!firstLine) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(firstLine) as unknown;
+    if (!isRecord(parsed) || !isRecord(parsed.result)) {
+      return [];
+    }
+    return parsed.result.events;
+  } catch {
+    return [];
+  }
+}
+
+function extractRuntimeEventFromStderrLine(line: string): unknown | undefined {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith(RUNTIME_EVENT_STREAM_PREFIX)) {
+    return undefined;
+  }
+  const rawJson = trimmed.slice(RUNTIME_EVENT_STREAM_PREFIX.length).trim();
+  if (!rawJson) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(rawJson) as unknown;
+    if (!isRecord(parsed) || parsed.grobot_event !== "runtime_event") {
+      return undefined;
+    }
+    return parsed.event;
+  } catch {
+    return undefined;
+  }
+}
+
+class RuntimeStderrEventParser {
+  private buffer = "";
+
+  public ingest(chunk: string, eventObserver?: RuntimeEventObserver): string {
+    this.buffer += chunk;
+    const lines = this.buffer.split(/\r?\n/);
+    this.buffer = lines.pop() ?? "";
+    let forwarded = "";
+    for (const line of lines) {
+      const event = extractRuntimeEventFromStderrLine(line);
+      if (typeof event !== "undefined") {
+        eventObserver?.ingestEvent(event);
+        continue;
+      }
+      forwarded += `${line}\n`;
+    }
+    return forwarded;
+  }
+
+  public flush(eventObserver?: RuntimeEventObserver): string {
+    if (!this.buffer) {
+      return "";
+    }
+    const line = this.buffer;
+    this.buffer = "";
+    const event = extractRuntimeEventFromStderrLine(line);
+    if (typeof event !== "undefined") {
+      eventObserver?.ingestEvent(event);
+      return "";
+    }
+    return line;
+  }
 }
 
 function parseRuntimeResult(request: RuntimeRequest, response: RpcSuccessPayload): RuntimeTurnResult {
@@ -418,6 +560,7 @@ export class StdioRustRuntimeClient implements RuntimeClient {
     requestTimeoutMs: number,
     request: RuntimeRequest,
     signal?: AbortSignal,
+    eventObserver?: RuntimeEventObserver,
   ): Promise<SpawnRuntimeResult> {
     if (signal?.aborted) {
       throw buildInterruptedError("aborted_before_spawn");
@@ -426,6 +569,7 @@ export class StdioRustRuntimeClient implements RuntimeClient {
       let settled = false;
       let stdout = "";
       let stderr = "";
+      const stderrEventParser = new RuntimeStderrEventParser();
       let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
       let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
       let child: ReturnType<typeof spawn> | undefined;
@@ -491,13 +635,14 @@ export class StdioRustRuntimeClient implements RuntimeClient {
       child.stderr.setEncoding("utf8");
       child.stdout.on("data", (chunk: string | Buffer) => {
         stdout += String(chunk);
+        eventObserver?.ingest(parseRuntimeEventsFromStdout(stdout));
         if (stdout.length > this.maxBufferBytes) {
           terminateChild();
           fail(new Error(`runtime stdout exceeded max buffer ${String(this.maxBufferBytes)} bytes`));
         }
       });
       child.stderr.on("data", (chunk: string | Buffer) => {
-        stderr += String(chunk);
+        stderr += stderrEventParser.ingest(String(chunk), eventObserver);
         if (stderr.length > this.maxBufferBytes) {
           terminateChild();
           fail(new Error(`runtime stderr exceeded max buffer ${String(this.maxBufferBytes)} bytes`));
@@ -507,6 +652,7 @@ export class StdioRustRuntimeClient implements RuntimeClient {
         fail(new Error(`runtime spawn failed: ${String(error)}`));
       });
       child.on("close", (code, closeSignal) => {
+        stderr += stderrEventParser.flush(eventObserver);
         finish({
           code,
           signal: closeSignal,
@@ -543,9 +689,21 @@ export class StdioRustRuntimeClient implements RuntimeClient {
   }
 
   public async executeTurn(request: RuntimeRequest, options?: RuntimeExecuteOptions): Promise<RuntimeTurnResult> {
-    const input = `${toRpcRequestLine(request)}\n`;
+    const streamEvents = Boolean(options?.streamEvents && options?.onEvent);
+    const input = `${toRpcRequestLine(request, streamEvents)}\n`;
     const requestTimeoutMs = this.resolveRequestTimeoutMs(request);
-    const run = await this.executeRpcRequest(input, requestTimeoutMs, request, options?.signal);
+    const eventObserver = new RuntimeEventObserver({
+      traceId: `trace_${request.requestId}`,
+      sessionKey: request.sessionKey,
+      onEvent: streamEvents ? options?.onEvent : undefined,
+    });
+    const run = await this.executeRpcRequest(
+      input,
+      requestTimeoutMs,
+      request,
+      options?.signal,
+      streamEvents ? eventObserver : undefined,
+    );
     if (run.code !== 0) {
       if (options?.signal?.aborted) {
         throw buildInterruptedError("aborted_after_runtime_exit");

@@ -9,24 +9,24 @@ function stripAnsi(value: string): string {
 
 const rendered = renderTerminalMarkdown({
   text: [
-    "我是 **Grobot**，由 **Moonshot AI** 开发。",
-    "可以输入 `grobot status --json` 查看状态。",
+    "I am **Grobot**, developed by **Moonshot AI**.",
+    "Run `grobot status --json` to inspect status.",
     "",
     "```ts",
     "const raw = \"**not bold**\";",
     "```",
     "",
-    "## 下一步",
+    "## Next step",
   ].join("\n"),
 });
 
 const disabled = renderTerminalMarkdown({
-  text: "保持 **raw**",
+  text: "Keep **raw**",
   enabled: false,
 });
 
 const offMode = renderTerminalMarkdown({
-  text: "保持 **raw**",
+  text: "Keep **raw**",
   mode: "off",
 });
 
@@ -44,13 +44,13 @@ const payload = {
   fenced_code_preserves_markdown_markers:
     rendered.includes("const raw = \"**not bold**\";"),
   heading_preserves_hash_marker:
-    rendered.includes("\u001B[1m## 下一步\u001B[0m") && stripAnsi(rendered).includes("## 下一步"),
+    rendered.includes("\u001B[1m## Next step\u001B[0m") && stripAnsi(rendered).includes("## Next step"),
   plain_text_preserved:
-    stripAnsi(rendered).includes("我是 Grobot，由 Moonshot AI 开发。"),
+    stripAnsi(rendered).includes("I am Grobot, developed by Moonshot AI."),
   disabled_preserves_raw_markdown:
-    disabled === "保持 **raw**",
+    disabled === "Keep **raw**",
   off_mode_preserves_raw_markdown:
-    offMode === "保持 **raw**",
+    offMode === "Keep **raw**",
   rich_mode_currently_uses_basic_renderer:
     richMode === "\u001B[1mrich\u001B[0m",
   env_off_resolves_off:

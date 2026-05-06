@@ -42,21 +42,28 @@ export class DeterministicRuntimeClient implements RuntimeClient {
       `[${this.runtimeLabel}] ${request.userMessage}` +
       (request.contextLines.length > 0 ? ` (ctx:${request.contextLines.length})` : "");
 
+    const events = [
+      buildEvent(traceId, turnId, request.sessionKey, "turn_start", {
+        requestId: request.requestId,
+      }),
+      buildEvent(traceId, turnId, request.sessionKey, "model_response", {
+        chars: responseText.length,
+      }),
+      buildEvent(traceId, turnId, request.sessionKey, "turn_end", {
+        status: "ok",
+      }),
+    ];
+    if (options?.streamEvents && options.onEvent) {
+      for (const event of events) {
+        options.onEvent(event);
+      }
+    }
+
     return {
       traceId,
       runtimeLabel: this.runtimeLabel,
       assistantMessage: responseText,
-      events: [
-        buildEvent(traceId, turnId, request.sessionKey, "turn_start", {
-          requestId: request.requestId,
-        }),
-        buildEvent(traceId, turnId, request.sessionKey, "model_response", {
-          chars: responseText.length,
-        }),
-        buildEvent(traceId, turnId, request.sessionKey, "turn_end", {
-          status: "ok",
-        }),
-      ],
+      events,
     };
   }
 }

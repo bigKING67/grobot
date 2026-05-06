@@ -1,4 +1,19 @@
 import { createInteractiveActivityTracker } from "../../cli/tui/interactive/activity-state";
+import type { RuntimeEvent } from "../../models/types";
+
+function runtimeEvent(
+  eventType: RuntimeEvent["eventType"],
+  payload: Record<string, unknown>,
+): RuntimeEvent {
+  return {
+    traceId: "trace_contract",
+    turnId: "turn_contract",
+    sessionKey: "feishu:contract:dm:user",
+    eventType,
+    payload,
+    timestampIso: "unix:1",
+  };
+}
 
 const emittedLines: string[] = [];
 const tracker = createInteractiveActivityTracker({
@@ -36,6 +51,26 @@ tracker.consumeStderrChunk("[memory-orchestrator] event=context_skipped reason=b
 const memorySnapshot = tracker.readActivitySnapshot();
 tracker.consumeStderrChunk("[interrupt] event=ignored reason=turn_completed_before_abort\n");
 const interruptSnapshot = tracker.readActivitySnapshot();
+tracker.observeRuntimeEvent(runtimeEvent("model_request", { provider: "kimi" }));
+const runtimeModelRequestSnapshot = tracker.readActivitySnapshot();
+tracker.observeRuntimeEvent(runtimeEvent("tool_start", {
+  tool_name: "bash",
+  tool_call_id: "call_contract",
+  input_summary: {
+    command_preview: "npm test -- --runInBand",
+  },
+}));
+const runtimeToolStartSnapshot = tracker.readActivitySnapshot();
+tracker.observeRuntimeEvent(runtimeEvent("tool_end", {
+  tool_name: "bash",
+  tool_call_id: "call_contract",
+  status: "ok",
+  duration_ms: 1200,
+  output_summary: {
+    exit_code: 1,
+  },
+}));
+const runtimeToolEndSnapshot = tracker.readActivitySnapshot();
 tracker.markTurnFinished("ok");
 const okSnapshot = tracker.readPromptActivitySnapshot();
 
@@ -95,6 +130,20 @@ const payload = {
   interrupt_event_detail_is_human:
     interruptSnapshot?.kind === "runtime"
     && interruptSnapshot.detail === "event ignored",
+  runtime_model_request_is_request_activity:
+    runtimeModelRequestSnapshot?.kind === "runtime"
+    && runtimeModelRequestSnapshot.text === "Sending model request"
+    && runtimeModelRequestSnapshot.detail === "provider kimi",
+  runtime_tool_start_uses_input_summary_without_raw_keys:
+    runtimeToolStartSnapshot?.kind === "tool"
+    && runtimeToolStartSnapshot.text === "Run $ npm test -- --runInBand"
+    && !runtimeToolStartSnapshot.text.includes("input_summary")
+    && !runtimeToolStartSnapshot.text.includes("command_preview"),
+  runtime_tool_end_normalizes_bash_exit_code_failure:
+    runtimeToolEndSnapshot?.kind === "tool"
+    && runtimeToolEndSnapshot.text === "Run failed"
+    && runtimeToolEndSnapshot.detail === "exit 1 · 1.2s"
+    && runtimeToolEndSnapshot.status === "error",
   residual_activity_details_avoid_raw_codes:
     [
       semanticPrefetchSnapshot?.detail,
@@ -103,6 +152,8 @@ const payload = {
       experienceSnapshot?.detail,
       memorySnapshot?.detail,
       interruptSnapshot?.detail,
+      runtimeModelRequestSnapshot?.detail,
+      runtimeToolEndSnapshot?.detail,
     ].every((detail) =>
       !/[a-z]+(?:[_-][a-z]+)+/.test(String(detail ?? ""))
       && !String(detail ?? "").includes("=")

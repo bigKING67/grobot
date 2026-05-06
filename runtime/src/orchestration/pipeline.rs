@@ -11,6 +11,38 @@ pub struct TurnOrchestrator<M: ModelExecutor, T: ToolExecutor> {
     tools: T,
 }
 
+struct OrchestratorTelemetrySink<'a> {
+    turn_id: &'a str,
+    event_sink: &'a mut dyn RuntimeEventSink,
+}
+
+impl ModelTelemetryEventSink for OrchestratorTelemetrySink<'_> {
+    fn emit(&mut self, event: &ModelTelemetryEvent) {
+        let event_type = event.event_type.trim();
+        if event_type.is_empty() {
+            return;
+        }
+        self.event_sink.emit(&RuntimeEventOutput {
+            event_type: event_type.to_string(),
+            turn_id: self.turn_id.to_string(),
+            timestamp_iso: now_iso(),
+            payload: event.payload.clone(),
+        });
+    }
+}
+
+struct RecordingRuntimeEventSink<'a> {
+    events: &'a mut Vec<RuntimeEventOutput>,
+    event_sink: &'a mut dyn RuntimeEventSink,
+}
+
+impl RuntimeEventSink for RecordingRuntimeEventSink<'_> {
+    fn emit(&mut self, event: &RuntimeEventOutput) {
+        self.event_sink.emit(event);
+        self.events.push(event.clone());
+    }
+}
+
 impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
     pub fn new(model: M, tools: T) -> Self {
         Self { model, tools }
@@ -33,14 +65,31 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
         events: &mut Vec<RuntimeEventOutput>,
         turn_id: &str,
         telemetry_events: Vec<ModelTelemetryEvent>,
+        realtime_events: &[RuntimeEventOutput],
+        realtime_event_index: &mut usize,
     ) {
         for telemetry in telemetry_events {
             let event_type = telemetry.event_type.trim();
             if event_type.is_empty() {
                 continue;
             }
-            events.push(Self::build_event(event_type, turn_id, telemetry.payload));
+            let event = realtime_events
+                .get(*realtime_event_index)
+                .filter(|event| event.event_type == event_type)
+                .cloned()
+                .unwrap_or_else(|| Self::build_event(event_type, turn_id, telemetry.payload));
+            *realtime_event_index = realtime_event_index.saturating_add(1);
+            events.push(event);
         }
+    }
+
+    fn push_event(
+        events: &mut Vec<RuntimeEventOutput>,
+        event_sink: &mut dyn RuntimeEventSink,
+        event: RuntimeEventOutput,
+    ) {
+        event_sink.emit(&event);
+        events.push(event);
     }
 
     fn extract_tool_name_from_not_supported(error_message: &str) -> String {
@@ -131,11 +180,23 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
         &self,
         input: TurnExecuteInput,
     ) -> Result<TurnExecuteOutput, TurnExecuteFailure> {
+        let mut event_sink = NoopRuntimeEventSink;
+        self.execute_turn_with_event_sink(input, &mut event_sink)
+    }
+
+    pub fn execute_turn_with_event_sink(
+        &self,
+        input: TurnExecuteInput,
+        event_sink: &mut dyn RuntimeEventSink,
+    ) -> Result<TurnExecuteOutput, TurnExecuteFailure> {
         let trace_id = format!("trace_{}", input.request_id);
         let turn_id = format!("turn_{}", input.request_id);
         let request_id = input.request_id.clone();
         let session_key = input.session_key.clone();
-        let mut events = vec![
+        let mut events = Vec::new();
+        Self::push_event(
+            &mut events,
+            event_sink,
             Self::build_event(
                 "turn_start",
                 &turn_id,
@@ -144,6 +205,10 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
                     "context_line_count": input.context_lines.len()
                 })),
             ),
+        );
+        Self::push_event(
+            &mut events,
+            event_sink,
             Self::build_event(
                 "model_request",
                 &turn_id,
@@ -151,11 +216,27 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
                     "provider": Self::resolve_provider_label(&input)
                 })),
             ),
-        ];
+        );
 
         self.tools.before_turn(&input);
-        let model_result = self.model.generate_assistant_message(&input, &self.tools);
+        let mut realtime_telemetry_events = Vec::new();
+        let mut recording_event_sink = RecordingRuntimeEventSink {
+            events: &mut realtime_telemetry_events,
+            event_sink,
+        };
+        let mut telemetry_sink = OrchestratorTelemetrySink {
+            turn_id: turn_id.as_str(),
+            event_sink: &mut recording_event_sink,
+        };
+        let model_result = self.model.generate_assistant_message_with_telemetry(
+            &input,
+            &self.tools,
+            &mut telemetry_sink,
+        );
+        drop(telemetry_sink);
+        drop(recording_event_sink);
         self.tools.after_turn(&input);
+        let mut realtime_event_index = 0usize;
 
         match model_result {
             Ok(model_output) => {
@@ -169,28 +250,42 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
                     &mut events,
                     &turn_id,
                     model_output.telemetry_events,
+                    &realtime_telemetry_events,
+                    &mut realtime_event_index,
                 );
-                events.push(Self::build_event(
-                    "model_response",
-                    &turn_id,
-                    Some(json!({
-                        "assistant_chars": assistant_message.chars().count(),
-                        "interrupt_kind": interrupt_kind
-                    })),
-                ));
-                if let Some(interrupt_payload) = interrupt.as_ref() {
-                    events.push(Self::build_event(
-                        "turn_interrupted",
-                        &turn_id,
-                        Some(Self::build_interrupt_event_payload(interrupt_payload)),
-                    ));
-                    events.push(Self::build_event(
-                        "turn_end",
+                Self::push_event(
+                    &mut events,
+                    event_sink,
+                    Self::build_event(
+                        "model_response",
                         &turn_id,
                         Some(json!({
-                            "status": "interrupted"
+                            "assistant_chars": assistant_message.chars().count(),
+                            "interrupt_kind": interrupt_kind
                         })),
-                    ));
+                    ),
+                );
+                if let Some(interrupt_payload) = interrupt.as_ref() {
+                    Self::push_event(
+                        &mut events,
+                        event_sink,
+                        Self::build_event(
+                            "turn_interrupted",
+                            &turn_id,
+                            Some(Self::build_interrupt_event_payload(interrupt_payload)),
+                        ),
+                    );
+                    Self::push_event(
+                        &mut events,
+                        event_sink,
+                        Self::build_event(
+                            "turn_end",
+                            &turn_id,
+                            Some(json!({
+                                "status": "interrupted"
+                            })),
+                        ),
+                    );
                     return Ok(TurnExecuteOutput {
                         trace_id,
                         request_id,
@@ -200,13 +295,17 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
                         events,
                     });
                 }
-                events.push(Self::build_event(
-                    "turn_end",
-                    &turn_id,
-                    Some(json!({
-                        "status": "ok"
-                    })),
-                ));
+                Self::push_event(
+                    &mut events,
+                    event_sink,
+                    Self::build_event(
+                        "turn_end",
+                        &turn_id,
+                        Some(json!({
+                            "status": "ok"
+                        })),
+                    ),
+                );
 
                 Ok(TurnExecuteOutput {
                     trace_id,
@@ -225,60 +324,82 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
                     &mut events,
                     &turn_id,
                     error.telemetry_events,
+                    &realtime_telemetry_events,
+                    &mut realtime_event_index,
                 );
                 if error_class == "tool_call_not_supported" {
                     let tool_name = Self::extract_tool_name_from_not_supported(&error_message);
                     let recovery_policy = classify_tool_recovery(&error_class, "unknown");
-                    events.push(Self::build_event(
-                        "tool_start",
+                    Self::push_event(
+                        &mut events,
+                        event_sink,
+                        Self::build_event(
+                            "tool_start",
+                            &turn_id,
+                            Some(json!({
+                                "tool_name": tool_name
+                            })),
+                        ),
+                    );
+                    Self::push_event(
+                        &mut events,
+                        event_sink,
+                        Self::build_event(
+                            "tool_end",
+                            &turn_id,
+                            Some(json!({
+                                "tool_name": tool_name,
+                                "status": "failed",
+                                "error_class": error_class.clone(),
+                                "error_message": error_message.clone(),
+                                "error_data": error_data.clone()
+                            })),
+                        ),
+                    );
+                    Self::push_event(
+                        &mut events,
+                        event_sink,
+                        Self::build_event(
+                            "tool_recovery",
+                            &turn_id,
+                            Some(json!({
+                                "tool_name": tool_name,
+                                "risk_class": "unknown",
+                                "error_class": error_class.clone(),
+                                "error_message": error_message.clone(),
+                                "error_data": error_data.clone(),
+                                "recovery_stage": recovery_policy.stage,
+                                "recovery_reason": error_class.clone(),
+                                "recommended_next_action": recovery_policy.recommended_next_action,
+                                "recoverable": recovery_policy.recoverable
+                            })),
+                        ),
+                    );
+                }
+                Self::push_event(
+                    &mut events,
+                    event_sink,
+                    Self::build_event(
+                        "turn_failed",
                         &turn_id,
                         Some(json!({
-                            "tool_name": tool_name
-                        })),
-                    ));
-                    events.push(Self::build_event(
-                        "tool_end",
-                        &turn_id,
-                        Some(json!({
-                            "tool_name": tool_name,
-                            "status": "failed",
                             "error_class": error_class.clone(),
                             "error_message": error_message.clone(),
                             "error_data": error_data.clone()
                         })),
-                    ));
-                    events.push(Self::build_event(
-                        "tool_recovery",
+                    ),
+                );
+                Self::push_event(
+                    &mut events,
+                    event_sink,
+                    Self::build_event(
+                        "turn_end",
                         &turn_id,
                         Some(json!({
-                            "tool_name": tool_name,
-                            "risk_class": "unknown",
-                            "error_class": error_class.clone(),
-                            "error_message": error_message.clone(),
-                            "error_data": error_data.clone(),
-                            "recovery_stage": recovery_policy.stage,
-                            "recovery_reason": error_class.clone(),
-                            "recommended_next_action": recovery_policy.recommended_next_action,
-                            "recoverable": recovery_policy.recoverable
+                            "status": "failed"
                         })),
-                    ));
-                }
-                events.push(Self::build_event(
-                    "turn_failed",
-                    &turn_id,
-                    Some(json!({
-                        "error_class": error_class.clone(),
-                        "error_message": error_message.clone(),
-                        "error_data": error_data.clone()
-                    })),
-                ));
-                events.push(Self::build_event(
-                    "turn_end",
-                    &turn_id,
-                    Some(json!({
-                        "status": "failed"
-                    })),
-                ));
+                    ),
+                );
 
                 Err(TurnExecuteFailure {
                     trace_id,

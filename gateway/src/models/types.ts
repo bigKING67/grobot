@@ -285,6 +285,8 @@ export interface RuntimeTurnResult {
 
 export interface RuntimeExecuteOptions {
   signal?: AbortSignal;
+  onEvent?: (event: RuntimeEvent) => void;
+  streamEvents?: boolean;
 }
 
 export interface RuntimeClient {

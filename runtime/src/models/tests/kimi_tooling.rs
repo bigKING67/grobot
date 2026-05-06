@@ -159,12 +159,35 @@
             ]
         );
         assert_eq!(
+            output.telemetry_events[0]
+                .payload
+                .as_ref()
+                .and_then(|payload| payload.get("input_summary"))
+                .and_then(|summary| summary.get("command_preview"))
+                .and_then(Value::as_str),
+            Some("printf first")
+        );
+        assert_eq!(
             output.telemetry_events[1]
                 .payload
                 .as_ref()
                 .and_then(|payload| payload.get("risk_class"))
                 .and_then(Value::as_str),
             Some("high_risk")
+        );
+        let bash_summary = output.telemetry_events[1]
+            .payload
+            .as_ref()
+            .and_then(|payload| payload.get("output_summary"))
+            .expect("bash tool_end should expose output summary");
+        assert_eq!(bash_summary["stdout"].as_str(), Some("first"));
+        assert_eq!(
+            bash_summary["command_preview"].as_str(),
+            Some("printf first")
+        );
+        assert_eq!(
+            bash_summary["truncation"]["stdout"]["total_lines"].as_u64(),
+            Some(1)
         );
         assert_eq!(
             output.telemetry_events[3]

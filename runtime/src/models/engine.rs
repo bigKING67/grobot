@@ -85,6 +85,17 @@ pub struct RuntimeEventOutput {
     pub payload: Option<Value>,
 }
 
+pub trait RuntimeEventSink {
+    fn emit(&mut self, event: &RuntimeEventOutput);
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct NoopRuntimeEventSink;
+
+impl RuntimeEventSink for NoopRuntimeEventSink {
+    fn emit(&mut self, _event: &RuntimeEventOutput) {}
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct TurnInterruptAskUserOptionOutput {
     pub label: String,

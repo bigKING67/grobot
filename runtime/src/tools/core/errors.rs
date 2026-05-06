@@ -52,7 +52,7 @@ impl ToolExecutionError {
     }
 }
 
-fn redact_tool_preview_secrets(raw: &str) -> String {
+pub(crate) fn redact_tool_preview_secrets(raw: &str) -> String {
     static KV_SECRET_RE: OnceLock<regex::Regex> = OnceLock::new();
     static BEARER_RE: OnceLock<regex::Regex> = OnceLock::new();
     static KEY_PREFIX_RE: OnceLock<regex::Regex> = OnceLock::new();

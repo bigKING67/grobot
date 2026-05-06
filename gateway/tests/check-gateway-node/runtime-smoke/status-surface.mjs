@@ -45,6 +45,26 @@ export async function runRuntimeStatusSurfaceSmoke() {
     call_count: runtimeInterruptContractPayload.call_count,
   });
 
+  const runtimeStdioEventStreamContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/runtime-stdio-event-stream-contract.ts",
+  ]);
+  assertSuccess("runtime-stdio-event-stream-contract", runtimeStdioEventStreamContractResult);
+  const runtimeStdioEventStreamContractPayload = parseJsonOutput(
+    "runtime-stdio-event-stream-contract",
+    runtimeStdioEventStreamContractResult.stdout,
+  );
+  assert.equal(runtimeStdioEventStreamContractPayload.stream_enabled_sets_stderr_jsonl, true);
+  assert.equal(runtimeStdioEventStreamContractPayload.no_consumer_disables_event_stream, true);
+  assert.equal(runtimeStdioEventStreamContractPayload.callback_without_stream_flag_disables_event_stream, true);
+  assert.equal(runtimeStdioEventStreamContractPayload.stderr_events_are_observed, true);
+  assert.equal(runtimeStdioEventStreamContractPayload.stderr_event_payload_is_normalized, true);
+  assert.equal(runtimeStdioEventStreamContractPayload.stderr_event_lines_are_stripped_from_nonzero_error, true);
+  logStep("runtime-stdio-event-stream-contract");
+
   let statusPayload = null;
   let statusAttempts = 0;
   for (let attempt = 1; attempt <= 3; attempt += 1) {

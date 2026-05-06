@@ -110,7 +110,7 @@ export const menuInput: TerminalSelectMenuInput = {
 export const modelPickerInput: TerminalSelectMenuInput = {
   title: "Select model",
   subtitle: "Switch the configured model for future sessions; use /model use <id> for custom models.",
-  hint: "Enter confirm · Esc back",
+  hint: "Enter confirm · Esc exit",
   variant: "model_picker",
   modelPickerMeta: {
     providerName: "alpha",
@@ -120,6 +120,9 @@ export const modelPickerInput: TerminalSelectMenuInput = {
     sessionId: "session-main",
     sessionTitle: "demo session",
     sessionSummary: "switch between session and startup defaults",
+    effortLevel: "high",
+    effortSupported: true,
+    effortDefaultLevel: "high",
   },
   items: [
     {
@@ -221,12 +224,14 @@ export const emptyPlanApprovalMenuInput: TerminalSelectMenuInput = {
 export const longModelPickerInput: TerminalSelectMenuInput = {
   title: "Select model",
   subtitle: "Switch the configured model for future sessions; use /model use <id> for custom models.",
-  hint: "Enter confirm · Esc back",
+  hint: "Enter confirm · Esc exit",
   variant: "model_picker",
   modelPickerMeta: {
     providerName: "alpha",
     currentModel: "very-long-provider-name/gpt-5.4-codex-ultra-preview-with-routing",
     startupModel: "fallback-provider/kimi-k2-2026-04-experimental-context-window",
+    effortLevel: "medium",
+    effortSupported: false,
   },
   items: [
     {
@@ -367,11 +372,15 @@ export const directLargeMenuInput: TerminalSelectMenuInput = {
 export const directLargeModelPickerInput: TerminalSelectMenuInput = {
   title: "Select model",
   subtitle: "Switch the configured model for future sessions; use /model use <id> for custom models.",
-  hint: "Enter confirm · Esc back",
+  hint: "Enter confirm · Esc exit",
   variant: "model_picker",
   modelPickerMeta: {
     providerName: "alpha",
     currentModel: "model-1",
+    totalModelCount: 12,
+    effortLevel: "high",
+    effortSupported: true,
+    effortDefaultLevel: "medium",
   },
   items: Array.from({ length: 12 }, (_, index) => ({
     id: `model-${String(index + 1)}`,

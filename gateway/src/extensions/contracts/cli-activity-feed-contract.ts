@@ -51,10 +51,19 @@ const writePreviewContent = [
 
 const feedEvents = [
   event({
+    eventType: "tool_start",
+    nested: true,
+    payload: {
+      tool_name: "search",
+      tool_call_id: "tool-search-1",
+    },
+  }),
+  event({
     eventType: "tool_end",
     nested: true,
     payload: {
       tool_name: "search",
+      tool_call_id: "tool-search-1",
       status: "ok",
       duration_ms: 15,
       output_summary: {
@@ -143,12 +152,21 @@ const feedEvents = [
     eventType: "tool_end",
     payload: {
       tool_name: "bash",
-      status: "failed",
+      status: "ok",
       duration_ms: 1200,
-      error_class: "bash_command_failed",
       output_summary: {
         tool: "bash",
         exit_code: 1,
+        stdout: "first line\nsecond line\nthird line\nfourth line\nfifth line\nsixth line\nseventh line",
+        truncation: {
+          stdout: {
+            total_lines: 7,
+            total_bytes: 70,
+          },
+        },
+        audit: {
+          command_preview: "npm run check:gateway:ts",
+        },
         command_preview: "npm run check:gateway:ts",
       },
     },
@@ -222,6 +240,23 @@ const recoveryRendered = renderRuntimeActivityFeed({
   ],
 });
 
+const runningRendered = renderRuntimeActivityFeed({
+  terminalColumns: 96,
+  detailMode: "compact",
+  events: [
+    event({
+      eventType: "tool_start",
+      payload: {
+        tool_name: "bash",
+        tool_call_id: "tool-bash-running",
+        input_summary: {
+          command_preview: "npm test -- --runInBand",
+        },
+      },
+    }),
+  ],
+});
+
 const emptyRendered = renderRuntimeActivityFeed({
   events: [
     event({
@@ -263,18 +298,41 @@ const turnOutputNonInteractive = buildTurnTerminalOutputSegments({
 const plain = stripAnsi(rendered);
 const fullPlain = stripAnsi(fullRendered);
 const recoveryPlain = stripAnsi(recoveryRendered);
+const runningPlain = stripAnsi(runningRendered);
 const turnTranscriptPlain = stripAnsi(turnOutputTranscript.activityFeed);
 const lines = rendered.trimEnd().split("\n");
+const referenceToolStatusDot = process.platform === "darwin" ? "⏺" : "●";
+const searchRowCount = plain
+  .split("\n")
+  .filter((line) => line.trimStart().startsWith(`${referenceToolStatusDot} Search`))
+  .length;
+const failedBashTitleCount = plain
+  .split("\n")
+  .filter((line) => line.trimStart().startsWith(`${referenceToolStatusDot} Run failed`))
+  .length;
+const bareBashTitleCount = plain
+  .split("\n")
+  .filter((line) => line.trimStart() === `${referenceToolStatusDot} Run`)
+  .length;
 const payload = {
   renders_real_tool_rows: plain.includes("Search") && plain.includes("Read gateway/src"),
   uses_reference_tool_status_dot:
-    plain.trimStart().startsWith("● Search")
+    plain.trimStart().startsWith(`${referenceToolStatusDot} Search`)
     && !plain.trimStart().startsWith("• Search"),
+  renders_unresolved_tool_start_as_dim_status:
+    runningPlain.trimStart().startsWith(`${referenceToolStatusDot} Run $ npm test -- --runInBand`),
+  unresolved_tool_start_uses_input_summary_without_raw_args:
+    runningPlain.includes("Run $ npm test -- --runInBand")
+    && !runningPlain.includes("command_preview")
+    && !runningPlain.includes("input_summary")
+    && !runningPlain.includes("command="),
+  resolved_tool_start_deduped_by_tool_end: searchRowCount === 1,
   compact_hides_key_value_details:
     !plain.includes("matches=")
     && !plain.includes("engine=")
     && !plain.includes("duration=")
     && !plain.includes("command=")
+    && !plain.includes("command ")
     && !plain.includes("error_class=")
     && !plain.includes("@@ -42"),
   renders_edit_with_diff_stats:
@@ -287,25 +345,35 @@ const payload = {
     plain.includes("Write gateway/src/generated-file.ts · 12 lines")
     && fullPlain.includes("  ⎿  line-01")
     && fullPlain.includes("  ⎿  line-10")
-    && fullPlain.includes("  ⎿  ... 2 more lines, Ctrl+O expand"),
+    && fullPlain.includes("  ⎿  ... 2 more lines")
+    && !fullPlain.includes("Ctrl+O expand"),
   compact_write_preview_hides_content:
     !plain.includes("line-01") && !plain.includes("Ctrl+O expand"),
   full_detail_uses_reference_status_glyph:
-    fullPlain.includes("  ⎿  12 matches rg 15ms")
+    fullPlain.includes("  ⎿  12 matches · rg · 15ms")
     && !fullPlain.includes("  └ 12 matches rg"),
   renders_failed_bash:
     plain.includes("Run failed")
-    && fullPlain.includes("Error Command failed")
+    && fullPlain.includes("  ⎿  third line")
+    && fullPlain.includes("  ⎿  seventh line")
+    && fullPlain.includes("  ⎿  $ npm run check:gateway:ts · exit 1 · 1.2s")
+    && fullPlain.includes("+2 lines")
+    && fullPlain.includes("70 bytes")
+    && !fullPlain.includes("command npm run check")
+    && !fullPlain.includes("first line")
     && !fullPlain.includes("Error bash_command_failed"),
+  bash_exit_code_failure_normalized_from_ok_status:
+    failedBashTitleCount === 1
+    && bareBashTitleCount === 0,
   renders_recovery_row:
     plain.includes("Recovery · Run")
-    && fullPlain.includes("  ⎿  Switch strategy Inspect error, then switch strategy Error Command failed")
+    && fullPlain.includes("  ⎿  Switch strategy · Inspect error, then switch strategy · Error Command failed")
     && !fullPlain.includes("inspect_error_and_switch_strategy"),
   recovery_rows_humanize_all_known_stages:
-    recoveryPlain.includes("Local fix Reread target, then retry Error Target changed")
-    && recoveryPlain.includes("Waiting for confirmation Environment fix needed Error Browser backend error")
-    && recoveryPlain.includes("Observe first Observe prior tool result first Error Tool execution deferred")
-    && recoveryPlain.includes("Switch strategy Inspect visible tool args, then retry Error MCP call failed"),
+    recoveryPlain.includes("Local fix · Reread target, then retry · Error Target changed")
+    && recoveryPlain.includes("Waiting for confirmation · Environment fix needed · Error Browser backend error")
+    && recoveryPlain.includes("Observe first · Observe prior tool result first · Error Tool execution deferred")
+    && recoveryPlain.includes("Switch strategy · Inspect visible tool args, then retry · Error MCP call failed"),
   recovery_rows_avoid_raw_stage_and_action_codes:
     !recoveryPlain.includes("local_fix")
     && !recoveryPlain.includes("ask_user")
@@ -317,7 +385,7 @@ const payload = {
   full_detail_hides_raw_error_class:
     !fullPlain.includes("bash_command_failed")
     && !fullPlain.includes("error_class="),
-  nested_payload_supported: fullPlain.includes("12 matches rg"),
+  nested_payload_supported: fullPlain.includes("12 matches · rg"),
   plan_file_write_uses_reference_label:
     plain.includes("Plan updated")
     && !plain.includes("Wrote .grobot/plans")

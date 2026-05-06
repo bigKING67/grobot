@@ -19,19 +19,19 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
   const slashPlanMenu = resolveSlashSuggestionApplyResult("/plan");
   const slashSkillCreatorMenu = resolveSlashSuggestionApplyResult("/skill-creator");
   const slashOverlayPartial = formatSlashSuggestionPanel(
-    [{ command: "/exit", description: "退出交互模式" }],
+    [{ command: "/exit", description: "Exit interactive mode" }],
     "/e",
     0,
     96,
   );
   const slashOverlayExact = formatSlashSuggestionPanel(
-    [{ command: "/exit", description: "退出交互模式" }],
+    [{ command: "/exit", description: "Exit interactive mode" }],
     "/exit",
     0,
     96,
   );
   const slashOverlayBuiltinSource = formatSlashSuggestionPanel(
-    [{ command: "/exit", description: "退出交互模式", source: "builtin" }],
+    [{ command: "/exit", description: "Exit interactive mode", source: "builtin" }],
     "/",
     0,
     96,
@@ -44,16 +44,16 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
   );
   const slashOverlayScrolled = formatSlashSuggestionPanel(
     [
-      { command: "/sessions", description: "打开会话选择器" },
-      { command: "/resume", description: "恢复历史会话" },
-      { command: "/rewind", description: "回退到检查点" },
-      { command: "/commands", description: "浏览命令菜单" },
-      { command: "/skill-creator", description: "创建技能" },
-      { command: "/init", description: "初始化项目指令" },
-      { command: "/context", description: "查看上下文状态" },
-      { command: "/memory", description: "打开 memory 工具" },
-      { command: "/model", description: "切换模型" },
-      { command: "/help", description: "显示帮助" },
+      { command: "/sessions", description: "Open session picker" },
+      { command: "/resume", description: "Resume a previous session" },
+      { command: "/rewind", description: "Rewind to checkpoint" },
+      { command: "/commands", description: "Browse command menu" },
+      { command: "/skill-creator", description: "Create a skill" },
+      { command: "/init", description: "Initialize project instructions" },
+      { command: "/context", description: "Show context status" },
+      { command: "/memory", description: "Open memory tools" },
+      { command: "/model", description: "Switch model" },
+      { command: "/help", description: "Show help" },
     ],
     "/",
     8,
@@ -91,8 +91,8 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
     stripAnsi(slashOverlayDownMarkerLines[slashOverlayDownMarkerLines.length - 1] ?? "");
   const slashOverlayNarrow = formatSlashSuggestionPanel(
     [
-      { command: "/model", description: "打开模型选择器" },
-      { command: "/commands", description: "管理用户自定义 slash 命令" },
+      { command: "/model", description: "Open model picker" },
+      { command: "/commands", description: "Manage user slash commands" },
     ],
     "/",
     0,
@@ -215,8 +215,8 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
   const promptSuggestionTaggedPlain = stripAnsi(promptSuggestionTagged);
   const promptSuggestionPointer = formatPromptSuggestionPanel({
     suggestions: [
-      { id: "command-model", displayText: "/model", description: "切换模型", type: "command" },
-      { id: "command-plan", displayText: "/plan", description: "进入计划模式", type: "command" },
+      { id: "command-model", displayText: "/model", description: "Switch model", type: "command" },
+      { id: "command-plan", displayText: "/plan", description: "Enter plan mode", type: "command" },
     ],
     selectedIndex: 1,
     terminalColumns: 64,
@@ -229,7 +229,7 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
     32,
   );
   const slashOverlayWithArgs = formatSlashSuggestionPanel(
-    [{ command: "/plan", description: "进入计划模式" }],
+    [{ command: "/plan", description: "Create an execution plan" }],
     "/plan 帮我写一份抖音直播规划",
     0,
     96,
@@ -335,9 +335,9 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
     slash_overlay_partial_selected_highlighted:
       slashOverlayPartial.includes("\u001B[38;2;202;124;94m"),
     slash_overlay_selected_description_is_muted:
-      slashOverlayPartial.includes("\u001B[90m退出交互模式"),
+      slashOverlayPartial.includes("\u001B[90mExit interactive mode"),
     slash_overlay_selected_description_not_brand_flooded:
-      !slashOverlayPartial.includes("\u001B[38;2;202;124;94m退出交互模式"),
+      !slashOverlayPartial.includes("\u001B[38;2;202;124;94mExit interactive mode"),
     slash_overlay_exact_selected_highlighted:
       slashOverlayExact.includes("\u001B[38;2;202;124;94m"),
     slash_overlay_hides_builtin_source_tag:
@@ -400,13 +400,13 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
       && promptSuggestionMiddleTruncate.endsWith("window.ts")
       && promptSuggestionMiddleTruncate.includes("..."),
     slash_overlay_narrow_hides_description:
-      !stripAnsi(slashOverlayNarrow).includes("打开模型选择器"),
+      !stripAnsi(slashOverlayNarrow).includes("Open model picker"),
     slash_overlay_narrow_lines_within_width:
       slashOverlayNarrowLines.every((line) => measureDisplayWidth(line) <= 52),
     slash_overlay_hidden_when_has_args:
       slashOverlayWithArgs.length === 0,
     slash_fixture_descriptions_avoid_plan_mode_copy:
-      !promptSuggestionPointerPlain.includes("plan mode")
+      !promptSuggestionPointerPlain.includes("计划模式")
       && !slashOverlayWithArgs.includes("plan mode"),
     slash_input_partial_not_highlighted:
       !slashInputPartialHighlight,

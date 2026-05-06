@@ -109,6 +109,15 @@ fn build_no_tool_fallback_event(event_type: &str, payload: Value) -> ModelTeleme
     }
 }
 
+fn record_model_telemetry_event(
+    telemetry_events: &mut Vec<ModelTelemetryEvent>,
+    telemetry_sink: &mut dyn ModelTelemetryEventSink,
+    event: ModelTelemetryEvent,
+) {
+    telemetry_sink.emit(&event);
+    telemetry_events.push(event);
+}
+
 fn normalize_tool_name_for_telemetry(raw: &str) -> String {
     let normalized = raw.trim();
     if normalized.is_empty() {
@@ -308,21 +317,97 @@ fn build_tool_message_budget_event_payload(budget: &BudgetedToolMessageContent) 
     })
 }
 
+fn tool_input_string(arguments: &Value, key: &str) -> Option<String> {
+    arguments
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn truncate_tool_input_preview(raw: &str, max_chars: usize) -> String {
+    truncate_header_value_for_diagnostics(
+        &crate::tools::tools::redact_tool_preview_secrets(raw),
+        max_chars,
+    )
+}
+
+fn build_tool_input_summary(tool_call: &ToolCallInput) -> Option<Value> {
+    let tool_name = normalize_tool_name_for_telemetry(&tool_call.name);
+    let mut summary = serde_json::Map::new();
+
+    if tool_name == "bash" {
+        if let Some(command) = tool_input_string(&tool_call.arguments, "command") {
+            summary.insert(
+                "command_preview".to_string(),
+                Value::String(truncate_tool_input_preview(&command, 160)),
+            );
+        }
+    } else if matches!(tool_name.as_str(), "read" | "write" | "edit") {
+        if let Some(path) = tool_input_string(&tool_call.arguments, "path")
+            .or_else(|| tool_input_string(&tool_call.arguments, "file_path"))
+        {
+            summary.insert(
+                "path".to_string(),
+                Value::String(truncate_tool_input_preview(&path, 160)),
+            );
+        }
+    } else if matches!(
+        tool_name.as_str(),
+        "search" | "semantic_search" | "$web_search" | "web_search"
+    ) {
+        if let Some(query) = tool_input_string(&tool_call.arguments, "query")
+            .or_else(|| tool_input_string(&tool_call.arguments, "pattern"))
+        {
+            summary.insert(
+                "query".to_string(),
+                Value::String(truncate_tool_input_preview(&query, 160)),
+            );
+        }
+    } else if matches!(tool_name.as_str(), "glob" | "list") {
+        if let Some(pattern) = tool_input_string(&tool_call.arguments, "pattern") {
+            summary.insert(
+                "pattern".to_string(),
+                Value::String(truncate_tool_input_preview(&pattern, 160)),
+            );
+        }
+        if let Some(path) = tool_input_string(&tool_call.arguments, "path") {
+            summary.insert(
+                "path".to_string(),
+                Value::String(truncate_tool_input_preview(&path, 160)),
+            );
+        }
+    }
+
+    if summary.is_empty() {
+        None
+    } else {
+        Some(Value::Object(summary))
+    }
+}
+
 fn build_tool_start_event(
     tool_call: &ToolCallInput,
     tool_round: usize,
     batch_index: usize,
     risk_class: &str,
 ) -> ModelTelemetryEvent {
+    let mut payload = serde_json::Map::new();
+    payload.insert(
+        "tool_name".to_string(),
+        Value::String(normalize_tool_name_for_telemetry(&tool_call.name)),
+    );
+    payload.insert("tool_call_id".to_string(), Value::String(tool_call.id.clone()));
+    payload.insert("tool_round".to_string(), json!(tool_round));
+    payload.insert("batch_index".to_string(), json!(batch_index));
+    payload.insert("risk_class".to_string(), Value::String(risk_class.to_string()));
+    if let Some(input_summary) = build_tool_input_summary(tool_call) {
+        payload.insert("input_summary".to_string(), input_summary);
+    }
     ModelTelemetryEvent {
         event_type: "tool_start".to_string(),
-        payload: Some(json!({
-            "tool_name": normalize_tool_name_for_telemetry(&tool_call.name),
-            "tool_call_id": tool_call.id,
-            "tool_round": tool_round,
-            "batch_index": batch_index,
-            "risk_class": risk_class,
-        })),
+        payload: Some(Value::Object(payload)),
     }
 }
 
@@ -435,6 +520,23 @@ fn build_tool_output_summary(tool_name: &str, output_content: &str) -> Value {
         .map(|value| value.chars().count())
     {
         summary.insert("tool_content_chars".to_string(), json!(content_chars));
+    }
+    if normalize_tool_name_for_telemetry(tool_name) == "bash" {
+        if let Some(stdout) = object.get("stdout").and_then(Value::as_str) {
+            summary.insert(
+                "stdout".to_string(),
+                Value::String(truncate_multiline_tool_summary(stdout, 900, 8)),
+            );
+        }
+        if let Some(stderr) = object.get("stderr").and_then(Value::as_str) {
+            summary.insert(
+                "stderr".to_string(),
+                Value::String(truncate_multiline_tool_summary(stderr, 900, 8)),
+            );
+        }
+        if let Some(truncation) = object.get("truncation") {
+            summary.insert("truncation".to_string(), truncation.clone());
+        }
     }
     Value::Object(summary)
 }

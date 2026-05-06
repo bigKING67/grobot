@@ -13,6 +13,11 @@ import {
   runTsContract,
   writeFixtureFile,
 } from "../harness.mjs";
+
+function assertPayloadFlags(payload, flagNames) {
+  for (const flagName of flagNames) assert.equal(payload[flagName], true);
+}
+
 export async function runTuiContracts() {
   const browserStructuredContractResult = runCommand("node", [
     "gateway/src/extensions/contracts/browser-structured-mcp-contract.mjs",
@@ -169,7 +174,7 @@ export async function runTuiContracts() {
   );
   assert.equal(cliInfoPanelPayload.interactive_has_ansi, true);
   assert.equal(cliInfoPanelPayload.interactive_title_supports_plan_tone, true);
-  assert.equal(cliInfoPanelPayload.interactive_uses_human_context_copy, true);
+  assert.equal(cliInfoPanelPayload.interactive_uses_reference_context_copy, true);
   assert.equal(cliInfoPanelPayload.has_title, true);
   assert.equal(cliInfoPanelPayload.has_subtitle, true);
   assert.equal(cliInfoPanelPayload.uses_reference_row_bullets, true);
@@ -235,9 +240,9 @@ export async function runTuiContracts() {
   assert.equal(cliUiRendererContractPayload.menu_hint_omits_secondary_key_chords, true);
   assert.equal(cliUiRendererContractPayload.menu_viewport_has_full_ordinal, true);
   assert.equal(cliUiRendererContractPayload.menu_viewport_hides_reset_ordinal, true);
-  assert.equal(cliUiRendererContractPayload.menu_viewport_has_no_row_scroll_arrows, true);
+  assert.equal(cliUiRendererContractPayload.menu_viewport_has_scroll_markers, true);
   assert.equal(cliUiRendererContractPayload.menu_viewport_has_no_more_text, true);
-  assert.equal(cliUiRendererContractPayload.menu_direct_render_has_no_row_scroll_marker, true);
+  assert.equal(cliUiRendererContractPayload.menu_direct_render_has_row_scroll_marker, true);
   assert.equal(cliUiRendererContractPayload.model_picker_has_claude_pointer, true);
   assert.equal(cliUiRendererContractPayload.model_picker_has_no_thin_pointer, true);
   assert.equal(cliUiRendererContractPayload.model_picker_has_pane_divider, true);
@@ -249,6 +254,7 @@ export async function runTuiContracts() {
   assert.equal(cliUiRendererContractPayload.model_picker_has_default_suffix, true);
   assert.equal(cliUiRendererContractPayload.model_picker_has_footer_hint, true);
   assert.equal(cliUiRendererContractPayload.model_picker_has_config_scope_subtitle, true);
+  assert.equal(cliUiRendererContractPayload.model_picker_has_effort_line, true);
   assert.equal(cliUiRendererContractPayload.model_picker_avoids_stale_session_only_copy, true);
   assert.equal(cliUiRendererContractPayload.model_picker_has_config_scope_context, true);
   assert.equal(cliUiRendererContractPayload.model_picker_active_description_is_muted, true);
@@ -281,13 +287,15 @@ export async function runTuiContracts() {
   assert.equal(cliUiRendererContractPayload.plan_approval_empty_omits_plan_markdown, true);
   assert.equal(cliUiRendererContractPayload.model_picker_direct_render_uses_model_visible_count, true);
   assert.equal(cliUiRendererContractPayload.model_picker_direct_render_shows_hidden_count, true);
-  assert.equal(cliUiRendererContractPayload.model_picker_direct_render_has_no_english_hidden_count, true);
+  assert.equal(cliUiRendererContractPayload.model_picker_direct_render_uses_reference_hidden_count, true);
+  assert.equal(cliUiRendererContractPayload.model_picker_direct_render_shows_non_default_effort, true);
   assert.equal(cliUiRendererContractPayload.model_picker_direct_render_has_config_scope_context, true);
-  assert.equal(cliUiRendererContractPayload.model_picker_direct_render_has_no_row_scroll_marker, true);
+  assert.equal(cliUiRendererContractPayload.model_picker_direct_render_has_row_scroll_marker, true);
   assert.equal(cliUiRendererContractPayload.model_picker_long_rows_within_width, true);
   assert.equal(cliUiRendererContractPayload.model_picker_long_descriptions_do_not_wrap, true);
   assert.equal(cliUiRendererContractPayload.model_picker_long_current_suffix_preserved, true);
   assert.equal(cliUiRendererContractPayload.model_picker_long_default_suffix_preserved, true);
+  assert.equal(cliUiRendererContractPayload.model_picker_long_effort_unsupported_line, true);
   assert.equal(cliUiRendererContractPayload.model_picker_narrow_rows_within_width, true);
   assert.equal(cliUiRendererContractPayload.model_picker_narrow_hides_description, true);
   assert.equal(cliUiRendererContractPayload.menu_long_rows_within_width, true);
@@ -365,30 +373,22 @@ export async function runTuiContracts() {
     "cli-activity-feed-contract",
     cliActivityFeedContractResult.stdout,
   );
-  assert.equal(cliActivityFeedPayload.renders_real_tool_rows, true);
-  assert.equal(cliActivityFeedPayload.uses_reference_tool_status_dot, true);
-  assert.equal(cliActivityFeedPayload.compact_hides_key_value_details, true);
-  assert.equal(cliActivityFeedPayload.renders_edit_with_diff_stats, true);
-  assert.equal(cliActivityFeedPayload.renders_failed_bash, true);
-  assert.equal(cliActivityFeedPayload.renders_recovery_row, true);
-  assert.equal(cliActivityFeedPayload.recovery_rows_humanize_all_known_stages, true);
-  assert.equal(cliActivityFeedPayload.recovery_rows_avoid_raw_stage_and_action_codes, true);
-  assert.equal(cliActivityFeedPayload.nested_payload_supported, true);
-  assert.equal(cliActivityFeedPayload.plan_file_write_uses_reference_label, true);
-  assert.equal(cliActivityFeedPayload.plan_file_edit_hides_path_and_diff_stats, true);
-  assert.equal(cliActivityFeedPayload.plan_file_full_detail_shows_preview_hint, true);
-  assert.equal(cliActivityFeedPayload.none_mode_suppresses_feed, true);
-  assert.equal(cliActivityFeedPayload.env_default_suppresses_feed, true);
-  assert.equal(cliActivityFeedPayload.env_compact_enables_feed, true);
-  assert.equal(cliActivityFeedPayload.env_full_enables_verbose_feed, true);
-  assert.equal(cliActivityFeedPayload.transcript_default_disables_turn_feed, true);
-  assert.equal(cliActivityFeedPayload.transcript_env_enables_separate_turn_feed_chunk, true);
-  assert.equal(cliActivityFeedPayload.transcript_ask_user_suppresses_turn_feed, true);
-  assert.equal(cliActivityFeedPayload.transcript_non_interactive_suppresses_turn_feed, true);
-  assert.equal(cliActivityFeedPayload.transcript_env_resolver, true);
-  assert.equal(cliActivityFeedPayload.empty_without_tool_events, true);
-  assert.equal(cliActivityFeedPayload.rows_within_width, true);
-  assert.equal(cliActivityFeedPayload.no_invalid_tokens, true);
+  assertPayloadFlags(cliActivityFeedPayload, [
+    "renders_real_tool_rows", "uses_reference_tool_status_dot",
+    "renders_unresolved_tool_start_as_dim_status", "unresolved_tool_start_uses_input_summary_without_raw_args",
+    "resolved_tool_start_deduped_by_tool_end", "compact_hides_key_value_details",
+    "renders_edit_with_diff_stats", "renders_failed_bash",
+    "bash_exit_code_failure_normalized_from_ok_status", "renders_recovery_row",
+    "recovery_rows_humanize_all_known_stages", "recovery_rows_avoid_raw_stage_and_action_codes",
+    "nested_payload_supported", "plan_file_write_uses_reference_label",
+    "plan_file_edit_hides_path_and_diff_stats", "plan_file_full_detail_shows_preview_hint",
+    "none_mode_suppresses_feed", "env_default_suppresses_feed",
+    "env_compact_enables_feed", "env_full_enables_verbose_feed",
+    "transcript_default_disables_turn_feed", "transcript_env_enables_separate_turn_feed_chunk",
+    "transcript_ask_user_suppresses_turn_feed", "transcript_non_interactive_suppresses_turn_feed",
+    "transcript_env_resolver", "empty_without_tool_events",
+    "rows_within_width", "no_invalid_tokens",
+  ]);
   logStep("cli-activity-feed-contract");
 
   const cliActivityStateContractResult = runCommand("npx", [
@@ -403,28 +403,22 @@ export async function runTuiContracts() {
     "cli-activity-state-contract",
     cliActivityStateContractResult.stdout,
   );
-  assert.equal(cliActivityStatePayload.start_snapshot_visible, true);
-  assert.equal(cliActivityStatePayload.route_diagnostic_visible, true);
-  assert.equal(cliActivityStatePayload.route_snapshot_has_stage_detail, true);
-  assert.equal(cliActivityStatePayload.route_snapshot_avoids_raw_key_value, true);
-  assert.equal(cliActivityStatePayload.context_snapshot_has_budget_detail, true);
-  assert.equal(cliActivityStatePayload.context_snapshot_avoids_raw_key_value, true);
-  assert.equal(cliActivityStatePayload.ask_user_waiting_has_reply_detail, true);
-  assert.equal(cliActivityStatePayload.plan_diagnostic_visible, true);
-  assert.equal(cliActivityStatePayload.plan_approval_waiting_has_detail, true);
-  assert.equal(cliActivityStatePayload.semantic_prefetch_status_is_human, true);
-  assert.equal(cliActivityStatePayload.pre_send_detail_is_human, true);
-  assert.equal(cliActivityStatePayload.governance_topic_is_human, true);
-  assert.equal(cliActivityStatePayload.experience_event_detail_is_human, true);
-  assert.equal(cliActivityStatePayload.memory_event_detail_is_human, true);
-  assert.equal(cliActivityStatePayload.interrupt_event_detail_is_human, true);
-  assert.equal(cliActivityStatePayload.residual_activity_details_avoid_raw_codes, true);
-  assert.equal(cliActivityStatePayload.plan_mode_start_uses_plan_context, true);
-  assert.equal(cliActivityStatePayload.ok_finish_clears_prompt_activity, true);
-  assert.equal(cliActivityStatePayload.error_finish_remains_visible, true);
-  assert.equal(cliActivityStatePayload.no_done_footer_noise, true);
-  assert.equal(cliActivityStatePayload.verbose_progress_line_uses_reference_prefix, true);
-  assert.equal(cliActivityStatePayload.verbose_progress_line_avoids_machine_prefix, true);
+  assertPayloadFlags(cliActivityStatePayload, [
+    "start_snapshot_visible", "route_diagnostic_visible",
+    "route_snapshot_has_stage_detail", "route_snapshot_avoids_raw_key_value",
+    "context_snapshot_has_budget_detail", "context_snapshot_avoids_raw_key_value",
+    "ask_user_waiting_has_reply_detail", "plan_diagnostic_visible",
+    "plan_approval_waiting_has_detail", "semantic_prefetch_status_is_human",
+    "pre_send_detail_is_human", "governance_topic_is_human",
+    "experience_event_detail_is_human", "memory_event_detail_is_human",
+    "interrupt_event_detail_is_human", "runtime_model_request_is_request_activity",
+    "runtime_tool_start_uses_input_summary_without_raw_keys",
+    "runtime_tool_end_normalizes_bash_exit_code_failure",
+    "residual_activity_details_avoid_raw_codes", "plan_mode_start_uses_plan_context",
+    "ok_finish_clears_prompt_activity", "error_finish_remains_visible",
+    "no_done_footer_noise", "verbose_progress_line_uses_reference_prefix",
+    "verbose_progress_line_avoids_machine_prefix",
+  ]);
   logStep("cli-activity-state-contract");
 
   const cliStatusLineContractResult = runCommand("npx", [

@@ -16,9 +16,17 @@ import type {
 } from "./contract";
 
 export const MENU_POINTER = TERMINAL_SYMBOL.pointer;
+export const MENU_SCROLL_UP = TERMINAL_SYMBOL.scrollUp;
+export const MENU_SCROLL_DOWN = TERMINAL_SYMBOL.scrollDown;
 export const MODEL_PICKER_POINTER = "❯";
 export const MODEL_PICKER_CHECK = "✓";
-export const MODEL_PICKER_DEFAULT_HINT = "Enter confirm · Esc back";
+export const MODEL_PICKER_DEFAULT_HINT = "Enter confirm · Esc exit";
+export const MODEL_PICKER_EFFORT_SYMBOL = {
+  low: "○",
+  medium: "◐",
+  high: "●",
+  max: "◉",
+} as const;
 export const MODEL_PICKER_DEFAULT_SUBTITLE =
   "Switch the configured model for future sessions; use /model use <id> for custom models.";
 export const MENU_TWO_COLUMN_MIN_WIDTH = 64;
@@ -251,12 +259,26 @@ export function resolveViewportOrdinal(input: {
 
 export function resolveScrollAwareMarker(input: {
   isActive: boolean;
+  showScrollUp?: boolean;
+  showScrollDown?: boolean;
   theme: ReturnType<typeof createCliTheme>;
 }): { plain: string; rendered: string } {
   if (input.isActive) {
     return {
       plain: MENU_POINTER,
       rendered: input.theme.pointer(MENU_POINTER),
+    };
+  }
+  if (input.showScrollUp === true) {
+    return {
+      plain: MENU_SCROLL_UP,
+      rendered: input.theme.color("muted", MENU_SCROLL_UP),
+    };
+  }
+  if (input.showScrollDown === true) {
+    return {
+      plain: MENU_SCROLL_DOWN,
+      rendered: input.theme.color("muted", MENU_SCROLL_DOWN),
     };
   }
   return {
@@ -267,6 +289,8 @@ export function resolveScrollAwareMarker(input: {
 
 export function resolveModelPickerMarker(input: {
   isActive: boolean;
+  showScrollUp?: boolean;
+  showScrollDown?: boolean;
   theme: ReturnType<typeof createCliTheme>;
 }): { plain: string; rendered: string } {
   if (input.isActive) {
@@ -275,10 +299,38 @@ export function resolveModelPickerMarker(input: {
       rendered: input.theme.pointer(MODEL_PICKER_POINTER),
     };
   }
+  if (input.showScrollUp === true) {
+    return {
+      plain: MENU_SCROLL_UP,
+      rendered: input.theme.color("muted", MENU_SCROLL_UP),
+    };
+  }
+  if (input.showScrollDown === true) {
+    return {
+      plain: MENU_SCROLL_DOWN,
+      rendered: input.theme.color("muted", MENU_SCROLL_DOWN),
+    };
+  }
   return {
     plain: " ",
     rendered: " ",
   };
+}
+
+export function shouldShowViewportScrollUp(input: {
+  rowIndex: number;
+  viewport: Required<TerminalSelectMenuViewport>;
+}): boolean {
+  return input.rowIndex === 0 && input.viewport.startIndex > 0;
+}
+
+export function shouldShowViewportScrollDown(input: {
+  rowIndex: number;
+  visibleLength: number;
+  viewport: Required<TerminalSelectMenuViewport>;
+}): boolean {
+  return input.rowIndex === input.visibleLength - 1
+    && input.viewport.startIndex + input.visibleLength < input.viewport.totalCount;
 }
 
 export function resolveMenuColumns(columns?: number): number {

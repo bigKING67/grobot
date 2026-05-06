@@ -1,3 +1,27 @@
+const STDERR_EVENT_STREAM_MODE: &str = "stderr_jsonl";
+const STDERR_EVENT_STREAM_PREFIX: &str = "[grobot-runtime-event] ";
+
+struct StderrJsonlRuntimeEventSink;
+
+impl crate::models::engine::RuntimeEventSink for StderrJsonlRuntimeEventSink {
+    fn emit(&mut self, event: &crate::models::engine::RuntimeEventOutput) {
+        let payload = json!({
+            "grobot_event": "runtime_event",
+            "event": event,
+        });
+        if let Ok(line) = serde_json::to_string(&payload) {
+            eprintln!("{STDERR_EVENT_STREAM_PREFIX}{line}");
+        }
+    }
+}
+
+fn use_stderr_jsonl_event_stream(value: Option<&str>) -> bool {
+    matches!(
+        value.map(str::trim).map(str::to_ascii_lowercase).as_deref(),
+        Some(STDERR_EVENT_STREAM_MODE) | Some("stderr-jsonl")
+    )
+}
+
 pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErrorResponse> {
     if request.jsonrpc != JSONRPC_VERSION {
         return Err(error(request.id, -32600, "invalid jsonrpc version"));
@@ -62,7 +86,8 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                 return Err(error(request.id, -32602, "empty request fields"));
             }
 
-            let execution_result = execute_turn(TurnExecuteInput {
+            let event_stream = params.event_stream.clone();
+            let turn_input = TurnExecuteInput {
                 request_id: params.request_id,
                 session_key: params.session_key,
                 system_prompt: params.system_prompt,
@@ -123,7 +148,13 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                         filename: attachment.filename,
                     })
                     .collect(),
-            });
+            };
+            let execution_result = if use_stderr_jsonl_event_stream(event_stream.as_deref()) {
+                let mut event_sink = StderrJsonlRuntimeEventSink;
+                execute_turn_with_event_sink(turn_input, &mut event_sink)
+            } else {
+                execute_turn(turn_input)
+            };
             match execution_result {
                 Ok(execution) => Ok(success(
                     request.id,

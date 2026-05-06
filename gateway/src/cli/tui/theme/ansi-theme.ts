@@ -4,6 +4,8 @@ import { terminalStyle } from "./terminal-style";
 export type CliThemeToken =
   | "accent"
   | "brand"
+  | "success"
+  | "error"
   | "muted"
   | "info"
   | "remember"
@@ -32,6 +34,12 @@ const ansiTheme: CliTheme = {
     }
     if (token === "brand") {
       return terminalStyle.brand(value);
+    }
+    if (token === "success") {
+      return terminalStyle.success(value);
+    }
+    if (token === "error") {
+      return terminalStyle.error(value);
     }
     if (token === "info") {
       return terminalStyle.info(value);

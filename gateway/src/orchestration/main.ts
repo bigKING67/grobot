@@ -27,6 +27,8 @@ export interface GatewayRuntimeOptions {
   toolContext?: RuntimeToolContext;
   attachments?: RuntimeAttachment[];
   abortSignal?: AbortSignal;
+  onEvent?: (event: RuntimeEvent) => void;
+  streamEvents?: boolean;
 }
 
 export function createTurnRequest(
@@ -92,6 +94,8 @@ export async function runGatewayTurn(
     runtimeOptions?.attachments,
     {
       signal: runtimeOptions?.abortSignal,
+      onEvent: runtimeOptions?.onEvent,
+      streamEvents: runtimeOptions?.streamEvents,
     },
     runtimeOptions?.systemPrompt,
   );

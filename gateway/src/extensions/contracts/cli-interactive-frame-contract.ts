@@ -13,7 +13,7 @@ const renderedPrompt = renderStatusLinePrompt({
   targetTokenLimit: 5120,
   sessionId: "019d8b75-8bdf-78e2-a056-1f98a38774bd",
   sessionTopic: "interactive frame closure validation",
-  activityText: "正在整理上下文窗口",
+  activityText: "organizing context window",
   terminalColumns: 120,
   promptLabel: "❯ ",
 });
@@ -33,7 +33,7 @@ const payload = {
   prefix_empty: layout.prefix.length === 0,
   inline_prompt_matches: layout.inlinePrompt === "❯ ",
   suffix_has_status_line: suffix.includes("kimi/kimi-k2-2026-04"),
-  suffix_has_activity_line: suffix.includes("正在整理上下文窗口"),
+  suffix_has_activity_line: suffix.includes("organizing context window"),
   suffix_has_no_prompt_frame:
     suffix.includes("╭") === false
     && suffix.includes("╰") === false

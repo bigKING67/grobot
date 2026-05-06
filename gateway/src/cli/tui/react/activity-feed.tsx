@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Text, renderStaticInk } from "./static-ink";
-import { createCliTheme } from "../theme/ansi-theme";
+import { createCliTheme, type CliThemeToken } from "../theme/ansi-theme";
 import {
   measureDisplayWidth,
   truncateDisplayWidth,
@@ -11,7 +11,7 @@ import type {
 } from "../components/activity-feed/contract";
 
 const DEFAULT_ACTIVITY_COLUMNS = 96;
-const REFERENCE_TOOL_STATUS_DOT = "●";
+const REFERENCE_TOOL_STATUS_DOT = process.platform === "darwin" ? "⏺" : "●";
 
 function resolveFeedWidth(input: RuntimeActivityFeedViewModel): number {
   if (
@@ -23,18 +23,30 @@ function resolveFeedWidth(input: RuntimeActivityFeedViewModel): number {
   return DEFAULT_ACTIVITY_COLUMNS;
 }
 
-function resolveBulletTone(row: ActivityFeedRow): "brand" | "remember" | "info" {
+function resolveBulletTone(row: ActivityFeedRow): CliThemeToken {
+  if (row.state === "running") {
+    return "muted";
+  }
+  if (row.state === "success") {
+    return "success";
+  }
+  if (row.state === "error") {
+    return "error";
+  }
+  if (row.state === "warning") {
+    return "remember";
+  }
   if (row.severity === "warning") {
     return "remember";
   }
   if (row.severity === "error") {
-    return "info";
+    return "error";
   }
-  return "brand";
+  return "success";
 }
 
 function fitMainTitle(title: string, width: number): string {
-  const titleWidth = Math.max(1, width - measureDisplayWidth("• "));
+  const titleWidth = Math.max(1, width - measureDisplayWidth(`${REFERENCE_TOOL_STATUS_DOT} `));
   return truncateDisplayWidth(title, titleWidth, { compact: true });
 }
 

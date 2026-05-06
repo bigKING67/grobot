@@ -208,24 +208,22 @@ const payload = {
     && stripAnsi(viewportMenuPlain).includes("10."),
   menu_viewport_hides_reset_ordinal:
     !stripAnsi(viewportMenuPlain).includes("1. /context"),
-  menu_viewport_has_no_row_scroll_arrows:
-    renderedMenuRows(viewportMenuPlain).every((line) => {
-      const trimmed = line.trimStart();
-      return !trimmed.startsWith("↑") && !trimmed.startsWith("↓");
-    }),
+  menu_viewport_has_scroll_markers:
+    renderedMenuRows(viewportMenuPlain).some((line) => line.trimStart().startsWith("↑"))
+    && renderedMenuRows(viewportMenuPlain).some((line) => line.trimStart().startsWith("↓")),
   menu_viewport_has_no_more_text:
     !stripAnsi(viewportMenuPlain).toLowerCase().includes("more"),
   menu_direct_render_uses_default_visible_count:
     stripAnsi(directLargeMenuPlain).includes("5.")
     && !stripAnsi(directLargeMenuPlain).includes("6."),
-  menu_direct_render_has_no_row_scroll_marker:
-    renderedMenuRows(directLargeMenuPlain).every((line) => {
-      const trimmed = line.trimStart();
-      return !trimmed.startsWith("↑") && !trimmed.startsWith("↓");
-    }),
+  menu_direct_render_has_row_scroll_marker:
+    renderedMenuRows(directLargeMenuPlain).some((line) => line.trimStart().startsWith("↓")),
   model_picker_has_claude_pointer: stripAnsi(modelPickerPlain).includes("❯"),
   model_picker_has_no_thin_pointer: !stripAnsi(modelPickerPlain).includes("›"),
-  model_picker_has_pane_divider: /^─+$/.test(stripAnsi(modelPickerPlain).split("\n")[0] ?? ""),
+  model_picker_has_pane_divider:
+    /^─+$/.test(stripAnsi(modelPickerPlain).split("\n").find((line) =>
+      line.trim().length > 0
+    ) ?? ""),
   model_picker_interactive_uses_warm_brand_color:
     modelPickerInteractive.includes("\x1b[38;2;202;124;94m")
     && !modelPickerInteractive.includes("\x1b[38;2;166;170;255m"),
@@ -234,9 +232,12 @@ const payload = {
   model_picker_current_uses_check: stripAnsi(modelPickerPlain).includes("model-a ✓"),
   model_picker_current_not_parenthesized: !stripAnsi(modelPickerPlain).includes("(current)"),
   model_picker_has_default_suffix: stripAnsi(modelPickerPlain).includes("model-b (default)"),
-  model_picker_has_footer_hint: stripAnsi(modelPickerPlain).includes("Enter confirm · Esc back"),
+  model_picker_has_footer_hint: stripAnsi(modelPickerPlain).includes("Enter confirm · Esc exit"),
   model_picker_has_config_scope_subtitle:
     stripAnsi(modelPickerPlain).includes("Switch the configured model for future sessions"),
+  model_picker_has_effort_line:
+    stripAnsi(modelPickerPlain).includes("● High effort (default)")
+    && stripAnsi(modelPickerPlain).includes("← → to adjust"),
   model_picker_avoids_stale_session_only_copy:
     !stripAnsi(modelPickerPlain).includes("Switch the current session model"),
   model_picker_has_config_scope_context:
@@ -321,16 +322,15 @@ const payload = {
     stripAnsi(directLargeModelPickerPlain).includes("10.")
     && !stripAnsi(directLargeModelPickerPlain).includes("11."),
   model_picker_direct_render_shows_hidden_count:
-    stripAnsi(directLargeModelPickerPlain).includes("2 more models..."),
-  model_picker_direct_render_has_no_english_hidden_count:
-    !stripAnsi(directLargeModelPickerPlain).includes("and 2 more"),
+    stripAnsi(directLargeModelPickerPlain).includes("and 2 more..."),
+  model_picker_direct_render_uses_reference_hidden_count:
+    !stripAnsi(directLargeModelPickerPlain).includes("2 more models..."),
+  model_picker_direct_render_shows_non_default_effort:
+    stripAnsi(directLargeModelPickerPlain).includes("● High effort  ← → to adjust"),
   model_picker_direct_render_has_config_scope_context:
     stripAnsi(directLargeModelPickerPlain).includes("provider alpha · 12 models · writes current config"),
-  model_picker_direct_render_has_no_row_scroll_marker:
-    renderedMenuRows(directLargeModelPickerPlain).every((line) => {
-      const trimmed = line.trimStart();
-      return !trimmed.startsWith("↑") && !trimmed.startsWith("↓");
-    }),
+  model_picker_direct_render_has_row_scroll_marker:
+    renderedMenuRows(directLargeModelPickerPlain).some((line) => line.trimStart().startsWith("↓")),
   model_picker_long_rows_within_width:
     renderedLinesWithinColumns(longModelPickerPlain, 72),
   model_picker_long_descriptions_do_not_wrap:
@@ -345,6 +345,8 @@ const payload = {
     stripAnsi(longModelPickerPlain).includes("✓"),
   model_picker_long_default_suffix_preserved:
     stripAnsi(longModelPickerPlain).includes("(default)"),
+  model_picker_long_effort_unsupported_line:
+    stripAnsi(longModelPickerPlain).includes("○ Effort not supported for"),
   model_picker_narrow_rows_within_width:
     renderedLinesWithinColumns(narrowModelPickerPlain, 52),
   model_picker_narrow_hides_description:

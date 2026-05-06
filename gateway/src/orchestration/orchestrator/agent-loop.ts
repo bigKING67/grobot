@@ -109,7 +109,11 @@ export class AgentLoop {
       if (runtimeExecuteOptions?.signal?.aborted) {
         throw new Error("runtime turn interrupted class=turn_interrupted detail=aborted_before_shadow_runtime_call");
       }
-      const shadow = await this.deps.shadowRuntimeClient.executeTurn(runtimeRequest, runtimeExecuteOptions);
+      const shadow = await this.deps.shadowRuntimeClient.executeTurn(runtimeRequest, {
+        ...runtimeExecuteOptions,
+        onEvent: undefined,
+        streamEvents: false,
+      });
       shadowComparison = compareRuntimeResults(primary, shadow);
     }
 

@@ -41,7 +41,7 @@ export function renderedLinesWithinColumns(rendered: string, columns: number): b
 export function renderedMenuRows(rendered: string): string[] {
   return stripAnsi(rendered)
     .split("\n")
-    .filter((line) => /^(?:[›❯]\s*)?\d+\./.test(line.trimStart()));
+    .filter((line) => /^(?:[›❯↑↓]\s*)?\d+\./.test(line.trimStart()));
 }
 
 export function extractStartupBodyLines(rendered: string): string[] {

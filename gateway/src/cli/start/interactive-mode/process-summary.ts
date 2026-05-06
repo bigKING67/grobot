@@ -43,6 +43,9 @@ export function resolveInlineStatusIndicatorMode(input: {
   if (input.activityKind === "ask-user") {
     return "tool-input";
   }
+  if (input.activityKind === "tool") {
+    return "tool-use";
+  }
   if (
     input.activityKind === "context"
     || input.activityKind === "governance"

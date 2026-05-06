@@ -3,6 +3,8 @@ export const TERMINAL_ANSI = {
   bold: "\x1b[1m",
   brand: "\x1b[38;2;202;124;94m",
   accent: "\x1b[38;2;202;124;94m",
+  success: "\x1b[38;2;112;178;126m",
+  error: "\x1b[38;2;190;72;88m",
   info: "\x1b[38;2;176;150;134m",
   remember: "\x1b[38;2;174;141;123m",
   planMode: "\x1b[38;2;72;150;140m",
@@ -33,6 +35,12 @@ export const terminalStyle = {
   },
   brand(value: string): string {
     return wrap(TERMINAL_ANSI.brand, value);
+  },
+  success(value: string): string {
+    return wrap(TERMINAL_ANSI.success, value);
+  },
+  error(value: string): string {
+    return wrap(TERMINAL_ANSI.error, value);
   },
   info(value: string): string {
     return wrap(TERMINAL_ANSI.info, value);

@@ -9,6 +9,7 @@ import { sanitizeTerminalDisplayText } from "../terminal/text-sanitizer";
 import { Box, Text, renderStaticInk } from "./static-ink";
 import {
   type RenderTerminalSelectMenuInput,
+  type TerminalSelectMenuEffortLevel,
   type TerminalSelectMenuItem,
   type TerminalSelectMenuModelPickerMeta,
 } from "../components/select-menu/contract";
@@ -18,6 +19,7 @@ import {
   MODEL_PICKER_DEFAULT_HINT,
   MODEL_PICKER_DEFAULT_SUBTITLE,
   MODEL_PICKER_DIVIDER_MAX_WIDTH,
+  MODEL_PICKER_EFFORT_SYMBOL,
   PLAN_APPROVAL_DIVIDER_MAX_WIDTH,
   PLAN_APPROVAL_PLAN_DIVIDER,
   PLAN_APPROVAL_SURFACE_MAX_WIDTH,
@@ -34,11 +36,20 @@ import {
   resolveScrollAwareMarker,
   resolveViewportOrdinal,
   sanitizeMenuText,
+  shouldShowViewportScrollDown,
+  shouldShowViewportScrollUp,
   shouldRenderMenuDescriptions,
   truncateMenuLabelWithSuffix,
   type RenderMenuRow,
   type TruncatedMenuLabel,
 } from "../components/select-menu/render-helpers";
+
+function capitalizeAscii(value: string): string {
+  if (value.length === 0) {
+    return value;
+  }
+  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+}
 
 function renderLineStack(lines: string[], theme: ReturnType<typeof createCliTheme>): string {
   return renderStaticInk(
@@ -97,7 +108,46 @@ function buildModelPickerContextLine(input: {
 }
 
 function buildModelPickerHiddenCountLine(hiddenCount: number): string {
-  return `${String(hiddenCount)} more models...`;
+  return `and ${String(hiddenCount)} more...`;
+}
+
+function normalizeEffortLevel(
+  value: TerminalSelectMenuEffortLevel | undefined,
+): TerminalSelectMenuEffortLevel | undefined {
+  if (value === "low" || value === "medium" || value === "high" || value === "max") {
+    return value;
+  }
+  return undefined;
+}
+
+function buildModelPickerEffortLine(input: {
+  meta?: TerminalSelectMenuModelPickerMeta;
+  focusedModelName?: string;
+}): string {
+  const meta = input.meta;
+  if (!meta) {
+    return "";
+  }
+  const hasEffortMeta =
+    meta.effortSupported !== undefined
+    || meta.effortLevel !== undefined
+    || meta.effortDefaultLevel !== undefined
+    || meta.effortAdjustHint !== undefined;
+  if (!hasEffortMeta) {
+    return "";
+  }
+  const effortSupported = meta.effortSupported !== false;
+  const focusedModelName = sanitizeMenuText(input.focusedModelName, "");
+  if (!effortSupported) {
+    return `${MODEL_PICKER_EFFORT_SYMBOL.low} Effort not supported${focusedModelName.length > 0 ? ` for ${focusedModelName}` : ""}`;
+  }
+  const effortLevel = normalizeEffortLevel(meta.effortLevel)
+    ?? normalizeEffortLevel(meta.effortDefaultLevel)
+    ?? "high";
+  const defaultEffortLevel = normalizeEffortLevel(meta.effortDefaultLevel);
+  const defaultSuffix = defaultEffortLevel === effortLevel ? " (default)" : "";
+  const hint = sanitizeMenuText(meta.effortAdjustHint, "← → to adjust");
+  return `${MODEL_PICKER_EFFORT_SYMBOL[effortLevel]} ${capitalizeAscii(effortLevel)} effort${defaultSuffix}  ${hint}`;
 }
 
 function renderModelPickerLabel(input: {
@@ -160,6 +210,7 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
   const subtitle = sanitizeMenuText(input.menu.subtitle, MODEL_PICKER_DEFAULT_SUBTITLE);
   const dividerWidth = Math.max(44, Math.min(MODEL_PICKER_DIVIDER_MAX_WIDTH, columns));
 
+  lines.push("");
   lines.push(theme.color("brand", "─".repeat(dividerWidth)));
   lines.push(theme.color("brand", theme.bold(`  ${title}`)));
   if (surfaceWidth >= 56 && subtitle.length > 0) {
@@ -173,6 +224,12 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
     const isActive = index === input.activeIndex;
     const marker = resolveModelPickerMarker({
       isActive,
+      showScrollUp: shouldShowViewportScrollUp({ rowIndex: index, viewport }),
+      showScrollDown: shouldShowViewportScrollDown({
+        rowIndex: index,
+        visibleLength: visibleItems.length,
+        viewport,
+      }),
       theme,
     });
     const ordinalPlain = `${String(resolveViewportOrdinal({ viewport, rowIndex: index }))}.`
@@ -218,6 +275,16 @@ function renderModelPickerMenu(input: RenderTerminalSelectMenuInput): string {
   const hiddenCount = Math.max(0, viewport.totalCount - viewport.visibleCount);
   if (hiddenCount > 0) {
     lines.push(`   ${theme.color("muted", buildModelPickerHiddenCountLine(hiddenCount))}`);
+  }
+
+  const activeItem = visibleItems[input.activeIndex];
+  const effortLine = buildModelPickerEffortLine({
+    meta,
+    focusedModelName: activeItem?.label ?? activeItem?.id,
+  });
+  if (effortLine.length > 0) {
+    lines.push("");
+    lines.push(`  ${theme.color("muted", truncateDisplayWidth(effortLine, surfaceWidth - 2))}`);
   }
 
   const contextLine = buildModelPickerContextLine({
@@ -266,6 +333,12 @@ function renderAskUserMenu(input: RenderTerminalSelectMenuInput): string {
     const isActive = index === input.activeIndex;
     const marker = resolveModelPickerMarker({
       isActive,
+      showScrollUp: shouldShowViewportScrollUp({ rowIndex: index, viewport }),
+      showScrollDown: shouldShowViewportScrollDown({
+        rowIndex: index,
+        visibleLength: input.menu.items.length,
+        viewport,
+      }),
       theme,
     });
     const ordinalPlain = `${String(resolveViewportOrdinal({ viewport, rowIndex: index }))}.`
@@ -449,6 +522,12 @@ function renderDefaultMenu(input: RenderTerminalSelectMenuInput): string {
     const isActive = index === input.activeIndex;
     const marker = resolveScrollAwareMarker({
       isActive,
+      showScrollUp: shouldShowViewportScrollUp({ rowIndex: index, viewport }),
+      showScrollDown: shouldShowViewportScrollDown({
+        rowIndex: index,
+        visibleLength: input.menu.items.length,
+        viewport,
+      }),
       theme,
     });
     const ordinalPlain = `${String(resolveViewportOrdinal({ viewport, rowIndex: index }))}.`

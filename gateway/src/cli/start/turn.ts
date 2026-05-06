@@ -271,6 +271,8 @@ export function createRunStartTurnRunner(
                 toolContext: runtimeToolContextForTurn.context,
                 attachments: runtimeAttachments,
                 abortSignal: turnSignal,
+                onEvent: options?.onRuntimeEvent,
+                streamEvents: Boolean(options?.onRuntimeEvent),
                 systemPrompt: grobotSystemPrompt,
               },
             );

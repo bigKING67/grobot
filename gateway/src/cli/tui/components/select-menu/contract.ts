@@ -17,6 +17,8 @@ export interface TerminalSelectMenuItem {
   inputActive?: boolean;
 }
 
+export type TerminalSelectMenuEffortLevel = "low" | "medium" | "high" | "max";
+
 export interface TerminalSelectMenuModelPickerMeta {
   providerName: string;
   currentModel?: string;
@@ -25,6 +27,10 @@ export interface TerminalSelectMenuModelPickerMeta {
   sessionId?: string;
   sessionTitle?: string;
   sessionSummary?: string;
+  effortLevel?: TerminalSelectMenuEffortLevel;
+  effortSupported?: boolean;
+  effortDefaultLevel?: TerminalSelectMenuEffortLevel;
+  effortAdjustHint?: string;
 }
 
 export interface TerminalSelectMenuPlanApprovalMeta {

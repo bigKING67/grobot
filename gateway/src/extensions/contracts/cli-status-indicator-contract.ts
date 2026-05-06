@@ -178,12 +178,12 @@ const stallSmoothed = resolveStatusIndicatorStallState({
 });
 
 const payload = {
-  line_contains_elapsed: stripAnsi(line).includes("(7s · Esc interrupt)"),
+  line_contains_elapsed: stripAnsi(line).includes("(7s · esc to interrupt)"),
   line_uses_reference_spinner: /^✻ /.test(stripAnsi(line)),
   line_has_brand_shimmer: /\u001B\[38;2;202;124;94m/.test(line),
   line_has_muted_base: /\u001B\[90m/.test(line),
   deterministic_for_same_tick: line === repeated,
-  narrow_keeps_interrupt_hint: stripAnsi(narrowLine).includes("Esc interrupt"),
+  narrow_keeps_interrupt_hint: stripAnsi(narrowLine).includes("esc to interrupt"),
   narrow_width_within_columns: measureDisplayWidth(narrowLine) <= 36,
   wide_width_within_columns: measureDisplayWidth(line) <= 72,
   reduced_motion_no_brand_sweep:
@@ -217,7 +217,7 @@ const payload = {
     && richPartsWide.showTokens
     && richPartsWide.showElapsed
     && richPartsWide.showInterruptHint
-    && stripAnsi(richLineWide).includes("31s · ↓ 812 tokens · thinking high · Esc interrupt"),
+    && stripAnsi(richLineWide).includes("31s · ↓ 812 tokens · thinking high · esc to interrupt"),
   rich_wide_width_within_columns: measureDisplayWidth(richLineWide) <= 96,
   token_gate_hides_tokens_before_30s:
     !stripAnsi(tokenGateHiddenLine).includes("812 tokens"),
@@ -230,7 +230,7 @@ const payload = {
   thought_status_line_shows_duration:
     stripAnsi(thoughtStatusLine).includes("thought for 2s"),
   activity_detail_renders_before_elapsed:
-    stripAnsi(activityDetailLine).includes("7s · Selected alpha · Esc interrupt")
+    stripAnsi(activityDetailLine).includes("7s · Selected alpha · esc to interrupt")
     && !stripAnsi(activityDetailLine).includes("selected=alpha"),
   activity_detail_width_within_columns: measureDisplayWidth(activityDetailLine) <= 80,
   rich_narrow_preserves_interrupt_over_optional_parts:
@@ -238,7 +238,7 @@ const payload = {
     && richPartsNarrow.showElapsed
     && !richPartsNarrow.showTokens
     && !richPartsNarrow.showThinking
-    && stripAnsi(richLineNarrow).includes("31s · Esc interrupt"),
+    && stripAnsi(richLineNarrow).includes("31s · esc to interrupt"),
   rich_narrow_width_within_columns: measureDisplayWidth(richLineNarrow) <= 34,
   rich_tiny_keeps_interrupt_before_elapsed:
     richPartsTiny.showInterruptHint

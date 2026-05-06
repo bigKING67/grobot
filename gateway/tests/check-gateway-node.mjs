@@ -109,6 +109,7 @@ function ensureContractsExist() {
     "ga-skill-prompt-contract.ts",
     "cli-interactive-frame-contract.ts",
     "terminal-text-sanitizer-contract.ts",
+    "runtime-stdio-event-stream-contract.ts",
   ];
   for (const contractName of requiredContracts) {
     const path = resolve(contractsRoot, contractName);

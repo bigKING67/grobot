@@ -1,19 +1,14 @@
-interface ActivityUpdate {
+import type { RuntimeEvent } from "../../../models/types";
+import { resolveRuntimeEventActivity } from "./activity-runtime-events";
+
+export interface ActivityUpdate {
   stageId: string;
   text: string;
   detail?: string;
   status?: ActivityStatus;
 }
 
-export type ActivityKind =
-  | "context"
-  | "runtime"
-  | "plan"
-  | "route"
-  | "ask-user"
-  | "tool"
-  | "memory"
-  | "governance";
+export type ActivityKind = "context" | "runtime" | "plan" | "route" | "ask-user" | "tool" | "memory" | "governance";
 
 export type ActivityStatus = "running" | "done" | "warning" | "error";
 
@@ -35,6 +30,7 @@ export interface InteractiveActivityTracker {
   markTurnFinished(status: "ok" | "error" | "interrupted"): void;
   consumeStderrChunk(chunk: string): string;
   observeStderrChunk(chunk: string): void;
+  observeRuntimeEvent(event: RuntimeEvent): void;
   flushBufferedStderr(): string;
   readPromptActivitySnapshot(): { stageId: string; text: string } | undefined;
   readActivitySnapshot(): ActivitySnapshot | undefined;
@@ -84,6 +80,9 @@ function resolveActivityKind(stageId: string): ActivityKind {
   }
   if (stageId.startsWith("ask_user")) {
     return "ask-user";
+  }
+  if (stageId.startsWith("tool_")) {
+    return "tool";
   }
   if (stageId.startsWith("memory_") || stageId.startsWith("experience_") || stageId === "reflection") {
     return "memory";
@@ -745,6 +744,12 @@ export function createInteractiveActivityTracker(
     consumeStderrChunk: (chunk): string => processChunk(chunk, true),
     observeStderrChunk: (chunk): void => {
       void processChunk(chunk, false);
+    },
+    observeRuntimeEvent: (event): void => {
+      const update = resolveRuntimeEventActivity(event);
+      if (update) {
+        setActivity(update);
+      }
     },
     flushBufferedStderr: (): string => {
       if (!bufferedStderr) {

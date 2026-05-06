@@ -1,6 +1,7 @@
 import { type ExecutionPlaneConfig } from "../../../orchestration/execution-plane";
 import {
   type RuntimeAttachment,
+  type RuntimeEvent,
   type RuntimeModelConfig,
   type RuntimeToolContext,
 } from "../../../models/types";
@@ -47,6 +48,7 @@ export interface RunStartTurnExecuteOptions {
   emitDiagnostics?: boolean;
   writeStdout?: (message: string) => void;
   writeStderr?: (message: string) => void;
+  onRuntimeEvent?: (event: RuntimeEvent) => void;
   onTurnRecorded?(input: {
     userText: string;
     assistantText: string;

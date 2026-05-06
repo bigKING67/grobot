@@ -8,18 +8,42 @@ const MIN_RUNTIME_TIMEOUT_MS: u64 = 1_000;
 const MAX_RUNTIME_TIMEOUT_MS: u64 = 120_000;
 const DEFAULT_MODEL_AUTO_CACHE_TTL_SECS: u64 = 300;
 
-pub trait ModelExecutor {
-    fn generate_assistant_message(
-        &self,
-        input: &TurnExecuteInput,
-        tools: &dyn ToolExecutor,
-    ) -> Result<ModelExecutionOutput, ModelExecutionError>;
-}
-
 #[derive(Debug, Clone)]
 pub struct ModelTelemetryEvent {
     pub event_type: String,
     pub payload: Option<Value>,
+}
+
+pub trait ModelTelemetryEventSink {
+    fn emit(&mut self, event: &ModelTelemetryEvent);
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy)]
+pub struct NoopModelTelemetryEventSink;
+
+#[cfg(test)]
+impl ModelTelemetryEventSink for NoopModelTelemetryEventSink {
+    fn emit(&mut self, _event: &ModelTelemetryEvent) {}
+}
+
+pub trait ModelExecutor {
+    fn generate_assistant_message_with_telemetry(
+        &self,
+        input: &TurnExecuteInput,
+        tools: &dyn ToolExecutor,
+        telemetry_sink: &mut dyn ModelTelemetryEventSink,
+    ) -> Result<ModelExecutionOutput, ModelExecutionError>;
+
+    #[cfg(test)]
+    fn generate_assistant_message(
+        &self,
+        input: &TurnExecuteInput,
+        tools: &dyn ToolExecutor,
+    ) -> Result<ModelExecutionOutput, ModelExecutionError> {
+        let mut telemetry_sink = NoopModelTelemetryEventSink;
+        self.generate_assistant_message_with_telemetry(input, tools, &mut telemetry_sink)
+    }
 }
 
 #[derive(Debug, Clone)]

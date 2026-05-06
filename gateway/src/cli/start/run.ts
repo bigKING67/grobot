@@ -36,7 +36,7 @@ import {
   createExperienceSchedulerRuntime,
   resolveExperienceSchedulerConfig,
 } from "../services/experience-scheduler";
-import { type RuntimeAttachment } from "../../models/types";
+import { type RuntimeAttachment, type RuntimeEvent } from "../../models/types";
 import { isTruthyEnvFlag } from "./startup/env";
 import {
   applyContextWindowOverride,
@@ -416,6 +416,7 @@ export async function runStart(
       emitDiagnostics?: boolean;
       writeStdout?: (message: string) => void;
       writeStderr?: (message: string) => void;
+      onRuntimeEvent?: (event: RuntimeEvent) => void;
     },
   ): Promise<number> => {
     return turnExecution.executeTurn(userInput, interactiveMode, options);

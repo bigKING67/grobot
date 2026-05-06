@@ -4,6 +4,7 @@ mod tests {
     use crate::models::model::{
         ModelAskUserInterrupt, ModelAskUserOption, ModelAskUserQuestion, ModelExecutionError,
         ModelExecutionInterrupt, ModelExecutionOutput, ModelExecutor, ModelTelemetryEvent,
+        ModelTelemetryEventSink,
     };
     use crate::tools::tools::{LocalToolExecutor, ToolExecutor};
     use serde_json::json;
@@ -12,10 +13,11 @@ mod tests {
     struct StubSuccessModel;
 
     impl ModelExecutor for StubSuccessModel {
-        fn generate_assistant_message(
+        fn generate_assistant_message_with_telemetry(
             &self,
             _input: &TurnExecuteInput,
             _tools: &dyn ToolExecutor,
+            _telemetry_sink: &mut dyn ModelTelemetryEventSink,
         ) -> Result<ModelExecutionOutput, ModelExecutionError> {
             Ok(ModelExecutionOutput {
                 assistant_message: "ok".to_string(),
@@ -29,10 +31,11 @@ mod tests {
     struct StubFailModel;
 
     impl ModelExecutor for StubFailModel {
-        fn generate_assistant_message(
+        fn generate_assistant_message_with_telemetry(
             &self,
             _input: &TurnExecuteInput,
             _tools: &dyn ToolExecutor,
+            _telemetry_sink: &mut dyn ModelTelemetryEventSink,
         ) -> Result<ModelExecutionOutput, ModelExecutionError> {
             Err(ModelExecutionError::new(
                 "upstream_http_error",
@@ -86,10 +89,11 @@ mod tests {
     struct StubStructuredConfigFailModel;
 
     impl ModelExecutor for StubStructuredConfigFailModel {
-        fn generate_assistant_message(
+        fn generate_assistant_message_with_telemetry(
             &self,
             _input: &TurnExecuteInput,
             _tools: &dyn ToolExecutor,
+            _telemetry_sink: &mut dyn ModelTelemetryEventSink,
         ) -> Result<ModelExecutionOutput, ModelExecutionError> {
             Err(ModelExecutionError::new(
                 "config_missing",
@@ -131,10 +135,11 @@ mod tests {
     struct StubAskUserInterruptModel;
 
     impl ModelExecutor for StubAskUserInterruptModel {
-        fn generate_assistant_message(
+        fn generate_assistant_message_with_telemetry(
             &self,
             _input: &TurnExecuteInput,
             _tools: &dyn ToolExecutor,
+            _telemetry_sink: &mut dyn ModelTelemetryEventSink,
         ) -> Result<ModelExecutionOutput, ModelExecutionError> {
             Ok(ModelExecutionOutput {
                 assistant_message: String::new(),
@@ -189,10 +194,11 @@ mod tests {
     struct StubToolCallNotSupportedModel;
 
     impl ModelExecutor for StubToolCallNotSupportedModel {
-        fn generate_assistant_message(
+        fn generate_assistant_message_with_telemetry(
             &self,
             _input: &TurnExecuteInput,
             _tools: &dyn ToolExecutor,
+            _telemetry_sink: &mut dyn ModelTelemetryEventSink,
         ) -> Result<ModelExecutionOutput, ModelExecutionError> {
             Err(ModelExecutionError::new(
                 "tool_call_not_supported",
@@ -254,10 +260,11 @@ mod tests {
     struct StubTelemetrySuccessModel;
 
     impl ModelExecutor for StubTelemetrySuccessModel {
-        fn generate_assistant_message(
+        fn generate_assistant_message_with_telemetry(
             &self,
             _input: &TurnExecuteInput,
             _tools: &dyn ToolExecutor,
+            _telemetry_sink: &mut dyn ModelTelemetryEventSink,
         ) -> Result<ModelExecutionOutput, ModelExecutionError> {
             Ok(ModelExecutionOutput {
                 assistant_message: "ok-telemetry".to_string(),
@@ -301,10 +308,11 @@ mod tests {
     struct StubTelemetryFailureModel;
 
     impl ModelExecutor for StubTelemetryFailureModel {
-        fn generate_assistant_message(
+        fn generate_assistant_message_with_telemetry(
             &self,
             _input: &TurnExecuteInput,
             _tools: &dyn ToolExecutor,
+            _telemetry_sink: &mut dyn ModelTelemetryEventSink,
         ) -> Result<ModelExecutionOutput, ModelExecutionError> {
             Err(
                 ModelExecutionError::new(

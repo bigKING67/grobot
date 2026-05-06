@@ -247,7 +247,9 @@ async function main(): Promise<void> {
     model_menu_subtitle_is_compact:
       capturedModelMenu?.subtitle === "Switch the configured model for future sessions; use /model use <id> for custom models.",
     model_menu_hint_is_reference_compact:
-      capturedModelMenu?.hint === "Enter confirm · Esc back",
+      capturedModelMenu?.hint === "Enter confirm · Esc exit",
+    model_menu_meta_effort_is_honest:
+      capturedModelMenu?.modelPickerMeta?.effortSupported === false,
     model_menu_initial_index_points_to_current:
       capturedModelMenu?.initialIndex === 0,
     model_menu_current_item_marked: capturedCurrentItem?.current === true,

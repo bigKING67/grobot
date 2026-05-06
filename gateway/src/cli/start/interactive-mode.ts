@@ -30,7 +30,7 @@ import {
 import { type SessionPromptLayout } from "../tui/interactive/interactive-frame";
 import { renderBottomPaneFooter } from "../tui/components/bottom-pane/render";
 import { type StatusLineConfig } from "../tui/components/status-line/contract";
-import { type RuntimeAttachment } from "../../models/types";
+import { type RuntimeAttachment, type RuntimeEvent } from "../../models/types";
 import {
   type InteractiveDiagnosticsMode,
 } from "./interactive-mode/process-summary";
@@ -179,6 +179,7 @@ export interface RunStartInteractiveModeInput {
       autoOpenAskUserPanel?: boolean;
       writeStdout?: (message: string) => void;
       writeStderr?: (message: string) => void;
+      onRuntimeEvent?: (event: RuntimeEvent) => void;
     },
   ): Promise<number>;
   markFailureObserved(): void;
@@ -392,6 +393,7 @@ export async function runStartInteractiveMode(input: RunStartInteractiveModeInpu
             autoOpenAskUserPanel: options?.autoOpenAskUserPanel,
             writeStdout: writeInteractiveStdout,
             writeStderr: options?.writeStderr ?? writeInteractiveStderr,
+            onRuntimeEvent: activityController.observeRuntimeEvent,
           },
         ),
       });
