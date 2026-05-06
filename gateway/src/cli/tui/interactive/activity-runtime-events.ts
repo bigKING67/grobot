@@ -1,4 +1,5 @@
 import type { RuntimeEvent } from "../../../models/types";
+import { formatBashCommandDisplay } from "../components/activity-feed/bash-format";
 import type { ActivityUpdate } from "./activity-state";
 
 function detailFromParts(parts: string[]): string | undefined {
@@ -92,7 +93,7 @@ function fieldDetail(label: string, value: string | undefined): string {
 function buildToolInputDetail(toolName: string, payload: Record<string, unknown>): string | undefined {
   const inputSummary = payloadRecord(payload, "input_summary");
   if (toolName === "bash") {
-    const commandPreview = compactRuntimeText(payloadString(inputSummary, "command_preview"), 120);
+    const commandPreview = formatBashCommandDisplay(payloadString(inputSummary, "command_preview") ?? "");
     return commandPreview ? `$ ${commandPreview.replace(/"/g, "'")}` : undefined;
   }
   const path = compactRuntimeText(

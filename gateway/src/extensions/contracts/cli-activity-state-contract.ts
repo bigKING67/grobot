@@ -61,6 +61,18 @@ tracker.observeRuntimeEvent(runtimeEvent("tool_start", {
   },
 }));
 const runtimeToolStartSnapshot = tracker.readActivitySnapshot();
+tracker.observeRuntimeEvent(runtimeEvent("tool_start", {
+  tool_name: "bash",
+  tool_call_id: "call_long_command_contract",
+  input_summary: {
+    command_preview: [
+      `node ${"a".repeat(80)}`,
+      `echo ${"b".repeat(120)}`,
+      "echo third-line-hidden",
+    ].join("\n"),
+  },
+}));
+const runtimeToolLongCommandSnapshot = tracker.readActivitySnapshot();
 tracker.observeRuntimeEvent(runtimeEvent("tool_end", {
   tool_name: "bash",
   tool_call_id: "call_contract",
@@ -139,6 +151,12 @@ const payload = {
     && runtimeToolStartSnapshot.text === "Run $ npm test -- --runInBand"
     && !runtimeToolStartSnapshot.text.includes("input_summary")
     && !runtimeToolStartSnapshot.text.includes("command_preview"),
+  runtime_tool_start_limits_bash_command_reference_style:
+    runtimeToolLongCommandSnapshot?.kind === "tool"
+    && runtimeToolLongCommandSnapshot.text.includes("Run $ node")
+    && runtimeToolLongCommandSnapshot.text.includes("echo")
+    && runtimeToolLongCommandSnapshot.text.includes("…")
+    && !runtimeToolLongCommandSnapshot.text.includes("third-line-hidden"),
   runtime_tool_end_normalizes_bash_exit_code_failure:
     runtimeToolEndSnapshot?.kind === "tool"
     && runtimeToolEndSnapshot.text === "Run failed"

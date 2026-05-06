@@ -7,8 +7,10 @@ import type {
 import {
   compactSpaces,
 } from "../../terminal/display-width";
+import { sanitizeTerminalDisplayText } from "../../terminal/text-sanitizer";
 import { renderReactRuntimeActivityFeed } from "../../react/activity-feed";
 import { formatTuiErrorClassLabel } from "../error-labels";
+import { formatBashCommandDisplay } from "./bash-format";
 
 const DEFAULT_MAX_ITEMS = 8;
 const DEFAULT_MAX_DIFF_LINES = 5;
@@ -278,32 +280,43 @@ function formatByteSize(value: number | undefined): string | undefined {
   return `${(mb / 1024).toFixed(1).replace(/\.0$/, "")}GB`;
 }
 
-function formatLineStatus(value: number | undefined): string | undefined {
+function formatLineStatus(value: number | undefined, estimated: boolean): string | undefined {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     return undefined;
   }
   const lines = Math.floor(value);
+  if (estimated) {
+    return `~${String(lines)} lines`;
+  }
   if (lines <= SHELL_OUTPUT_TAIL_LINES) {
     return undefined;
   }
   return `+${String(lines - SHELL_OUTPUT_TAIL_LINES)} lines`;
 }
 
-function resolveBashCommandPreview(
+function firstRawBashCommand(
   payload: Record<string, unknown>,
   summary: Record<string, unknown>,
 ): string {
   const audit = payloadRecord(summary, "audit");
-  return firstString(
+  const payloadAudit = payloadRecord(payload, "audit");
+  return firstRawString(
     payloadString(summary, "command_preview"),
     payloadString(audit, "command_preview"),
     payloadString(summary, "command"),
     payloadString(payload, "command_preview"),
-    payloadString(payloadRecord(payload, "audit"), "command_preview"),
+    payloadString(payloadAudit, "command_preview"),
   );
 }
 
-function resolveBashOutputPreview(summary: Record<string, unknown>): {
+function resolveBashCommandPreview(
+  payload: Record<string, unknown>,
+  summary: Record<string, unknown>,
+): string {
+  return formatBashCommandDisplay(firstRawBashCommand(payload, summary));
+}
+
+function resolveBashOutputPreview(summary: Record<string, unknown>, preferStderr: boolean): {
   lines: string[];
   lineStatus?: string;
   byteStatus?: string;
@@ -316,25 +329,35 @@ function resolveBashOutputPreview(summary: Record<string, unknown>): {
     payloadString(summary, "stderr"),
     payloadString(summary, "stderr_preview"),
   );
-  const selected = stdout || stderr;
+  const selectedStream = preferStderr && stderr.trim().length > 0
+    ? "stderr"
+    : stdout.trim().length > 0
+      ? "stdout"
+      : stderr.trim().length > 0
+        ? "stderr"
+        : "";
+  const selected = selectedStream === "stderr" ? stderr : stdout;
   const lines = splitVisibleLines(selected.trim())
+    .map((line) => sanitizeTerminalDisplayText(line))
     .filter((line) => line.trim().length > 0)
     .slice(-SHELL_OUTPUT_TAIL_LINES);
   const truncation = payloadRecord(summary, "truncation");
-  const stdoutTruncation = payloadRecord(truncation, stdout ? "stdout" : "stderr");
+  const outputTruncation = payloadRecord(truncation, selectedStream || "stdout");
   const totalLines = firstNumber(
-    payloadNumber(summary, stdout ? "stdout_lines" : "stderr_lines"),
+    payloadNumber(summary, selectedStream === "stderr" ? "stderr_lines" : "stdout_lines"),
     payloadNumber(summary, "total_lines"),
-    payloadNumber(stdoutTruncation, "total_lines"),
+    payloadNumber(outputTruncation, "total_lines"),
   );
   const totalBytes = firstNumber(
-    payloadNumber(summary, stdout ? "stdout_bytes" : "stderr_bytes"),
+    payloadNumber(summary, selectedStream === "stderr" ? "stderr_bytes" : "stdout_bytes"),
     payloadNumber(summary, "total_bytes"),
-    payloadNumber(stdoutTruncation, "total_bytes"),
+    payloadNumber(outputTruncation, "total_bytes"),
   );
+  const estimatedLines = payloadBoolean(outputTruncation, "truncated") === true
+    || Boolean(firstString(payloadString(outputTruncation, "truncated_by")));
   return {
     lines,
-    lineStatus: formatLineStatus(totalLines),
+    lineStatus: formatLineStatus(totalLines, estimatedLines),
     byteStatus: formatByteSize(totalBytes),
   };
 }
@@ -604,7 +627,10 @@ function buildToolEndRow(
   } else if (toolName === "bash") {
     const commandPreview = resolveBashCommandPreview(payload, summary);
     const exitCode = firstNumber(payloadNumber(summary, "exit_code"));
-    const preview = resolveBashOutputPreview(summary);
+    const preview = resolveBashOutputPreview(
+      summary,
+      status === "failed" || (typeof exitCode === "number" && exitCode !== 0),
+    );
     detailLines.push(...preview.lines);
     const detail = detailFromParts([
       commandPreview ? `$ ${commandPreview.replace(/"/g, "'")}` : "",
@@ -661,7 +687,7 @@ function buildToolStartRow(event: RuntimeEvent): ActivityFeedRow | undefined {
   }
   return {
     title,
-    detailLines: [],
+    detailLines: toolName === "bash" ? ["Running…"] : [],
     severity: "ok",
     state: "running",
   };

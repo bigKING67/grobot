@@ -256,6 +256,119 @@ const runningRendered = renderRuntimeActivityFeed({
     }),
   ],
 });
+const runningFullRendered = renderRuntimeActivityFeed({
+  terminalColumns: 96,
+  detailMode: "full",
+  events: [
+    event({
+      eventType: "tool_start",
+      payload: {
+        tool_name: "bash",
+        tool_call_id: "tool-bash-running-full",
+        input_summary: {
+          command_preview: "sleep 60",
+        },
+      },
+    }),
+  ],
+});
+const longBashCommand = [
+  `node ${"a".repeat(80)}`,
+  `echo ${"b".repeat(120)}`,
+  "echo third-line-hidden",
+].join("\n");
+const longCommandRendered = renderRuntimeActivityFeed({
+  terminalColumns: 240,
+  detailMode: "compact",
+  events: [
+    event({
+      eventType: "tool_start",
+      payload: {
+        tool_name: "bash",
+        tool_call_id: "tool-bash-long-command",
+        input_summary: {
+          command_preview: longBashCommand,
+        },
+      },
+    }),
+  ],
+});
+const truncatedBashRendered = renderRuntimeActivityFeed({
+  terminalColumns: 120,
+  detailMode: "full",
+  events: [
+    event({
+      eventType: "tool_end",
+      payload: {
+        tool_name: "bash",
+        status: "ok",
+        output_summary: {
+          tool: "bash",
+          exit_code: 0,
+          stdout: "one\ntwo\nthree\nfour\nfive",
+          truncation: {
+            stdout: {
+              truncated: true,
+              truncated_by: "lines",
+              total_lines: 2000,
+              total_bytes: 900000,
+            },
+          },
+          command_preview: "node scripts/large-output.js",
+        },
+      },
+    }),
+  ],
+});
+const ansiBashRendered = renderRuntimeActivityFeed({
+  terminalColumns: 120,
+  detailMode: "full",
+  events: [
+    event({
+      eventType: "tool_end",
+      payload: {
+        tool_name: "bash",
+        status: "ok",
+        output_summary: {
+          tool: "bash",
+          exit_code: 0,
+          stdout: "\u001B[31mred line\u001B[0m\nplain",
+          truncation: {
+            stdout: {
+              total_lines: 2,
+              total_bytes: 19,
+            },
+          },
+          command_preview: "\u001B[32mnpm test\u001B[0m",
+        },
+      },
+    }),
+  ],
+});
+const failedMixedBashRendered = renderRuntimeActivityFeed({
+  terminalColumns: 120,
+  detailMode: "full",
+  events: [
+    event({
+      eventType: "tool_end",
+      payload: {
+        tool_name: "bash",
+        status: "ok",
+        output_summary: {
+          tool: "bash",
+          exit_code: 2,
+          stdout: "build stdout\nignored stdout",
+          stderr: "error one\nerror two",
+          truncation: {
+            stdout: { total_lines: 2, total_bytes: 27 },
+            stderr: { total_lines: 2, total_bytes: 19 },
+          },
+          command_preview: "npm run failing-script",
+        },
+      },
+    }),
+  ],
+});
 
 const emptyRendered = renderRuntimeActivityFeed({
   events: [
@@ -299,6 +412,11 @@ const plain = stripAnsi(rendered);
 const fullPlain = stripAnsi(fullRendered);
 const recoveryPlain = stripAnsi(recoveryRendered);
 const runningPlain = stripAnsi(runningRendered);
+const runningFullPlain = stripAnsi(runningFullRendered);
+const longCommandPlain = stripAnsi(longCommandRendered);
+const truncatedBashPlain = stripAnsi(truncatedBashRendered);
+const ansiBashPlain = stripAnsi(ansiBashRendered);
+const failedMixedBashPlain = stripAnsi(failedMixedBashRendered);
 const turnTranscriptPlain = stripAnsi(turnOutputTranscript.activityFeed);
 const lines = rendered.trimEnd().split("\n");
 const referenceToolStatusDot = process.platform === "darwin" ? "⏺" : "●";
@@ -326,6 +444,14 @@ const payload = {
     && !runningPlain.includes("command_preview")
     && !runningPlain.includes("input_summary")
     && !runningPlain.includes("command="),
+  bash_running_full_detail_shows_progress_placeholder:
+    runningFullPlain.includes("  ⎿  Running…"),
+  bash_command_preview_limits_reference_display:
+    longCommandPlain.includes("Run $ node")
+    && longCommandPlain.includes("echo")
+    && longCommandPlain.includes("…")
+    && !longCommandPlain.includes("third-line-hidden")
+    && !longCommandPlain.includes("command_preview"),
   resolved_tool_start_deduped_by_tool_end: searchRowCount === 1,
   compact_hides_key_value_details:
     !plain.includes("matches=")
@@ -365,6 +491,19 @@ const payload = {
   bash_exit_code_failure_normalized_from_ok_status:
     failedBashTitleCount === 1
     && bareBashTitleCount === 0,
+  bash_truncated_output_uses_estimated_line_status:
+    truncatedBashPlain.includes("~2000 lines")
+    && truncatedBashPlain.includes("878.9KB")
+    && !truncatedBashPlain.includes("+1995 lines"),
+  bash_output_and_command_strip_raw_ansi_sequences:
+    ansiBashPlain.includes("red line")
+    && ansiBashPlain.includes("$ npm test")
+    && !ansiBashRendered.includes("\u001B[31mred line")
+    && !ansiBashRendered.includes("\u001B[32mnpm test"),
+  failed_bash_prefers_stderr_when_stdout_also_present:
+    failedMixedBashPlain.includes("Run failed")
+    && failedMixedBashPlain.includes("error two")
+    && !failedMixedBashPlain.includes("ignored stdout"),
   renders_recovery_row:
     plain.includes("Recovery · Run")
     && fullPlain.includes("  ⎿  Switch strategy · Inspect error, then switch strategy · Error Command failed")
