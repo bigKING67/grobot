@@ -2,6 +2,7 @@ import { runInputChromeChecks } from "./start-input-keybinding-contract/chrome-c
 import { runInputKeybindingChecks } from "./start-input-keybinding-contract/input-contract";
 import { runMenuKeybindingChecks } from "./start-input-keybinding-contract/menu-contract";
 import { runPromptSlotChecks } from "./start-input-keybinding-contract/prompt-slot-contract";
+import { runSelectMenuRuntimeChecks } from "./start-input-keybinding-contract/select-menu-runtime-contract";
 import { runSuggestionKeybindingChecks } from "./start-input-keybinding-contract/suggestion-contract";
 import { runPromptTurnRuntimeChecks } from "./start-input-keybinding-contract/turn-runtime-contract";
 
@@ -11,6 +12,7 @@ async function main(): Promise<void> {
     ...runSuggestionKeybindingChecks(),
     ...runInputKeybindingChecks(),
     ...await runPromptTurnRuntimeChecks(),
+    ...await runSelectMenuRuntimeChecks(),
     ...runInputChromeChecks(),
     ...runPromptSlotChecks(),
   };

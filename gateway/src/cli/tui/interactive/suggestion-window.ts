@@ -306,9 +306,11 @@ function formatStandardSuggestionRow(input: {
   const maxNameWidth = Math.max(8, Math.floor(input.contentColumns * 0.4));
   const displayTextWidth = Math.max(
     8,
-    Math.min(input.maxColumnWidth, maxNameWidth, input.contentColumns),
+    input.showDescription
+      ? Math.min(input.maxColumnWidth, maxNameWidth, input.contentColumns)
+      : input.contentColumns,
   );
-  const nameBudget = Math.max(1, displayTextWidth - 2);
+  const nameBudget = Math.max(1, displayTextWidth - (input.showDescription ? 2 : 0));
   const displayText = truncateDisplayWidth(displayTextRaw, nameBudget, {
     compact: false,
   });

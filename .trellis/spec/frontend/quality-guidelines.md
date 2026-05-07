@@ -42,7 +42,13 @@ Frontend quality in `grobot` means:
    - `npm run check`
 2. For gateway-focused type/contract iteration, confirm:
    - `npm run check:gateway:ts`
-3. For task workflow/spec updates, validate task metadata:
+3. For select-menu controller behavior, run the focused contract before the
+   broader gateway gate:
+   - `npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/start-input-keybinding-contract.ts`
+   This must include `select-menu-runtime-contract.ts` flags when changing
+   raw-mode ordering, disabled options, inline-input mode, numeric selection,
+   or search cancellation.
+4. For task workflow/spec updates, validate task metadata:
    - `python3 ./.trellis/scripts/task.py validate <task-dir>`
 
 ---

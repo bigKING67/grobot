@@ -101,6 +101,18 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
   const slashOverlayNarrowLines = slashOverlayNarrow
     .split("\n")
     .filter((line) => line.length > 0);
+  const slashOverlayNarrowLongCommand = formatSlashSuggestionPanel(
+    [
+      {
+        command: "/skill-creator-template-export",
+        description: "Create reusable skill package",
+      },
+    ],
+    "/",
+    0,
+    52,
+  );
+  const slashOverlayNarrowLongCommandPlain = stripAnsi(slashOverlayNarrowLongCommand);
   const slashOverlayCentered = formatSlashSuggestionPanel(
     [
       { command: "/one", description: "one" },
@@ -433,6 +445,9 @@ export function runSuggestionKeybindingChecks(): ContractPayload {
       !stripAnsi(slashOverlayNarrow).includes("Open model picker"),
     slash_overlay_narrow_lines_within_width:
       slashOverlayNarrowLines.every((line) => measureDisplayWidth(line) <= 52),
+    slash_overlay_narrow_preserves_long_command_label:
+      slashOverlayNarrowLongCommandPlain.includes("/skill-creator-template-export")
+      && !slashOverlayNarrowLongCommandPlain.includes("..."),
     slash_overlay_hidden_when_has_args:
       slashOverlayWithArgs.length === 0,
     slash_overlay_sanitize_render_text:

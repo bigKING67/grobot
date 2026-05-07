@@ -13,6 +13,11 @@ import {
   runTsContract,
   writeFixtureFile,
 } from "../harness.mjs";
+
+function assertPayloadFlags(payload, flagNames) {
+  for (const flagName of flagNames) assert.equal(payload[flagName], true);
+}
+
 export async function runPlanCommandContracts() {
   const startInputKeybindingContractResult = runCommand("npx", [
     "--yes",
@@ -145,6 +150,10 @@ export async function runPlanCommandContracts() {
   assert.equal(startInputKeybindingContractPayload.prompt_paste_keypress_gate_accepts_sequences, true);
   assert.equal(startInputKeybindingContractPayload.prompt_runtime_bracketed_paste_inserts_at_cursor, true);
   assert.equal(startInputKeybindingContractPayload.prompt_runtime_bracketed_paste_suppresses_payload_keypresses, true);
+  assert.equal(startInputKeybindingContractPayload.select_menu_runtime_disabled_enter_does_not_finish, true);
+  assert.equal(startInputKeybindingContractPayload.select_menu_runtime_disabled_numeric_does_not_finish, true);
+  assert.equal(startInputKeybindingContractPayload.select_menu_runtime_tab_input_digit_stays_text, true);
+  assert.equal(startInputKeybindingContractPayload.select_menu_runtime_search_esc_exits_search_before_cancel, true);
   assert.equal(startInputKeybindingContractPayload.footer_draft_hides_shortcut_hint, true);
   assert.equal(startInputKeybindingContractPayload.footer_draft_hides_styled_shortcut_hint, true);
   assert.equal(startInputKeybindingContractPayload.footer_empty_keeps_shortcut_hint, true);
@@ -183,6 +192,58 @@ export async function runPlanCommandContracts() {
   assert.equal(startInputKeybindingContractPayload.prompt_slot_runtime_shortcut_overlay_suppresses_status_footer, true);
   assert.equal(startInputKeybindingContractPayload.prompt_slot_runtime_pending_ask_renders_footer, true);
   assert.equal(startInputKeybindingContractPayload.prompt_slot_runtime_draft_without_status_hides_footer, true);
+  assertPayloadFlags(startInputKeybindingContractPayload, [
+    "slash_key_enter_with_args_keeps_user_input",
+    "slash_key_tab_with_args_keeps_user_input",
+    "slash_overlay_hides_builtin_source_tag",
+    "slash_overlay_keeps_user_source_tag",
+    "prompt_suggestions_overlay_caps_at_five",
+    "prompt_suggestions_overlay_centers_selected",
+    "prompt_suggestions_inline_uses_rows_minus_prompt_budget",
+    "prompt_suggestions_selected_uses_reference_color",
+    "prompt_suggestions_file_uses_icon_and_middle_truncation",
+    "prompt_suggestions_file_lines_within_width",
+    "prompt_suggestions_mcp_and_agent_icons",
+    "prompt_suggestions_tags_and_description_flatten",
+    "prompt_suggestions_selection_pointer_optional",
+    "prompt_suggestions_middle_truncates_both_edges",
+    "slash_overlay_hidden_when_has_args",
+    "slash_overlay_narrow_preserves_long_command_label",
+    "slash_fixture_descriptions_avoid_plan_mode_copy",
+    "slash_input_partial_not_highlighted",
+    "slash_input_exact_highlighted",
+    "slash_input_with_args_fallback_highlighted",
+    "slash_input_partial_with_args_fallback_not_highlighted",
+    "ask_user_panel_footer_chat_numeric_submit",
+    "ask_user_panel_footer_skip_numeric_submit",
+    "ask_user_panel_notes_shortcut",
+    "ask_user_panel_notes_mode_printable_text",
+    "ask_user_panel_chat_shortcut",
+    "ask_user_panel_skip_shortcut_plan_only",
+    "ask_user_panel_skip_without_plan_keeps_other_typing",
+    "shortcut_history_ctrl_r_detected",
+    "shortcut_history_raw_ctrl_r_detected",
+    "shortcut_ctrl_c_sigint",
+    "shortcut_ctrl_r_history_search",
+    "shortcut_non_matching_none",
+    "running_input_appends_printable",
+    "running_input_appends_ascii_printable",
+    "running_input_backspace",
+    "running_input_enter_submits_queue",
+    "running_input_esc_interrupts",
+    "running_input_ctrl_c_interrupts",
+    "running_input_ignores_other_control",
+    "running_input_coalesced_text_enter_submits_queue",
+    "running_input_draft_can_seed_next_prompt",
+    "input_chrome_uses_full_terminal_width",
+    "input_chrome_respects_prompt_minimum_width",
+    "submitted_transcript_keeps_user_text",
+    "submitted_transcript_omits_status_footer",
+    "submitted_transcript_is_input_frame_only",
+    "submitted_transcript_lines_within_width",
+    "prompt_slot_runtime_short_fullscreen_replaces_status_with_hint",
+    "prompt_slot_runtime_short_fullscreen_draft_hides_footer",
+  ]);
   logStep("start-input-keybinding-contract");
 
   const startPlanFailurePolicyContractResult = runCommand("npx", [

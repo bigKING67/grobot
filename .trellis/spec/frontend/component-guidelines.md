@@ -86,6 +86,13 @@ not finish on disabled rows. Render disabled labels and descriptions with muted
 styling, and keep `disableSelection: true | "numeric"` semantics aligned with
 the reference select input (`true` blocks Enter and numeric selection;
 `"numeric"` blocks only numeric shortcuts).
+Controller-level menu regressions must be covered through
+`gateway/src/extensions/contracts/start-input-keybinding-contract/select-menu-runtime-contract.ts`
+in addition to reducer/render checks. This runtime contract must mock stdin,
+stdout, raw mode, and the `runTerminalSelectMenu()` event loop when behavior
+depends on real data ordering, including disabled-row rejection, focused
+inline-input digit handling, and search `Esc` returning to menu focus before
+cancel.
 All user-visible menu copy must remain English.
 
 The former `gateway/src/cli/tui/screens/select-menu-screen.ts` compatibility
@@ -112,7 +119,9 @@ Public imports should use these role files directly:
    fitting visible lines without mutating the raw submitted model input.
    Slash/prompt suggestion overlay rows must sanitize ANSI/control/bidi
    sequences before display-width calculation and truncation; descriptions and
-   tags are untrusted display payloads, not raw terminal markup.
+   tags are untrusted display payloads, not raw terminal markup. When narrow
+   overlays intentionally hide descriptions, the command label must use the
+   remaining row width instead of retaining the two-column 40% label cap.
 5. `input-buffer.ts`: prompt buffer cursor math, bracketed paste marker
    cleanup, inline-image-token deletion, active-line replacement, and vertical
    cursor movement. Bracketed paste must be treated as one paste payload, not
