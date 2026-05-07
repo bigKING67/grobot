@@ -139,6 +139,12 @@ export async function runPlanCommandContracts() {
   assert.equal(startInputKeybindingContractPayload.shortcut_overlay_draft_question_inserts, true);
   assert.equal(startInputKeybindingContractPayload.shortcut_overlay_slash_question_inserts, true);
   assert.equal(startInputKeybindingContractPayload.shortcut_overlay_ctrl_question_ignored, true);
+  assert.equal(startInputKeybindingContractPayload.prompt_paste_normalizes_reference_style_text, true);
+  assert.equal(startInputKeybindingContractPayload.prompt_paste_inserts_at_cursor, true);
+  assert.equal(startInputKeybindingContractPayload.prompt_paste_keypress_gate_suppresses_bracketed_payload, true);
+  assert.equal(startInputKeybindingContractPayload.prompt_paste_keypress_gate_accepts_sequences, true);
+  assert.equal(startInputKeybindingContractPayload.prompt_runtime_bracketed_paste_inserts_at_cursor, true);
+  assert.equal(startInputKeybindingContractPayload.prompt_runtime_bracketed_paste_suppresses_payload_keypresses, true);
   assert.equal(startInputKeybindingContractPayload.footer_draft_hides_shortcut_hint, true);
   assert.equal(startInputKeybindingContractPayload.footer_draft_hides_styled_shortcut_hint, true);
   assert.equal(startInputKeybindingContractPayload.footer_empty_keeps_shortcut_hint, true);

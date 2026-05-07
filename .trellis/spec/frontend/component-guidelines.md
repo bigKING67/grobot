@@ -115,7 +115,12 @@ Public imports should use these role files directly:
    tags are untrusted display payloads, not raw terminal markup.
 5. `input-buffer.ts`: prompt buffer cursor math, bracketed paste marker
    cleanup, inline-image-token deletion, active-line replacement, and vertical
-   cursor movement.
+   cursor movement. Bracketed paste must be treated as one paste payload, not
+   as normal keypresses: suppress paste-generated keypress events, strip
+   terminal control/ANSI sequences from pasted text, normalize CR line endings
+   to `\n`, render tabs as four spaces, and insert the normalized payload at
+   the current cursor position. Empty bracketed paste may fall through to the
+   clipboard-image path.
 6. `turn-state.ts`: the per-turn mutable state shape and initial state factory.
 7. `turn-render-session.ts`: one prompt-input turn's render lifecycle
    (`render()`, submit transcript replacement, cursor-to-output movement).

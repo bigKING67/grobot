@@ -3,12 +3,14 @@ import { runInputKeybindingChecks } from "./start-input-keybinding-contract/inpu
 import { runMenuKeybindingChecks } from "./start-input-keybinding-contract/menu-contract";
 import { runPromptSlotChecks } from "./start-input-keybinding-contract/prompt-slot-contract";
 import { runSuggestionKeybindingChecks } from "./start-input-keybinding-contract/suggestion-contract";
+import { runPromptTurnRuntimeChecks } from "./start-input-keybinding-contract/turn-runtime-contract";
 
 async function main(): Promise<void> {
   const payload = {
     ...runMenuKeybindingChecks(),
     ...runSuggestionKeybindingChecks(),
     ...runInputKeybindingChecks(),
+    ...await runPromptTurnRuntimeChecks(),
     ...runInputChromeChecks(),
     ...runPromptSlotChecks(),
   };

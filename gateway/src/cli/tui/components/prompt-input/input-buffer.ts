@@ -1,4 +1,5 @@
 import { splitGraphemes } from "../../terminal/display-width";
+import { sanitizeTerminalDisplayText } from "../../terminal/text-sanitizer";
 import { INLINE_IMAGE_RENDER_PATTERN } from "./contract";
 import {
   codeOffsetFromGraphemeIndex,
@@ -18,6 +19,11 @@ export interface PromptInputBufferState {
   cursor: number;
 }
 
+export interface BracketedPasteKeypressGate {
+  suppress: boolean;
+  shouldIgnore: boolean;
+}
+
 export function stripBracketedPasteMarkers(value: string): string {
   if (!value || !value.includes("\u001B[")) {
     return value;
@@ -27,6 +33,51 @@ export function stripBracketedPasteMarkers(value: string): string {
     .join("")
     .split(BRACKETED_PASTE_END)
     .join("");
+}
+
+export function resolveBracketedPasteKeypressGate(input: {
+  currentSuppressed: boolean;
+  keyName?: string;
+  sequence?: string;
+}): BracketedPasteKeypressGate {
+  const normalizedName = (input.keyName ?? "").trim().toLowerCase();
+  const sequence = String(input.sequence ?? "");
+  if (normalizedName === "paste-start" || sequence === BRACKETED_PASTE_START) {
+    return {
+      suppress: true,
+      shouldIgnore: true,
+    };
+  }
+  if (normalizedName === "paste-end" || sequence === BRACKETED_PASTE_END) {
+    return {
+      suppress: false,
+      shouldIgnore: true,
+    };
+  }
+  if (input.currentSuppressed) {
+    return {
+      suppress: true,
+      shouldIgnore: true,
+    };
+  }
+  return {
+    suppress: false,
+    shouldIgnore: false,
+  };
+}
+
+export function normalizePromptPastedTextInput(rawInput: string): string {
+  if (!rawInput) {
+    return "";
+  }
+  const normalizedWhitespace = String(rawInput)
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\t/g, "    ");
+  return normalizedWhitespace
+    .split("\n")
+    .map((line) => sanitizeTerminalDisplayText(line))
+    .join("\n");
 }
 
 export function clampPromptInputCursor(input: {

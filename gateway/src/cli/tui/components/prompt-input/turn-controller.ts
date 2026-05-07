@@ -21,6 +21,7 @@ import {
   BRACKETED_PASTE_START,
   ENTER_KEYPRESS_DEDUP_WINDOW_MS,
   PLAIN_ENTER_FALLBACK_DELAY_MS,
+  resolveBracketedPasteKeypressGate,
   stripBracketedPasteMarkers,
 } from "./input-buffer";
 import { createPromptInputTurnRenderSession } from "./turn-render-session";
@@ -64,6 +65,7 @@ export async function readPromptInputTurn(
     },
   });
   let bracketedPasteBuffer = "";
+  let suppressBracketedPasteKeypress = false;
   let closed = false;
   let pendingPlainEnterFallback: ReturnType<typeof setTimeout> | undefined;
   let lastEnterKeypressHandledAt = 0;
@@ -139,6 +141,7 @@ export async function readPromptInputTurn(
         || bracketedPasteBuffer.length > 0;
       if (hasBracketedChunk) {
         bracketedPasteBuffer = `${bracketedPasteBuffer}${raw}`;
+        suppressBracketedPasteKeypress = true;
         if (bracketedPasteBuffer.length > BRACKETED_PASTE_BUFFER_LIMIT) {
           bracketedPasteBuffer = bracketedPasteBuffer.slice(-BRACKETED_PASTE_BUFFER_LIMIT);
         }
@@ -153,6 +156,7 @@ export async function readPromptInputTurn(
         }
         if (matched) {
           bracketedPasteBuffer = bracketedPasteBuffer.slice(lastConsumedIndex);
+          suppressBracketedPasteKeypress = false;
           return;
         }
         const startIndex = bracketedPasteBuffer.lastIndexOf(BRACKETED_PASTE_START);
@@ -240,6 +244,15 @@ export async function readPromptInputTurn(
     const onKeypress = (chunk: string, key: KeypressPayload): void => {
       const rawInput = String(chunk ?? "");
       if (closed || input.getPauseDepth() > 0) {
+        return;
+      }
+      const pasteKeypressGate = resolveBracketedPasteKeypressGate({
+        currentSuppressed: suppressBracketedPasteKeypress,
+        keyName: key.name,
+        sequence: key.sequence,
+      });
+      suppressBracketedPasteKeypress = pasteKeypressGate.suppress;
+      if (pasteKeypressGate.shouldIgnore) {
         return;
       }
 

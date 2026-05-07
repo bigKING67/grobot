@@ -1,6 +1,13 @@
 import {
   decodeAskUserPanelInput,
 } from "../../../cli/tui/components/ask-user-panel/reducer";
+import {
+  BRACKETED_PASTE_END,
+  BRACKETED_PASTE_START,
+  insertTextIntoPromptBuffer,
+  normalizePromptPastedTextInput,
+  resolveBracketedPasteKeypressGate,
+} from "../../../cli/tui/components/prompt-input/input-buffer";
 import { createInitialPromptInputTurnState } from "../../../cli/tui/components/prompt-input/turn-state";
 import {
   isHistorySearchShortcut,
@@ -338,6 +345,34 @@ export function runInputKeybindingChecks(): ContractPayload {
   const runningControlIgnored = resolveRunningInputAction("\u0012");
   const runningCoalescedSubmit = resolveRunningInputActions("继续处理\r");
   const draftCarryState = createInitialPromptInputTurnState("未提交草稿");
+  const normalizedPromptPaste = normalizePromptPastedTextInput(
+    "Line 1\r\nLine\t2\u001B[31m red\u001B[0m\u202E",
+  );
+  const promptPasteInsertedAtCursor = insertTextIntoPromptBuffer({
+    graphemes: ["a", "d"],
+    cursor: 1,
+    value: normalizedPromptPaste,
+  });
+  const promptPasteStartGate = resolveBracketedPasteKeypressGate({
+    currentSuppressed: false,
+    keyName: "paste-start",
+  });
+  const promptPastePayloadGate = resolveBracketedPasteKeypressGate({
+    currentSuppressed: promptPasteStartGate.suppress,
+    keyName: "h",
+  });
+  const promptPasteEndGate = resolveBracketedPasteKeypressGate({
+    currentSuppressed: promptPastePayloadGate.suppress,
+    keyName: "paste-end",
+  });
+  const promptPasteSequenceStartGate = resolveBracketedPasteKeypressGate({
+    currentSuppressed: false,
+    sequence: BRACKETED_PASTE_START,
+  });
+  const promptPasteSequenceEndGate = resolveBracketedPasteKeypressGate({
+    currentSuppressed: true,
+    sequence: BRACKETED_PASTE_END,
+  });
 
   return {
     submit_return_detected: submitReturn === "submit",
@@ -506,5 +541,22 @@ export function runInputKeybindingChecks(): ContractPayload {
     running_input_draft_can_seed_next_prompt:
       draftCarryState.graphemes.join("") === "未提交草稿"
       && draftCarryState.cursor === draftCarryState.graphemes.length,
+    prompt_paste_normalizes_reference_style_text:
+      normalizedPromptPaste === "Line 1\nLine    2 red",
+    prompt_paste_inserts_at_cursor:
+      promptPasteInsertedAtCursor.graphemes.join("") === "aLine 1\nLine    2 redd"
+      && promptPasteInsertedAtCursor.cursor === Array.from("aLine 1\nLine    2 red").length,
+    prompt_paste_keypress_gate_suppresses_bracketed_payload:
+      promptPasteStartGate.shouldIgnore
+      && promptPasteStartGate.suppress
+      && promptPastePayloadGate.shouldIgnore
+      && promptPastePayloadGate.suppress
+      && promptPasteEndGate.shouldIgnore
+      && !promptPasteEndGate.suppress,
+    prompt_paste_keypress_gate_accepts_sequences:
+      promptPasteSequenceStartGate.shouldIgnore
+      && promptPasteSequenceStartGate.suppress
+      && promptPasteSequenceEndGate.shouldIgnore
+      && !promptPasteSequenceEndGate.suppress,
   };
 }

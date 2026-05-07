@@ -14,6 +14,7 @@ import {
   clampPromptInputCursor,
   insertTextIntoPromptBuffer,
   movePromptBufferCursorVertical,
+  normalizePromptPastedTextInput,
   removeSelectedInlineImageToken as removeInlineImageTokenFromBuffer,
   replacePromptBufferActiveLineWithCommand,
   stripPromptBufferBracketedPasteMarkers,
@@ -135,10 +136,10 @@ export function createPromptInputTurnActions(input: {
         return;
       }
       const stripped = stripBracketedMarkersFromBuffer();
-      if (payload.trim().length > 0) {
-        if (stripped) {
-          renderSession.render();
-        }
+      const normalizedPayload = normalizePromptPastedTextInput(payload);
+      if (normalizedPayload.length > 0) {
+        insertTextAtCursor(normalizedPayload);
+        renderSession.render();
         return;
       }
       const pasted = tryPasteInlineClipboardImage();
