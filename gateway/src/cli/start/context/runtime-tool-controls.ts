@@ -1,5 +1,8 @@
 export type NoToolFallbackMode = "off" | "safe" | "strict";
 
+const RUNTIME_TOOLS_ALLOW_DETAIL =
+  "runtime-tools-allow must be a non-empty array of non-empty strings";
+
 export class RuntimeToolControlInputError extends Error {
   readonly code: string;
   readonly field: string;
@@ -43,6 +46,43 @@ function parseIntegerControl(input: {
     );
   }
   return parsed;
+}
+
+function throwRuntimeToolsAllowError(detail: string): never {
+  throw new RuntimeToolControlInputError(
+    "runtime-tools-allow",
+    `${detail} (source=project_toml)`,
+  );
+}
+
+export function parseRuntimeToolsAllowlist(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) {
+    throwRuntimeToolsAllowError(RUNTIME_TOOLS_ALLOW_DETAIL);
+  }
+  const content = trimmed.slice(1, -1).trim();
+  if (!content) {
+    throwRuntimeToolsAllowError(RUNTIME_TOOLS_ALLOW_DETAIL);
+  }
+  const values: string[] = [];
+  const seen = new Set<string>();
+  for (const token of content.split(",")) {
+    const part = token.trim();
+    const match = part.match(/^"([^"]*)"$/);
+    if (!match || typeof match[1] !== "string") {
+      throwRuntimeToolsAllowError(RUNTIME_TOOLS_ALLOW_DETAIL);
+    }
+    const value = match[1].trim();
+    if (!value) {
+      throwRuntimeToolsAllowError(RUNTIME_TOOLS_ALLOW_DETAIL);
+    }
+    if (seen.has(value)) {
+      throwRuntimeToolsAllowError("runtime-tools-allow values must be unique");
+    }
+    seen.add(value);
+    values.push(value);
+  }
+  return values;
 }
 
 export function resolveMaxToolRounds(raw = process.env.GROBOT_MAX_TOOL_ROUNDS): number {

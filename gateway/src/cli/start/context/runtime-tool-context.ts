@@ -5,8 +5,9 @@ import {
   resolveRuntimeToolDescribeDecision,
   type RuntimeToolEnabledToolsSource,
 } from "../../services/runtime-tool-describe-decision";
-import { parseTomlStringArray, stripInlineComment } from "./toml";
+import { stripInlineComment } from "./toml";
 import {
+  parseRuntimeToolsAllowlist,
   resolveMaxRecoveryRounds,
   resolveMaxToolRounds,
   resolveNoToolFallbackMode,
@@ -44,7 +45,7 @@ function readToolsAllowlistFromProjectToml(projectTomlPath?: string): string[] {
     if (kvMatch[1] !== "allow") {
       continue;
     }
-    return parseTomlStringArray(kvMatch[2]);
+    return parseRuntimeToolsAllowlist(kvMatch[2]);
   }
   return [];
 }

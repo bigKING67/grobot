@@ -33,8 +33,14 @@ export function assertRuntimeModelControlSmoke() {
   assert.equal(payload.invalid_prompt_cache_capability_has_stable_error, true);
   assert.equal(payload.invalid_prompt_cache_enabled_type_exit_code, 2);
   assert.equal(payload.invalid_prompt_cache_enabled_type_has_stable_error, true);
+  assert.equal(payload.invalid_search_routing_exit_code, 2);
+  assert.equal(payload.invalid_search_routing_has_stable_error, true);
+  assert.equal(payload.malformed_search_routing_exit_code, 2);
+  assert.equal(payload.malformed_search_routing_has_stable_error, true);
   assert.equal(payload.valid_boundary_exit_code !== 2, true);
   assert.equal(payload.valid_boundary_reached_runtime, true);
+  assert.equal(payload.valid_search_routing_boundary_exit_code !== 2, true);
+  assert.equal(payload.valid_search_routing_boundary_reached_runtime, true);
   assert.equal(payload.hides_top_level_fatal, true);
   assert.equal(payload.has_start_banner, false);
   logStep("start-smoke-contract start-invalid-runtime-model-controls-reject-flow");

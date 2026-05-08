@@ -150,6 +150,15 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     controls accept only `0..100`, cache TTLs must be `250..120000` ms, and
     session topic max width must be `8..160`. Numeric values must not be
     silently clamped.
+20. Search routing and runtime tool allowlist controls must fail closed on
+    malformed explicit project TOML values. `[search.routing] kimi` and
+    `kimi_route` may use the default routing policy only when omitted; invalid
+    or malformed explicit values must exit `2` with stable
+    `invalid_search_routing_kimi` errors before prompt/runtime bootstrap.
+    `[tools] allow` must be a non-empty array of non-empty strings when
+    specified; malformed arrays, empty arrays, empty entries, or duplicate
+    entries must exit `2` with stable `invalid_runtime_tools_allow` errors
+    instead of silently clearing or partially applying the allowlist.
 
 ---
 

@@ -127,6 +127,14 @@ function throwProviderConfigError(
   );
 }
 
+function throwRuntimeModelConfigError(
+  field: string,
+  detail: string,
+  source: string,
+): never {
+  throw new RuntimeModelConfigInputError(field, `${detail} (source=${source})`);
+}
+
 function assertProviderConfigParseErrors(input: {
   provider: RuntimeProviderPoolProvider | undefined;
   context: RuntimeProviderConfigContext;
@@ -409,6 +417,19 @@ function normalizeKimiSearchRoutingPolicy(
   return undefined;
 }
 
+function readKimiSearchRoutingPolicy(raw: string): KimiSearchRoutingPolicy {
+  const parsedValue = parseTomlString(raw);
+  const policy = normalizeKimiSearchRoutingPolicy(parsedValue);
+  if (policy) {
+    return policy;
+  }
+  throwRuntimeModelConfigError(
+    "search-routing-kimi",
+    "search-routing-kimi must be mcp_first_fallback_builtin, builtin_only, or mcp_only",
+    "project_toml",
+  );
+}
+
 export function readKimiSearchRoutingPolicyFromProjectToml(
   projectTomlPath?: string,
 ): KimiSearchRoutingPolicy {
@@ -444,11 +465,7 @@ export function readKimiSearchRoutingPolicyFromProjectToml(
     if (key !== "kimi" && key !== "kimi_route") {
       continue;
     }
-    const parsedValue = parseTomlString(kvMatch[2]);
-    const policy = normalizeKimiSearchRoutingPolicy(parsedValue);
-    if (policy) {
-      return policy;
-    }
+    return readKimiSearchRoutingPolicy(kvMatch[2]);
   }
   return DEFAULT_KIMI_SEARCH_ROUTING_POLICY;
 }

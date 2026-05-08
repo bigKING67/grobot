@@ -1,36 +1,6 @@
 import { readFileSync } from "node:fs";
-
-function stripInlineComment(rawLine: string): string {
-  const hashIndex = rawLine.indexOf("#");
-  if (hashIndex < 0) {
-    return rawLine;
-  }
-  return rawLine.slice(0, hashIndex);
-}
-
-function parseTomlStringArray(raw: string): string[] {
-  const trimmed = raw.trim();
-  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) {
-    return [];
-  }
-  const content = trimmed.slice(1, -1).trim();
-  if (content.length === 0) {
-    return [];
-  }
-  const items: string[] = [];
-  for (const part of content.split(",")) {
-    const value = part.trim();
-    if (!value.startsWith("\"") || !value.endsWith("\"")) {
-      continue;
-    }
-    const normalized = value.slice(1, -1).trim();
-    if (normalized.length === 0) {
-      continue;
-    }
-    items.push(normalized);
-  }
-  return items;
-}
+import { stripInlineComment } from "../start/context/toml";
+import { parseRuntimeToolsAllowlist } from "../start/context/runtime-tool-controls";
 
 export function readToolsAllowlistFromProjectToml(projectTomlPath?: string): string[] {
   if (!projectTomlPath) {
@@ -61,7 +31,7 @@ export function readToolsAllowlistFromProjectToml(projectTomlPath?: string): str
     if (!kvMatch || kvMatch[1] !== "allow") {
       continue;
     }
-    return parseTomlStringArray(kvMatch[2]);
+    return parseRuntimeToolsAllowlist(kvMatch[2]);
   }
   return [];
 }
