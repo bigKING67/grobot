@@ -229,6 +229,25 @@ export async function runCoreContracts() {
   assert.equal(typeof runtimePathsPayload.project_root, "string");
   logStep("runtime-paths-contract resolve-runtime-paths");
 
+  const runtimePathResolutionResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/runtime-path-resolution-contract.ts",
+  ]);
+  assertSuccess("runtime-path-resolution-contract", runtimePathResolutionResult);
+  const runtimePathResolutionPayload = parseJsonOutput(
+    "runtime-path-resolution-contract",
+    runtimePathResolutionResult.stdout,
+  );
+  assert.equal(runtimePathResolutionPayload.explicit_project_root_isolates_dev_repo_config, true);
+  assert.equal(runtimePathResolutionPayload.explicit_project_root_prefers_project_toml, true);
+  assert.equal(runtimePathResolutionPayload.explicit_project_root_reads_distinct_workdir_toml, true);
+  assert.equal(runtimePathResolutionPayload.explicit_project_root_prefers_project_over_workdir_toml, true);
+  assert.equal(runtimePathResolutionPayload.implicit_project_root_allows_dev_repo_fallback, true);
+  logStep("runtime-path-resolution-contract");
+
   runContract("session-lifecycle-contract.mjs", "parse-args", [
     "--argv",
     JSON.stringify(["start", "--session-scope", "dm", "--session-subject", "smoke-user"]),

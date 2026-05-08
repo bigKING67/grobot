@@ -69,6 +69,11 @@ export function resolveProjectTomlPath(
     if (fileReadable(fromProjectRoot)) {
       return fromProjectRoot;
     }
+    const fromWorkDir = `${workDir}/.grobot/project.toml`;
+    if (fromWorkDir !== fromProjectRoot && fileReadable(fromWorkDir)) {
+      return fromWorkDir;
+    }
+    return undefined;
   }
   const fromWorkDir = `${workDir}/.grobot/project.toml`;
   if (fileReadable(fromWorkDir)) {

@@ -1,0 +1,139 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { type OptionValue } from "../../cli/cli-args";
+import { resolveProjectTomlPath } from "../../cli/services/runtime-paths";
+
+function assertEqual(actual: unknown, expected: unknown, message: string): void {
+  if (actual !== expected) {
+    throw new Error(`${message}: expected=${String(expected)} actual=${String(actual)}`);
+  }
+}
+
+function writeProjectToml(root: string, marker: string): string {
+  const path = resolve(root, ".grobot", "project.toml");
+  mkdirSync(resolve(root, ".grobot"), { recursive: true });
+  writeFileSync(path, `name = "${marker}"\n`, "utf8");
+  return path;
+}
+
+function resolvePath(input: {
+  options?: Record<string, OptionValue>;
+  workDir: string;
+  projectRoot: string;
+  homeDir: string;
+}): string | undefined {
+  return resolveProjectTomlPath(
+    input.options ?? {},
+    input.workDir,
+    input.projectRoot,
+    input.homeDir,
+  );
+}
+
+function main(): void {
+  const root = resolve(
+    "/tmp",
+    `grobot-runtime-paths-${String(process.pid)}-${String(Date.now())}`,
+  );
+  const homeDir = resolve(root, "home");
+  const devRepoRoot = resolve(root, "dev-repo");
+  const isolatedProjectRoot = resolve(root, "isolated-project");
+  const isolatedWorkDir = resolve(root, "isolated-work");
+  mkdirSync(homeDir, { recursive: true });
+  mkdirSync(isolatedProjectRoot, { recursive: true });
+  mkdirSync(isolatedWorkDir, { recursive: true });
+
+  const devRepoProjectToml = writeProjectToml(devRepoRoot, "dev-repo");
+  const previousDevRepoRoot = process.env.GROBOT_TS_DEV_REPO_ROOT;
+  process.env.GROBOT_TS_DEV_REPO_ROOT = devRepoRoot;
+
+  try {
+    const explicitIsolated = resolvePath({
+      options: { "project-root": isolatedProjectRoot },
+      workDir: isolatedProjectRoot,
+      projectRoot: isolatedProjectRoot,
+      homeDir,
+    });
+
+    const projectOnlyRoot = resolve(root, "project-only");
+    const projectOnlyToml = writeProjectToml(projectOnlyRoot, "project-only");
+    const explicitProjectToml = resolvePath({
+      options: { "project-root": projectOnlyRoot },
+      workDir: projectOnlyRoot,
+      projectRoot: projectOnlyRoot,
+      homeDir,
+    });
+
+    const workOnlyProjectRoot = resolve(root, "work-only-project");
+    const workOnlyWorkDir = resolve(root, "work-only-workdir");
+    mkdirSync(workOnlyProjectRoot, { recursive: true });
+    const workOnlyToml = writeProjectToml(workOnlyWorkDir, "work-only");
+    const explicitWorkToml = resolvePath({
+      options: { "project-root": workOnlyProjectRoot },
+      workDir: workOnlyWorkDir,
+      projectRoot: workOnlyProjectRoot,
+      homeDir,
+    });
+
+    const bothProjectRoot = resolve(root, "both-project");
+    const bothWorkDir = resolve(root, "both-workdir");
+    const bothProjectToml = writeProjectToml(bothProjectRoot, "both-project");
+    writeProjectToml(bothWorkDir, "both-workdir");
+    const explicitBothToml = resolvePath({
+      options: { "project-root": bothProjectRoot },
+      workDir: bothWorkDir,
+      projectRoot: bothProjectRoot,
+      homeDir,
+    });
+
+    const implicitDevRepoFallback = resolvePath({
+      workDir: isolatedWorkDir,
+      projectRoot: isolatedProjectRoot,
+      homeDir,
+    });
+
+    const payload = {
+      explicit_project_root_isolates_dev_repo_config: explicitIsolated === undefined,
+      explicit_project_root_prefers_project_toml: explicitProjectToml === projectOnlyToml,
+      explicit_project_root_reads_distinct_workdir_toml: explicitWorkToml === workOnlyToml,
+      explicit_project_root_prefers_project_over_workdir_toml: explicitBothToml === bothProjectToml,
+      implicit_project_root_allows_dev_repo_fallback: implicitDevRepoFallback === devRepoProjectToml,
+    };
+
+    assertEqual(
+      payload.explicit_project_root_isolates_dev_repo_config,
+      true,
+      "explicit --project-root must not inherit dev repo project.toml",
+    );
+    assertEqual(
+      payload.explicit_project_root_prefers_project_toml,
+      true,
+      "explicit --project-root should read projectRoot project.toml",
+    );
+    assertEqual(
+      payload.explicit_project_root_reads_distinct_workdir_toml,
+      true,
+      "explicit --project-root should still read a distinct workDir project.toml",
+    );
+    assertEqual(
+      payload.explicit_project_root_prefers_project_over_workdir_toml,
+      true,
+      "projectRoot project.toml should win over workDir when both exist",
+    );
+    assertEqual(
+      payload.implicit_project_root_allows_dev_repo_fallback,
+      true,
+      "implicit project root should keep TS dev repo fallback",
+    );
+
+    process.stdout.write(`${JSON.stringify(payload)}\n`);
+  } finally {
+    if (typeof previousDevRepoRoot === "string") {
+      process.env.GROBOT_TS_DEV_REPO_ROOT = previousDevRepoRoot;
+    } else {
+      delete process.env.GROBOT_TS_DEV_REPO_ROOT;
+    }
+  }
+}
+
+main();
