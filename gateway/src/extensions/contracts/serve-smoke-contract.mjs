@@ -151,6 +151,13 @@ function findProviderState(states, providerName) {
   return asRecord(states.find((state) => asRecord(state).provider_name === providerName));
 }
 
+function selectedProviderFromManagementStatus(statusEndpoint) {
+  const body = asRecord(statusEndpoint?.body);
+  const routeDecision = asRecord(body.route_decision);
+  const observed = asRecord(routeDecision.observed);
+  return observed.selected_provider ?? null;
+}
+
 async function terminateProcess(proc) {
   if (proc.killed || proc.exitCode !== null) {
     proc.unref();
@@ -633,6 +640,23 @@ async function runProviderFailureRouteStatusManagementApi(options) {
         signal_code: proc.signalCode,
       };
     }
+    const aliasedSubjectStatus = await requestJson(
+      `${baseUrl}/api/v1/status?scope=dm&subject=${encodeURIComponent(sessionSubject)}`,
+      { timeoutMs: 1_000 },
+    );
+    const unknownSubjectStatus = await requestJson(
+      `${baseUrl}/api/v1/status?session-scope=dm&session-subject=${encodeURIComponent("unknown-status-user")}`,
+      { timeoutMs: 1_000 },
+    );
+    const invalidSubjectStatus = await requestJson(
+      `${baseUrl}/api/v1/status?session-subject=${encodeURIComponent("bad:subject")}`,
+      { timeoutMs: 1_000 },
+    );
+    const invalidScopeStatus = await requestJson(
+      `${baseUrl}/api/v1/status?session-scope=${encodeURIComponent("room")}`,
+      { timeoutMs: 1_000 },
+    );
+    const postInvalidStatus = await requestJson(`${baseUrl}/api/v1/status`, { timeoutMs: 1_000 });
     const body = asRecord(statusResult.body);
     const routeDecision = asRecord(body.route_decision);
     const routeObserved = asRecord(routeDecision.observed);
@@ -653,6 +677,23 @@ async function runProviderFailureRouteStatusManagementApi(options) {
       management_status_has_success_state: Object.keys(successState).length > 0,
       management_status_selected_provider: routeObserved.selected_provider ?? null,
       management_status_selected_reason: routeObserved.reason ?? null,
+      management_alias_query_selected_provider:
+        selectedProviderFromManagementStatus(aliasedSubjectStatus),
+      management_unknown_subject_selected_provider:
+        selectedProviderFromManagementStatus(unknownSubjectStatus),
+      management_unknown_subject_selected_reason:
+        asRecord(asRecord(asRecord(unknownSubjectStatus.body).route_decision).observed).reason ?? null,
+      management_invalid_subject_status: invalidSubjectStatus.status,
+      management_invalid_subject_error:
+        asRecord(invalidSubjectStatus.body).error ?? null,
+      management_invalid_subject_field:
+        asRecord(invalidSubjectStatus.body).field ?? null,
+      management_invalid_scope_status: invalidScopeStatus.status,
+      management_invalid_scope_error:
+        asRecord(invalidScopeStatus.body).error ?? null,
+      management_post_invalid_status: postInvalidStatus.status,
+      management_post_invalid_selected_provider:
+        selectedProviderFromManagementStatus(postInvalidStatus),
       management_success_last_error_class: successState.last_error_class ?? null,
       management_success_last_error_health_penalty:
         Number.isFinite(Number(successErrorHealth.score_penalty))

@@ -20,6 +20,7 @@ import {
 } from "./http-utils";
 import { type ManagementRoutesContext } from "./management-routes";
 import {
+  isRunServeRouteDecisionInputError,
   resolveRunServeRouteDecision,
   type RunServeRouteDecisionInput,
 } from "./run-serve-context";
@@ -54,35 +55,53 @@ export function createRunServeRouteContext(
     memoryStoreKey: input.memoryStoreKey,
     getReloadCount: input.runtimeState.getReloadCount,
     getExecutionPlane: input.runtimeState.getExecutionPlane,
-    getRouteDecision: (query) =>
-      resolveRunServeRouteDecision(
-        {
-          ...input.routeDecisionInput,
-          configTomlPath: input.runtimeState.getConfigTomlPath(),
-        },
-        {
-          platform: queryParamStr(
-            query,
-            "platform",
-            input.routeDecisionInput.session.platform ?? "",
+    getRouteDecision: (query) => {
+      const platform = queryParamStr(query, "platform", "").trim() || undefined;
+      const scope =
+        queryParamStr(query, "session-scope", "").trim()
+        || queryParamStr(query, "scope", "").trim()
+        || undefined;
+      try {
+        return {
+          ok: true,
+          value: resolveRunServeRouteDecision(
+            {
+              ...input.routeDecisionInput,
+              configTomlPath: input.runtimeState.getConfigTomlPath(),
+            },
+            {
+              platform,
+              tenant: queryParamStr(
+                query,
+                "tenant",
+                input.routeDecisionInput.session.tenant,
+              ),
+              scope,
+              subject: queryParamStr(
+                query,
+                "session-subject",
+                queryParamStr(query, "subject", input.routeDecisionInput.session.subject),
+              ),
+            },
           ),
-          tenant: queryParamStr(
-            query,
-            "tenant",
-            input.routeDecisionInput.session.tenant,
-          ),
-          scope: queryParamStr(
-            query,
-            "session-scope",
-            queryParamStr(query, "scope", input.routeDecisionInput.session.scope ?? ""),
-          ),
-          subject: queryParamStr(
-            query,
-            "session-subject",
-            queryParamStr(query, "subject", input.routeDecisionInput.session.subject),
-          ),
-        },
-      ),
+        };
+      } catch (error) {
+        if (isRunServeRouteDecisionInputError(error)) {
+          return {
+            ok: false,
+            error: error.code,
+            field: error.field,
+            detail: error.message,
+          };
+        }
+        return {
+          ok: false,
+          error: "route_decision_unavailable",
+          field: "route_decision",
+          detail: String(error),
+        };
+      }
+    },
     getConfigTomlPath: input.runtimeState.getConfigTomlPath,
     getConfigReadPolicy: input.runtimeState.getConfigReadPolicy,
     getMemoryStoreRuntime: () => {

@@ -14,6 +14,18 @@ import {
 } from "../../tools/state/experience-pool/types";
 import { type RouteDecisionSummary } from "../status/route-status";
 
+export type ManagementRouteDecisionResult =
+  | {
+      ok: true;
+      value: RouteDecisionSummary;
+    }
+  | {
+      ok: false;
+      error: string;
+      field: string;
+      detail: string;
+    };
+
 export interface ExecutionPlaneState {
   gatewayImpl: string;
   runtimeImpl: string;
@@ -50,7 +62,7 @@ export interface ManagementRoutesContext {
   memoryStoreKey: string;
   getReloadCount: () => number;
   getExecutionPlane: () => ExecutionPlaneState;
-  getRouteDecision: (query: QueryParams) => RouteDecisionSummary;
+  getRouteDecision: (query: QueryParams) => ManagementRouteDecisionResult;
   getConfigTomlPath: () => string | undefined;
   getConfigReadPolicy: () => ConfigReadPolicyState;
   getMemoryStoreRuntime: () => MemoryStoreRuntime;

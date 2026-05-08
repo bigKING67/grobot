@@ -105,8 +105,12 @@ Implementation points:
    scoring, and must preserve the same unsafe-field exclusion for
    `body_preview` and `response_headers`. Query parameters may select a session
    namespace (`platform`, `tenant`, `session-scope` / `scope`,
-   `session-subject` / `subject`), but the returned provider health fields must
-   remain the same shape as `grobot status --json`.
+   `session-subject` / `subject`), but invalid namespace values must fail as
+   stable JSON `400` envelopes (`invalid_session_platform`,
+   `invalid_session_scope`, `invalid_session_tenant`,
+   `invalid_session_subject`) instead of throwing through the HTTP server.
+   Valid alias query forms must return provider health fields in the same shape
+   as `grobot status --json`.
 
 Memory and experience feedback must preserve the same safe structured signal
 without storing unsafe provider previews:

@@ -36,7 +36,16 @@ export async function dispatchManagementRoutes(
   if (method === "GET" && path === "/api/v1/status") {
     const query = context.parseQueryParams(rawUrl);
     const executionPlane = context.getExecutionPlane();
-    const routeDecision = context.getRouteDecision(query);
+    const routeDecisionResult = context.getRouteDecision(query);
+    if (!routeDecisionResult.ok) {
+      context.writeJson(response, 400, {
+        error: routeDecisionResult.error,
+        field: routeDecisionResult.field,
+        detail: routeDecisionResult.detail,
+      });
+      return true;
+    }
+    const routeDecision = routeDecisionResult.value;
     const configReadPolicy = context.getConfigReadPolicy();
     const memoryStoreRuntime = context.getMemoryStoreRuntime();
     const experiencePoolState = context.getExperiencePoolState();

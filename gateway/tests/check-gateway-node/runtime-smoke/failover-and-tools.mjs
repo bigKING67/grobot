@@ -289,6 +289,19 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(managementProviderFailurePayload.management_status_has_success_state, true);
   assert.equal(managementProviderFailurePayload.management_status_selected_provider, "success");
   assert.equal(managementProviderFailurePayload.management_status_selected_reason, "session_sticky_provider");
+  assert.equal(managementProviderFailurePayload.management_alias_query_selected_provider, "success");
+  assert.equal(managementProviderFailurePayload.management_unknown_subject_selected_provider, "failing");
+  assert.equal(
+    managementProviderFailurePayload.management_unknown_subject_selected_reason,
+    "session_registry_unavailable",
+  );
+  assert.equal(managementProviderFailurePayload.management_invalid_subject_status, 400);
+  assert.equal(managementProviderFailurePayload.management_invalid_subject_error, "invalid_session_subject");
+  assert.equal(managementProviderFailurePayload.management_invalid_subject_field, "session-subject");
+  assert.equal(managementProviderFailurePayload.management_invalid_scope_status, 400);
+  assert.equal(managementProviderFailurePayload.management_invalid_scope_error, "invalid_session_scope");
+  assert.equal(managementProviderFailurePayload.management_post_invalid_status, 200);
+  assert.equal(managementProviderFailurePayload.management_post_invalid_selected_provider, "success");
   assert.equal(managementProviderFailurePayload.management_success_last_error_class, null);
   assert.equal(managementProviderFailurePayload.management_success_last_error_health_penalty, 0);
   assert.equal(managementProviderFailurePayload.management_success_last_succeeded_at_type, "string");
