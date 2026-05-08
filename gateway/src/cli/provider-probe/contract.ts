@@ -42,6 +42,7 @@ export interface MutableProvider {
   maxInFlight?: number;
   requestsPerMinute?: number;
   burst?: number;
+  configErrors?: ProviderConfigFieldError[];
 }
 
 export interface MutableProject {
@@ -76,6 +77,12 @@ export interface ProviderSnapshot {
   maxInFlight?: number;
   requestsPerMinute?: number;
   burst?: number;
+  configErrors?: ProviderConfigFieldError[];
+}
+
+export interface ProviderConfigFieldError {
+  field: string;
+  detail: string;
 }
 
 export interface ProjectProviderSnapshot {

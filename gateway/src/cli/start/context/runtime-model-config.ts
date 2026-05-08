@@ -45,6 +45,7 @@ interface RuntimeProviderPoolProvider {
   maxInFlight?: number;
   requestsPerMinute?: number;
   burst?: number;
+  configErrors?: RuntimeProviderConfigFieldError[];
 }
 
 interface RuntimeProviderPoolSnapshot {
@@ -87,6 +88,61 @@ const DEFAULT_KIMI_OFFICIAL_TOOLS_ALLOWLIST = [
 const DEFAULT_KIMI_SEARCH_ROUTING_POLICY: KimiSearchRoutingPolicy =
   "mcp_first_fallback_builtin";
 
+interface RuntimeProviderConfigFieldError {
+  field: string;
+  detail: string;
+}
+
+interface RuntimeProviderConfigContext {
+  providerName: string;
+  source: string;
+}
+
+export class RuntimeModelConfigInputError extends Error {
+  readonly code: string;
+  readonly field: string;
+
+  constructor(field: string, detail: string) {
+    super(detail);
+    this.name = "RuntimeModelConfigInputError";
+    this.code = `invalid_${field.replace(/-/g, "_")}`;
+    this.field = field;
+  }
+}
+
+export function isRuntimeModelConfigInputError(
+  error: unknown,
+): error is RuntimeModelConfigInputError {
+  return error instanceof RuntimeModelConfigInputError;
+}
+
+function throwProviderConfigError(
+  field: string,
+  detail: string,
+  context: RuntimeProviderConfigContext,
+): never {
+  throw new RuntimeModelConfigInputError(
+    field,
+    `${detail} (provider=${context.providerName} source=${context.source})`,
+  );
+}
+
+function assertProviderConfigParseErrors(input: {
+  provider: RuntimeProviderPoolProvider | undefined;
+  context: RuntimeProviderConfigContext;
+}): void {
+  const errors = input.provider?.configErrors ?? [];
+  if (errors.length === 0) {
+    return;
+  }
+  const first = errors[0];
+  throwProviderConfigError(
+    first?.field ?? "provider-config",
+    first?.detail ?? "provider config is invalid",
+    input.context,
+  );
+}
+
 function normalizeProviderKind(
   rawKind: string | undefined,
   providerName?: string,
@@ -123,8 +179,14 @@ function normalizeKimiAllowlist(raw: string[] | undefined): string[] {
   return [...DEFAULT_KIMI_OFFICIAL_TOOLS_ALLOWLIST];
 }
 
-function normalizeKimiWebSearchMode(raw: string | undefined): KimiWebSearchMode {
+function normalizeKimiWebSearchMode(
+  raw: string | undefined,
+  context: RuntimeProviderConfigContext,
+): KimiWebSearchMode {
   const normalized = raw?.trim().toLowerCase();
+  if (normalized === undefined || normalized.length === 0) {
+    return "builtin_preferred";
+  }
   if (
     normalized === "builtin_preferred" ||
     normalized === "builtin_only" ||
@@ -133,7 +195,11 @@ function normalizeKimiWebSearchMode(raw: string | undefined): KimiWebSearchMode 
   ) {
     return normalized;
   }
-  return "builtin_preferred";
+  throwProviderConfigError(
+    "kimi-web-search-mode",
+    "kimi-web-search-mode must be builtin_preferred, builtin_only, official_only, or off",
+    context,
+  );
 }
 
 function normalizePositiveInt(value: number | undefined): number | undefined {
@@ -147,50 +213,106 @@ function normalizePositiveInt(value: number | undefined): number | undefined {
   return normalized;
 }
 
-function normalizeKimiMaxTokens(raw: number | undefined): number {
-  const normalized = normalizePositiveInt(raw);
-  if (typeof normalized !== "number") {
+function normalizeKimiMaxTokens(
+  raw: number | undefined,
+  context: RuntimeProviderConfigContext,
+): number {
+  if (raw === undefined) {
     return DEFAULT_KIMI_MAX_TOKENS;
   }
-  return Math.min(Math.max(normalized, 1_024), DEFAULT_KIMI_MAX_TOKENS);
+  const normalized = normalizePositiveInt(raw);
+  if (
+    typeof normalized !== "number" ||
+    normalized < 1_024 ||
+    normalized > DEFAULT_KIMI_MAX_TOKENS
+  ) {
+    throwProviderConfigError(
+      "kimi-max-tokens",
+      `kimi-max-tokens must be an integer between 1024 and ${String(DEFAULT_KIMI_MAX_TOKENS)}`,
+      context,
+    );
+  }
+  return normalized;
 }
 
-function normalizeKimiTemperature(raw: number | undefined): number {
-  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+function normalizeKimiTemperature(
+  raw: number | undefined,
+  context: RuntimeProviderConfigContext,
+): number {
+  if (raw === undefined) {
     return DEFAULT_KIMI_TEMPERATURE;
   }
-  return Math.min(Math.max(raw, 0), 2);
+  if (!Number.isFinite(raw) || raw < 0 || raw > 2) {
+    throwProviderConfigError(
+      "kimi-temperature",
+      "kimi-temperature must be a number between 0 and 2",
+      context,
+    );
+  }
+  return raw;
 }
 
-function normalizeKimiTopP(raw: number | undefined): number {
-  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+function normalizeKimiTopP(
+  raw: number | undefined,
+  context: RuntimeProviderConfigContext,
+): number {
+  if (raw === undefined) {
     return DEFAULT_KIMI_TOP_P;
   }
-  return Math.min(Math.max(raw, 0), 1);
+  if (!Number.isFinite(raw) || raw < 0 || raw > 1) {
+    throwProviderConfigError(
+      "kimi-top-p",
+      "kimi-top-p must be a number between 0 and 1",
+      context,
+    );
+  }
+  return raw;
 }
 
 function normalizePromptCacheStrategy(
   raw: string | undefined,
+  context: RuntimeProviderConfigContext,
 ): RuntimePromptCacheStrategy {
   const normalized = raw?.trim().toLowerCase();
+  if (normalized === undefined || normalized.length === 0) {
+    return DEFAULT_PROMPT_CACHE_STRATEGY;
+  }
   if (normalized === "user_last_n") {
     return "user_last_n";
   }
-  return DEFAULT_PROMPT_CACHE_STRATEGY;
+  throwProviderConfigError(
+    "prompt-cache-strategy",
+    "prompt-cache-strategy must be user_last_n",
+    context,
+  );
 }
 
-function normalizePromptCacheUserLastN(raw: number | undefined): number {
-  const normalized = normalizePositiveInt(raw);
-  if (typeof normalized !== "number") {
+function normalizePromptCacheUserLastN(
+  raw: number | undefined,
+  context: RuntimeProviderConfigContext,
+): number {
+  if (raw === undefined) {
     return DEFAULT_PROMPT_CACHE_USER_LAST_N;
   }
-  return Math.min(Math.max(normalized, 1), 12);
+  const normalized = normalizePositiveInt(raw);
+  if (typeof normalized !== "number" || normalized < 1 || normalized > 12) {
+    throwProviderConfigError(
+      "prompt-cache-user-last-n",
+      "prompt-cache-user-last-n must be an integer between 1 and 12",
+      context,
+    );
+  }
+  return normalized;
 }
 
 function normalizePromptCacheCapability(
   raw: string | undefined,
+  context: RuntimeProviderConfigContext,
 ): RuntimePromptCacheCapability {
   const normalized = raw?.trim().toLowerCase();
+  if (normalized === undefined || normalized.length === 0) {
+    return DEFAULT_PROMPT_CACHE_CAPABILITY;
+  }
   if (
     normalized === "anthropic_compatible" ||
     normalized === "anthropic-compatible"
@@ -204,7 +326,11 @@ function normalizePromptCacheCapability(
   ) {
     return "unsupported";
   }
-  return DEFAULT_PROMPT_CACHE_CAPABILITY;
+  throwProviderConfigError(
+    "prompt-cache-capability",
+    "prompt-cache-capability must be anthropic_compatible or unsupported",
+    context,
+  );
 }
 
 function resolvePromptCacheOptions(input: {
@@ -212,6 +338,7 @@ function resolvePromptCacheOptions(input: {
   strategy?: string;
   userLastN?: number;
   capability?: string;
+  context: RuntimeProviderConfigContext;
 }):
   | {
       enabled: boolean;
@@ -230,9 +357,41 @@ function resolvePromptCacheOptions(input: {
   }
   return {
     enabled: input.enabled ?? false,
-    strategy: normalizePromptCacheStrategy(input.strategy),
-    userLastN: normalizePromptCacheUserLastN(input.userLastN),
-    capability: normalizePromptCacheCapability(input.capability),
+    strategy: normalizePromptCacheStrategy(input.strategy, input.context),
+    userLastN: normalizePromptCacheUserLastN(input.userLastN, input.context),
+    capability: normalizePromptCacheCapability(input.capability, input.context),
+  };
+}
+
+function buildRuntimeKimiOptions(input: {
+  provider: RuntimeProviderPoolProvider | undefined;
+  context: RuntimeProviderConfigContext;
+}): NonNullable<RuntimeModelConfig["providerOptions"]>["kimi"] {
+  assertProviderConfigParseErrors(input);
+  const provider = input.provider;
+  return {
+    webSearchMode: normalizeKimiWebSearchMode(
+      provider?.kimiWebSearchMode,
+      input.context,
+    ),
+    disableThinkingOnBuiltinWebSearch:
+      provider?.kimiDisableThinkingOnBuiltinWebSearch ?? true,
+    officialToolsAllowlist: normalizeKimiAllowlist(
+      provider?.kimiOfficialToolsAllowlist,
+    ),
+    promptCache: resolvePromptCacheOptions({
+      enabled: provider?.promptCacheEnabled,
+      strategy: provider?.promptCacheStrategy,
+      userLastN: provider?.promptCacheUserLastN,
+      capability: provider?.promptCacheCapability,
+      context: input.context,
+    }),
+    maxTokens: normalizeKimiMaxTokens(provider?.kimiMaxTokens, input.context),
+    stream: provider?.kimiStream ?? DEFAULT_KIMI_STREAM,
+    temperature: normalizeKimiTemperature(provider?.kimiTemperature, input.context),
+    topP: normalizeKimiTopP(provider?.kimiTopP, input.context),
+    filesEnabled: provider?.kimiFilesEnabled ?? true,
+    allowFileAdmin: provider?.kimiAllowFileAdmin ?? false,
   };
 }
 
@@ -419,28 +578,16 @@ export function resolveRuntimeModelConfig(
     modelConfig.timeoutMs = resolvedTimeoutMs;
   }
   modelConfig.providerKind = defaultProviderKind;
+  const defaultProviderConfigContext = {
+    providerName: fallback?.name?.trim() || "direct",
+    source: fallbackPool?.source ?? "runtime-model",
+  };
   if (defaultProviderKind === "kimi") {
     modelConfig.providerOptions = {
-      kimi: {
-        webSearchMode: normalizeKimiWebSearchMode(fallback?.kimiWebSearchMode),
-        disableThinkingOnBuiltinWebSearch:
-          fallback?.kimiDisableThinkingOnBuiltinWebSearch ?? true,
-        officialToolsAllowlist: normalizeKimiAllowlist(
-          fallback?.kimiOfficialToolsAllowlist,
-        ),
-        promptCache: resolvePromptCacheOptions({
-          enabled: fallback?.promptCacheEnabled,
-          strategy: fallback?.promptCacheStrategy,
-          userLastN: fallback?.promptCacheUserLastN,
-          capability: fallback?.promptCacheCapability,
-        }),
-        maxTokens: normalizeKimiMaxTokens(fallback?.kimiMaxTokens),
-        stream: fallback?.kimiStream ?? DEFAULT_KIMI_STREAM,
-        temperature: normalizeKimiTemperature(fallback?.kimiTemperature),
-        topP: normalizeKimiTopP(fallback?.kimiTopP),
-        filesEnabled: fallback?.kimiFilesEnabled ?? true,
-        allowFileAdmin: fallback?.kimiAllowFileAdmin ?? false,
-      },
+      kimi: buildRuntimeKimiOptions({
+        provider: fallback,
+        context: defaultProviderConfigContext,
+      }),
     };
   }
   source.providerKind =
@@ -472,32 +619,20 @@ export function resolveRuntimeModelConfig(
         providerBaseUrl,
       );
       candidateModelConfig.providerKind = providerKind;
+      const providerConfigContext = {
+        providerName: provider.name.trim(),
+        source: fallbackPool.source,
+      };
       candidateModelConfig.timeoutMs =
         typeof timeoutMs === "number"
           ? timeoutMs
           : resolveDefaultRuntimeHttpTimeoutMs(providerKind);
       if (providerKind === "kimi") {
         candidateModelConfig.providerOptions = {
-          kimi: {
-            webSearchMode: normalizeKimiWebSearchMode(provider.kimiWebSearchMode),
-            disableThinkingOnBuiltinWebSearch:
-              provider.kimiDisableThinkingOnBuiltinWebSearch ?? true,
-            officialToolsAllowlist: normalizeKimiAllowlist(
-              provider.kimiOfficialToolsAllowlist,
-            ),
-            promptCache: resolvePromptCacheOptions({
-              enabled: provider.promptCacheEnabled,
-              strategy: provider.promptCacheStrategy,
-              userLastN: provider.promptCacheUserLastN,
-              capability: provider.promptCacheCapability,
-            }),
-            maxTokens: normalizeKimiMaxTokens(provider.kimiMaxTokens),
-            stream: provider.kimiStream ?? DEFAULT_KIMI_STREAM,
-            temperature: normalizeKimiTemperature(provider.kimiTemperature),
-            topP: normalizeKimiTopP(provider.kimiTopP),
-            filesEnabled: provider.kimiFilesEnabled ?? true,
-            allowFileAdmin: provider.kimiAllowFileAdmin ?? false,
-          },
+          kimi: buildRuntimeKimiOptions({
+            provider,
+            context: providerConfigContext,
+          }),
         };
       }
       providerChain.push({

@@ -63,6 +63,7 @@ import { isMemoryStoreConfigInputError } from "../services/memory-store-config";
 import { isExperienceControlInputError } from "../services/experience-controls";
 import { isStartSessionOptionInputError } from "./session/input-errors";
 import { isRuntimeToolControlInputError } from "./context/runtime-tool-controls";
+import { isRuntimeModelConfigInputError } from "./context/runtime-model-config";
 
 export async function runStart(
   options: Record<string, OptionValue>,
@@ -93,6 +94,10 @@ export async function runStart(
       return 2;
     }
     if (isRuntimeToolControlInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    if (isRuntimeModelConfigInputError(error)) {
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }

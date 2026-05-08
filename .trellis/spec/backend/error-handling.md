@@ -103,6 +103,15 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     `context-persistent-graph-degrade-min-scanned-files` must exit `2` with
     stable `invalid_<field>` errors. Ratio controls accept only `0..1`, and
     integer controls use bounded ranges matching the status window readers.
+15. Runtime model provider controls must fail closed on malformed explicit
+    provider TOML values. Kimi-specific knobs (`kimi_web_search_mode`,
+    `kimi_max_tokens`, `kimi_temperature`, `kimi_top_p`, Kimi boolean flags) and
+    prompt-cache knobs (`prompt_cache_enabled`, `prompt_cache_strategy`,
+    `prompt_cache_user_last_n`, `prompt_cache_capability`, plus `kimi_*`
+    aliases) may use provider defaults only when omitted; malformed,
+    unsupported, or out-of-range explicit values must exit `2` with stable
+    `invalid_<field>` errors before runtime turn execution. Numeric values must
+    not be silently clamped.
 
 ---
 

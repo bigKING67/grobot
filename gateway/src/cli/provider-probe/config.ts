@@ -95,6 +95,26 @@ function assignProviderTomlValue(
   value: string,
   rawValue: string,
 ): void {
+  const recordError = (field: string, detail: string): void => {
+    currentProvider.configErrors ??= [];
+    currentProvider.configErrors.push({ field, detail });
+  };
+  const assignBoolean = (field: string, apply: (value: boolean) => void): void => {
+    const parsed = parseTomlBoolean(rawValue);
+    if (typeof parsed !== "boolean") {
+      recordError(field, `${field.replace(/_/g, "-")} must be boolean`);
+      return;
+    }
+    apply(parsed);
+  };
+  const assignNumber = (field: string, apply: (value: number) => void): void => {
+    const parsed = parseTomlNumber(rawValue);
+    if (typeof parsed !== "number") {
+      recordError(field, `${field.replace(/_/g, "-")} must be a number`);
+      return;
+    }
+    apply(parsed);
+  };
   if (key === "name") {
     currentProvider.name = value;
   } else if (key === "base_url") {
@@ -108,41 +128,71 @@ function assignProviderTomlValue(
   } else if (key === "kimi_web_search_mode") {
     currentProvider.kimiWebSearchMode = value;
   } else if (key === "kimi_disable_thinking_on_builtin_web_search") {
-    currentProvider.kimiDisableThinkingOnBuiltinWebSearch = parseTomlBoolean(rawValue);
+    assignBoolean(key, (parsed) => {
+      currentProvider.kimiDisableThinkingOnBuiltinWebSearch = parsed;
+    });
   } else if (key === "kimi_official_tools_allowlist") {
     currentProvider.kimiOfficialToolsAllowlist = parseTomlStringArray(rawValue);
   } else if (key === "kimi_max_tokens") {
-    currentProvider.kimiMaxTokens = parseTomlNumber(rawValue);
+    assignNumber(key, (parsed) => {
+      currentProvider.kimiMaxTokens = parsed;
+    });
   } else if (key === "kimi_stream") {
-    currentProvider.kimiStream = parseTomlBoolean(rawValue);
+    assignBoolean(key, (parsed) => {
+      currentProvider.kimiStream = parsed;
+    });
   } else if (key === "kimi_temperature") {
-    currentProvider.kimiTemperature = parseTomlNumber(rawValue);
+    assignNumber(key, (parsed) => {
+      currentProvider.kimiTemperature = parsed;
+    });
   } else if (key === "kimi_top_p") {
-    currentProvider.kimiTopP = parseTomlNumber(rawValue);
+    assignNumber(key, (parsed) => {
+      currentProvider.kimiTopP = parsed;
+    });
   } else if (key === "kimi_files_enabled") {
-    currentProvider.kimiFilesEnabled = parseTomlBoolean(rawValue);
+    assignBoolean(key, (parsed) => {
+      currentProvider.kimiFilesEnabled = parsed;
+    });
   } else if (key === "kimi_allow_file_admin") {
-    currentProvider.kimiAllowFileAdmin = parseTomlBoolean(rawValue);
+    assignBoolean(key, (parsed) => {
+      currentProvider.kimiAllowFileAdmin = parsed;
+    });
   } else if (key === "prompt_cache_enabled" || key === "kimi_prompt_cache_enabled") {
-    currentProvider.promptCacheEnabled = parseTomlBoolean(rawValue);
+    assignBoolean(key, (parsed) => {
+      currentProvider.promptCacheEnabled = parsed;
+    });
   } else if (key === "prompt_cache_strategy" || key === "kimi_prompt_cache_strategy") {
     currentProvider.promptCacheStrategy = value;
   } else if (key === "prompt_cache_user_last_n" || key === "kimi_prompt_cache_user_last_n") {
-    currentProvider.promptCacheUserLastN = parseTomlNumber(rawValue);
+    assignNumber(key, (parsed) => {
+      currentProvider.promptCacheUserLastN = parsed;
+    });
   } else if (key === "prompt_cache_capability" || key === "kimi_prompt_cache_capability") {
     currentProvider.promptCacheCapability = value;
   } else if (key === "priority") {
-    currentProvider.priority = parseTomlNumber(rawValue);
+    assignNumber(key, (parsed) => {
+      currentProvider.priority = parsed;
+    });
   } else if (key === "weight") {
-    currentProvider.weight = parseTomlNumber(rawValue);
+    assignNumber(key, (parsed) => {
+      currentProvider.weight = parsed;
+    });
   } else if (key === "unit_cost" || key === "cost_per_1k_tokens") {
-    currentProvider.unitCost = parseTomlNumber(rawValue);
+    assignNumber(key, (parsed) => {
+      currentProvider.unitCost = parsed;
+    });
   } else if (key === "max_inflight" || key === "max_in_flight") {
-    currentProvider.maxInFlight = parseTomlNumber(rawValue);
+    assignNumber(key, (parsed) => {
+      currentProvider.maxInFlight = parsed;
+    });
   } else if (key === "requests_per_minute" || key === "rpm") {
-    currentProvider.requestsPerMinute = parseTomlNumber(rawValue);
+    assignNumber(key, (parsed) => {
+      currentProvider.requestsPerMinute = parsed;
+    });
   } else if (key === "burst" || key === "bucket_burst") {
-    currentProvider.burst = parseTomlNumber(rawValue);
+    assignNumber(key, (parsed) => {
+      currentProvider.burst = parsed;
+    });
   }
 }
 
@@ -217,6 +267,7 @@ function normalizeProviderSnapshot(raw: MutableProvider, fallbackName: string): 
     maxInFlight: typeof raw.maxInFlight === "number" ? raw.maxInFlight : undefined,
     requestsPerMinute: typeof raw.requestsPerMinute === "number" ? raw.requestsPerMinute : undefined,
     burst: typeof raw.burst === "number" ? raw.burst : undefined,
+    configErrors: raw.configErrors,
   };
 }
 

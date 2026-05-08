@@ -71,6 +71,9 @@ import {
   runStartMessageSmoke,
 } from "./start-smoke-contract/start-basic-flows.mjs";
 import {
+  runStartInvalidRuntimeModelControlsRejectFlow,
+} from "./start-smoke-contract/runtime-model-control-flows.mjs";
+import {
   runStartPlanConcurrencyFlow,
   runStartPlanModeFlow,
 } from "./start-smoke-contract/start-plan-flows.mjs";
@@ -101,6 +104,9 @@ function runCli(argv) {
       break;
     case "start-invalid-runtime-controls-reject-flow":
       payload = runStartInvalidRuntimeControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-runtime-model-controls-reject-flow":
+      payload = runStartInvalidRuntimeModelControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "start-invalid-experience-controls-reject-flow":
       payload = runStartInvalidExperienceControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { startMockModelServer } from "../../../src/extensions/contracts/_shared/mock-model-server.mjs";
+import { assertRuntimeModelControlSmoke } from "./runtime-model-controls.mjs";
 import {
   assertSuccess,
   contractsRoot,
@@ -275,6 +276,8 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(startInvalidRuntimeControlsPayload.hides_top_level_fatal, true);
   assert.equal(startInvalidRuntimeControlsPayload.has_start_banner, false);
   logStep("start-smoke-contract start-invalid-runtime-controls-reject-flow");
+
+  assertRuntimeModelControlSmoke();
 
   const experienceControlsResult = runContract(
     "start-smoke-contract.mjs",
