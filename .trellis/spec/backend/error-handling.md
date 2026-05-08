@@ -139,6 +139,17 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     `${home}/mcp/servers.toml` must also fail closed for malformed explicit
     `name` or `enabled` fields, returning stable `invalid_mcp_server_*` errors
     instead of silently keeping previous/default values.
+19. Status-line controls must fail closed on malformed explicit project TOML
+    values. `[statusline]` and `[statusline.segments]` may use defaults only
+    when omitted; malformed booleans, unsupported layout/theme values, empty
+    separators, malformed/unknown/duplicate `segment_order` entries, invalid
+    segment booleans or segment keys, out-of-range warning/critical
+    thresholds, invalid threshold ordering, and out-of-range cache/width
+    integers must exit `2` with stable `invalid_statusline_*` errors before
+    prompt/runtime bootstrap. Ratio controls accept only `0..1`, percent
+    controls accept only `0..100`, cache TTLs must be `250..120000` ms, and
+    session topic max width must be `8..160`. Numeric values must not be
+    silently clamped.
 
 ---
 

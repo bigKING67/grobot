@@ -63,6 +63,7 @@ import { isExperienceControlInputError } from "../services/experience-controls";
 import { isStartSessionOptionInputError } from "./session/input-errors";
 import { isRuntimeToolControlInputError } from "./context/runtime-tool-controls";
 import { isRuntimeModelConfigInputError } from "./context/runtime-model-config";
+import { isStatusLineConfigInputError } from "./context/status-line-config";
 import { isContextEngineConfigInputError } from "../../tools/context";
 
 export async function runStart(
@@ -114,6 +115,10 @@ export async function runStart(
       return 2;
     }
     if (isMcpInstructionConfigInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    if (isStatusLineConfigInputError(error)) {
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }

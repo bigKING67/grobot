@@ -90,6 +90,9 @@ import {
   runStartInvalidMcpInstructionControlsRejectFlow,
 } from "./start-smoke-contract/mcp-instruction-control-flows.mjs";
 import {
+  runStartInvalidStatusLineControlsRejectFlow,
+} from "./start-smoke-contract/status-line-control-flows.mjs";
+import {
   runFailoverRejectsPython,
   runFailoverTsRust,
   runProviderFailureRouteStatusTsRust,
@@ -204,6 +207,9 @@ function runCli(argv) {
       break;
     case "start-invalid-mcp-instruction-controls-reject-flow":
       payload = runStartInvalidMcpInstructionControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-status-line-controls-reject-flow":
+      payload = runStartInvalidStatusLineControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "failover-rejects-python":
       payload = runFailoverRejectsPython(buildStartSmokeFlowContext(repoRoot));

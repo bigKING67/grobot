@@ -7,6 +7,7 @@ import { runRuntimeContextQualityFlowSmoke } from "./runtime-smoke/context-quali
 import { assertContextEngineControlSmoke } from "./runtime-smoke/context-engine-controls.mjs";
 import { assertExperienceSchedulerControlSmoke } from "./runtime-smoke/experience-scheduler-controls.mjs";
 import { assertMcpInstructionControlSmoke } from "./runtime-smoke/mcp-instruction-controls.mjs";
+import { assertStatusLineControlSmoke } from "./runtime-smoke/status-line-controls.mjs";
 import { runRuntimeDescribeFallbackSmoke } from "./runtime-smoke/runtime-describe-fallbacks.mjs";
 
 export async function runTsRustExecutionSmoke() {
@@ -19,5 +20,6 @@ export async function runTsRustExecutionSmoke() {
   assertContextEngineControlSmoke();
   assertExperienceSchedulerControlSmoke();
   assertMcpInstructionControlSmoke();
+  assertStatusLineControlSmoke();
   await runRuntimeDescribeFallbackSmoke();
 }
