@@ -76,6 +76,9 @@ export function runStatusTsRust(context, windowSize) {
   const runtimeTools = isObject(parsedStatus?.runtime_tools)
     ? parsedStatus.runtime_tools
     : null;
+  const turnGate = isObject(parsedStatus?.turn_gate)
+    ? parsedStatus.turn_gate
+    : null;
   const cacheStatsLocation = typeof parsedStatus?.cache_stats_location === "string"
     ? parsedStatus.cache_stats_location
     : null;
@@ -182,6 +185,14 @@ export function runStatusTsRust(context, windowSize) {
     status_has_route_ordered_providers: Array.isArray(routeDecision?.ordered_providers),
     status_has_route_failover: Boolean(routeFailover),
     status_route_observed_source_type: typeof routeObserved?.source,
+    status_has_turn_gate: Boolean(turnGate),
+    status_turn_gate_active_sessions_type: typeof turnGate?.active_sessions,
+    status_turn_gate_tracked_sessions_type: typeof turnGate?.tracked_sessions,
+    status_turn_gate_rejected_reentrant_total_type:
+      typeof turnGate?.rejected_reentrant_total,
+    status_turn_gate_stale_cleanup_total_type:
+      typeof turnGate?.stale_cleanup_total,
+    status_turn_gate_sessions_is_array: Array.isArray(turnGate?.sessions),
     ...runtimeToolStatus,
     ...contextGraphStatus,
     status_has_context_engine: Boolean(contextEngine),

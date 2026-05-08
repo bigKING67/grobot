@@ -5,6 +5,7 @@ import {
   type RuntimeModelConfig,
   type RuntimeToolContext,
 } from "../../../models/types";
+import { type TurnGate } from "../../../orchestration/orchestrator/turn-gate";
 import { type GaMechanismRuntime, type GaSessionStateSnapshot } from "../../services/ga-mechanism-runtime";
 import { type ExperiencePoolRuntime } from "../../services/experience-pool-runtime";
 import { type MemoryOrchestrator } from "../../../tools/memory";
@@ -88,6 +89,7 @@ export interface CreateRunStartTurnRunnerInput {
   mcpInstructionServerNames: string[];
   memoryOrchestrator: MemoryOrchestrator;
   experiencePoolRuntime: ExperiencePoolRuntime;
+  turnGate?: TurnGate;
   getSessionKey(): string;
   getHistoryMessages(): ChatHistoryMessage[];
   setHistoryMessages(rows: ChatHistoryMessage[]): void;

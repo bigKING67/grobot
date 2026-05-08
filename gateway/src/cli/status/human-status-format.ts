@@ -118,12 +118,26 @@ export function enabledText(value: boolean): string {
 }
 
 export function formatRouteSummary(row: RouteDecisionSummary): InfoPanelRow {
+  const latestProviderError = row.observed.providerRuntimeStates.find(
+    (state) => state.lastErrorClass || state.lastErrorData,
+  );
+  const latestErrorData = latestProviderError?.lastErrorData ?? {};
+  const latestHttpStatus = typeof latestErrorData.http_status === "number"
+    ? ` · HTTP ${String(latestErrorData.http_status)}`
+    : "";
+  const latestRetryable = typeof latestErrorData.retryable === "boolean"
+    ? ` · retryable ${String(latestErrorData.retryable)}`
+    : "";
+  const latestProviderErrorLine = latestProviderError
+    ? `last provider error ${latestProviderError.providerName}:${humanizeMachineToken(latestProviderError.lastErrorClass ?? "unknown")}${latestHttpStatus}${latestRetryable}`
+    : null;
   return {
     title: `Route ${displayValue(row.primaryProvider, "no available provider")}`,
     detailLines: [
       `strategy ${humanizeMachineToken(row.strategy)} · reason ${humanizeMachineToken(row.reason)}`,
       `candidates ${row.orderedProviders.length > 0 ? row.orderedProviders.join(" -> ") : "none"}`,
       `sticky ${displayValue(row.observed.stickyProvider, "none")} · current ${displayValue(row.observed.selectedProvider, "none")}`,
+      ...(latestProviderErrorLine ? [latestProviderErrorLine] : []),
     ],
   };
 }

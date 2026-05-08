@@ -1,11 +1,22 @@
 fn atomic_write_text_file(target: &Path, content: &[u8]) -> Result<(), ToolExecutionError> {
     let parent = target.parent().ok_or_else(|| {
-        ToolExecutionError::new("tool_execution_failed", "edit target has invalid parent directory")
+        file_io_error(
+            "edit target has invalid parent directory",
+            target,
+            None,
+            TOOL_EDIT,
+            "resolve_parent",
+            "choose a valid file path with a parent directory inside the workspace",
+        )
     })?;
     let permissions = fs::metadata(target).map_err(|error| {
-        ToolExecutionError::new(
-            "tool_execution_failed",
+        file_io_error(
             format!("failed to read file metadata: {error}"),
+            target,
+            None,
+            TOOL_EDIT,
+            "read_target_metadata",
+            "confirm the target still exists and is readable, then reread before retrying edit",
         )
     })?;
     let filename = target
@@ -22,34 +33,54 @@ fn atomic_write_text_file(target: &Path, content: &[u8]) -> Result<(), ToolExecu
         .write(true)
         .open(&temp_path)
         .map_err(|error| {
-            ToolExecutionError::new(
-                "tool_execution_failed",
+            file_io_error(
                 format!("failed to create temporary edit file: {error}"),
+                target,
+                None,
+                TOOL_EDIT,
+                "create_temp_file",
+                "check directory permissions and retry after removing stale grobot temp files if needed",
             )
         })?;
     temp_file.write_all(content).map_err(|error| {
-        ToolExecutionError::new(
-            "tool_execution_failed",
+        file_io_error(
             format!("failed to write temporary edit file: {error}"),
+            target,
+            None,
+            TOOL_EDIT,
+            "write_temp_file",
+            "check available disk space and directory permissions, then retry",
         )
     })?;
     temp_file.flush().map_err(|error| {
-        ToolExecutionError::new(
-            "tool_execution_failed",
+        file_io_error(
             format!("failed to flush temporary edit file: {error}"),
+            target,
+            None,
+            TOOL_EDIT,
+            "flush_temp_file",
+            "check filesystem health and retry after confirming the target directory is writable",
         )
     })?;
     fs::set_permissions(&temp_path, permissions.permissions()).map_err(|error| {
-        ToolExecutionError::new(
-            "tool_execution_failed",
+        file_io_error(
             format!("failed to copy file permissions to temporary edit file: {error}"),
+            target,
+            None,
+            TOOL_EDIT,
+            "copy_permissions",
+            "check file ownership and permissions, then retry",
         )
     })?;
     fs::rename(&temp_path, target).map_err(|error| {
         let _ = fs::remove_file(&temp_path);
-        ToolExecutionError::new(
-            "tool_execution_failed",
+        file_io_error(
             format!("failed to replace edited file atomically: {error}"),
+            target,
+            None,
+            TOOL_EDIT,
+            "atomic_replace",
+            "check target permissions and filesystem constraints, then retry",
         )
     })?;
     Ok(())

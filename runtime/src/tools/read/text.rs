@@ -18,7 +18,8 @@ fn build_text_window_result(
         None
     };
 
-    let mut content = selected_lines.join("\n");
+    let visible_content = selected_lines.join("\n");
+    let mut content = visible_content.clone();
     if let Some(next) = next_offset {
         content.push_str(&format!(
             "\n\n[More content available. Use offset={} to continue.]",
@@ -28,6 +29,7 @@ fn build_text_window_result(
 
     ReadTextResult {
         content,
+        visible_content,
         line_start: request.start_line,
         line_end,
         has_more,
@@ -52,13 +54,27 @@ fn read_text_window_from_content(raw: &str, request: &ReadRequest) -> Result<Rea
         return Err(ToolExecutionError::new(
             "range_out_of_bounds",
             format!("read offset {} is beyond end of file", request.start_line),
-        ));
+        )
+        .with_data(json!({
+            "diagnostic_kind": "range_out_of_bounds",
+            "range_kind": "line",
+            "requested_offset": request.start_line,
+            "available_count": 0,
+            "recovery_hint": "retry with an offset within the reported line range"
+        })));
     }
     if request.start_line > lines.len() {
         return Err(ToolExecutionError::new(
             "range_out_of_bounds",
             format!("read offset {} is beyond end of file", request.start_line),
-        ));
+        )
+        .with_data(json!({
+            "diagnostic_kind": "range_out_of_bounds",
+            "range_kind": "line",
+            "requested_offset": request.start_line,
+            "available_count": lines.len(),
+            "recovery_hint": "retry with an offset within the reported line range"
+        })));
     }
 
     let mut selected_lines: Vec<String> = Vec::new();
@@ -112,9 +128,21 @@ fn read_text_window_from_content(raw: &str, request: &ReadRequest) -> Result<Rea
     ))
 }
 
-fn read_text_window(target: &Path, request: &ReadRequest) -> Result<ReadTextResult, ToolExecutionError> {
-    let file = fs::File::open(target)
-        .map_err(|error| ToolExecutionError::new("tool_execution_failed", format!("failed to read file: {error}")))?;
+fn read_text_window(
+    target: &Path,
+    relative_path: Option<&str>,
+    request: &ReadRequest,
+) -> Result<ReadTextResult, ToolExecutionError> {
+    let file = fs::File::open(target).map_err(|error| {
+        file_io_error(
+            format!("failed to read file: {error}"),
+            target,
+            relative_path,
+            "read.text",
+            "open_text_window",
+            "confirm the text file still exists and is readable, then retry",
+        )
+    })?;
     let reader = BufReader::new(file);
 
     let mut saw_any_line = false;
@@ -128,8 +156,16 @@ fn read_text_window(target: &Path, request: &ReadRequest) -> Result<ReadTextResu
     for line_result in reader.lines() {
         saw_any_line = true;
         line_number = line_number.saturating_add(1);
-        let line = line_result
-            .map_err(|error| ToolExecutionError::new("tool_execution_failed", format!("failed to read file: {error}")))?;
+        let line = line_result.map_err(|error| {
+            file_io_error(
+                format!("failed to read file: {error}"),
+                target,
+                relative_path,
+                "read.text",
+                "read_text_line",
+                "confirm the text file is readable and stable, then retry",
+            )
+        })?;
         if line_number < request.start_line {
             continue;
         }
@@ -185,7 +221,14 @@ fn read_text_window(target: &Path, request: &ReadRequest) -> Result<ReadTextResu
         return Err(ToolExecutionError::new(
             "range_out_of_bounds",
             format!("read offset {} is beyond end of file", request.start_line),
-        ));
+        )
+        .with_data(json!({
+            "diagnostic_kind": "range_out_of_bounds",
+            "range_kind": "line",
+            "requested_offset": request.start_line,
+            "available_count": line_number,
+            "recovery_hint": "retry with an offset within the reported line range"
+        })));
     }
 
     Ok(build_text_window_result(

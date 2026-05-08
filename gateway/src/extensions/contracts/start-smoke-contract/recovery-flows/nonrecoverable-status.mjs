@@ -7,6 +7,7 @@ import {
 } from "../runtime-tool-status.mjs";
 import {
   runtimeEnvironmentRecoveryPlanSummary,
+  writeInvalidConfigRuntimeRecoveryMetrics,
   writeNonRecoverableToolRecoveryMetrics,
 } from "../recovery-fixtures.mjs";
 
@@ -247,5 +248,126 @@ export function runStatusNonRecoverableToolRecovery(context) {
       && textResult.stdout.includes("blocker_code=CONFIG_MISSING"),
     ...recoveryEscalationTextSurface,
     ...recoveryReadinessTextSurface,
+  };
+}
+
+export function runStatusInvalidConfigRuntimeRecovery(context) {
+  const {
+    repoRoot,
+    createTempDir,
+    writeExecutionProjectToml,
+    runCommand,
+    parseJsonObjectSafe,
+    isObject,
+  } = context;
+  const workDir = createTempDir("grobot-status-invalid-config-recovery-work");
+  writeExecutionProjectToml(workDir);
+  writeInvalidConfigRuntimeRecoveryMetrics(workDir);
+  const statusArgs = [
+    "./grobot",
+    "status",
+    "--work-dir",
+    workDir,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+  ];
+  const jsonResult = runCommand(repoRoot, [...statusArgs, "--json"]);
+  const textResult = runCommand(repoRoot, statusArgs, { GROBOT_STATUS_LEGACY_TEXT: "1" });
+  const parsedStatus = parseJsonObjectSafe(jsonResult.stdout);
+  const runtimeTools = isObject(parsedStatus?.runtime_tools)
+    ? parsedStatus.runtime_tools
+    : null;
+  const recoveryFeedback = isObject(runtimeTools?.recovery_feedback)
+    ? runtimeTools.recovery_feedback
+    : null;
+  const recoveryTimeline = Array.isArray(runtimeTools?.recovery_timeline)
+    ? runtimeTools.recovery_timeline
+    : [];
+  const latestRecoveryTimeline = isObject(recoveryTimeline[0]) ? recoveryTimeline[0] : null;
+  const recoveryHealth = isObject(runtimeTools?.recovery_health)
+    ? runtimeTools.recovery_health
+    : null;
+  const recoveryReadiness = isObject(runtimeTools?.recovery_readiness)
+    ? runtimeTools.recovery_readiness
+    : null;
+  const recoveryGate = isObject(runtimeTools?.recovery_gate)
+    ? runtimeTools.recovery_gate
+    : null;
+  const surfaceAdaptation = isObject(runtimeTools?.surface_adaptation)
+    ? runtimeTools.surface_adaptation
+    : null;
+  const feedbackRuntimePlan = runtimeEnvironmentRecoveryPlanSummary(
+    recoveryFeedback?.runtime_environment_recovery,
+  );
+  const timelineRuntimePlan = runtimeEnvironmentRecoveryPlanSummary(
+    latestRecoveryTimeline?.runtime_environment_recovery,
+  );
+  const healthAttentionRuntimePlan = runtimeEnvironmentRecoveryPlanSummary(
+    recoveryHealth?.attention_runtime_environment_recovery,
+  );
+  const readinessAttentionRuntimePlan = runtimeEnvironmentRecoveryPlanSummary(
+    recoveryReadiness?.attention_runtime_environment_recovery,
+  );
+  const gateAttentionRuntimePlan = runtimeEnvironmentRecoveryPlanSummary(
+    recoveryGate?.attention_runtime_environment_recovery,
+  );
+  const textRuntimeRecoverySnippet =
+    "runtime_environment_recovery=code=CONFIG_INVALID action=fix_config_or_switch_provider_and_check_status retry_allowed=false";
+  return {
+    exit_code: jsonResult.exit_code,
+    text_exit_code: textResult.exit_code,
+    status_json_parse_ok: Boolean(parsedStatus),
+    recovery_feedback_active: recoveryFeedback?.active ?? null,
+    recovery_feedback_stage: recoveryFeedback?.stage ?? null,
+    recovery_feedback_tool_name: recoveryFeedback?.tool_name ?? null,
+    recovery_feedback_error_class: recoveryFeedback?.error_class ?? null,
+    recovery_feedback_action: recoveryFeedback?.recommended_next_action ?? null,
+    recovery_feedback_recoverable: recoveryFeedback?.recoverable ?? null,
+    recovery_feedback_requires_user_intervention:
+      recoveryFeedback?.requires_user_intervention ?? null,
+    recovery_feedback_runtime_error_code: feedbackRuntimePlan.error_code,
+    recovery_feedback_runtime_action: feedbackRuntimePlan.action,
+    recovery_feedback_runtime_retry_allowed: feedbackRuntimePlan.retry_allowed,
+    recovery_feedback_runtime_commands: feedbackRuntimePlan.commands,
+    recovery_timeline_count: recoveryTimeline.length,
+    recovery_timeline_latest_tool_name: latestRecoveryTimeline?.tool_name ?? null,
+    recovery_timeline_latest_error_class: latestRecoveryTimeline?.error_class ?? null,
+    recovery_timeline_latest_runtime_error_code: timelineRuntimePlan.error_code,
+    recovery_timeline_latest_runtime_action: timelineRuntimePlan.action,
+    recovery_health_attention_runtime_error_code: healthAttentionRuntimePlan.error_code,
+    recovery_health_attention_runtime_action: healthAttentionRuntimePlan.action,
+    recovery_readiness_status: recoveryReadiness?.status ?? null,
+    recovery_readiness_ready: recoveryReadiness?.ready ?? null,
+    recovery_readiness_auto_allowed: recoveryReadiness?.automatic_recovery_allowed ?? null,
+    recovery_readiness_operator_action_required: recoveryReadiness?.operator_action_required ?? null,
+    recovery_readiness_attention_runtime_error_code: readinessAttentionRuntimePlan.error_code,
+    recovery_readiness_attention_runtime_action: readinessAttentionRuntimePlan.action,
+    recovery_gate_status: recoveryGate?.status ?? null,
+    recovery_gate_passed: recoveryGate?.passed ?? null,
+    recovery_gate_blocking: recoveryGate?.blocking ?? null,
+    recovery_gate_reason: recoveryGate?.reason ?? null,
+    recovery_gate_blocker_kind: recoveryGate?.blocker_kind ?? null,
+    recovery_gate_blocker_code: recoveryGate?.blocker_code ?? null,
+    recovery_gate_blocker_action: recoveryGate?.blocker_action ?? null,
+    recovery_gate_attention_runtime_error_code: gateAttentionRuntimePlan.error_code,
+    recovery_gate_attention_runtime_action: gateAttentionRuntimePlan.action,
+    surface_adaptation_active: surfaceAdaptation?.active ?? null,
+    surface_adaptation_reason: surfaceAdaptation?.reason ?? null,
+    surface_adaptation_auto_adaptation_blocked:
+      surfaceAdaptation?.auto_adaptation_blocked ?? null,
+    text_has_recovery_feedback_runtime_environment:
+      textResult.stdout.includes(textRuntimeRecoverySnippet)
+      && textResult.stdout.includes("commands=grobot status --json|grobot status --probe --json"),
+    text_has_recovery_readiness_runtime_environment:
+      textResult.stdout.includes("runtime_tool_recovery_readiness:")
+      && textResult.stdout.includes(textRuntimeRecoverySnippet),
+    text_has_recovery_gate_runtime_environment:
+      textResult.stdout.includes("runtime_tool_recovery_gate:")
+      && textResult.stdout.includes(textRuntimeRecoverySnippet),
+    text_has_invalid_config_blocker:
+      textResult.stdout.includes("reason=recovery_gate_runtime_environment_config_invalid")
+      && textResult.stdout.includes("blocker_code=CONFIG_INVALID"),
   };
 }

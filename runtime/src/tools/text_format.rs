@@ -64,17 +64,35 @@ fn inspect_text_content_format(content: &str) -> TextFormatMetadata {
     }
 }
 
-fn inspect_text_file_format(target: &Path) -> Result<TextFormatMetadata, ToolExecutionError> {
-    let mut file = fs::File::open(target)
-        .map_err(|error| ToolExecutionError::new("tool_execution_failed", format!("failed to read file: {error}")))?;
+fn inspect_text_file_format(
+    target: &Path,
+    relative_path: Option<&str>,
+) -> Result<TextFormatMetadata, ToolExecutionError> {
+    let mut file = fs::File::open(target).map_err(|error| {
+        file_io_error(
+            format!("failed to read file: {error}"),
+            target,
+            relative_path,
+            "read.text_format",
+            "open_format_scan",
+            "confirm the text file still exists and is readable, then retry",
+        )
+    })?;
     let mut scan = LineEndingScan::default();
     let mut prefix = Vec::with_capacity(3);
     let mut buffer = [0_u8; 8192];
 
     loop {
-        let read_bytes = file
-            .read(&mut buffer)
-            .map_err(|error| ToolExecutionError::new("tool_execution_failed", format!("failed to read file: {error}")))?;
+        let read_bytes = file.read(&mut buffer).map_err(|error| {
+            file_io_error(
+                format!("failed to read file: {error}"),
+                target,
+                relative_path,
+                "read.text_format",
+                "read_format_scan",
+                "confirm the text file is readable and stable, then retry",
+            )
+        })?;
         if read_bytes == 0 {
             break;
         }

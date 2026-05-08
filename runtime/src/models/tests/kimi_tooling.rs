@@ -15,6 +15,40 @@
             "{\"query\":\"今天热点\"}"
         );
     }
+
+    #[test]
+    fn parse_kimi_stream_payload_invalid_chunk_reports_recovery_data() {
+        let error = parse_model_response_payload("data: {not-json}\n\n", ProviderKind::Kimi)
+            .expect_err("invalid kimi stream chunk should fail");
+        assert_eq!(error.error_class, "upstream_invalid_json");
+        let data = error.data.as_ref().expect("kimi stream invalid JSON data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("upstream_invalid_json"));
+        assert_eq!(data["source"].as_str(), Some("model.kimi_stream"));
+        assert_eq!(data["stage"].as_str(), Some("stream_chunk_parse_json"));
+        assert_eq!(data["provider"].as_str(), Some("kimi"));
+        assert!(
+            data["recovery_hint"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("JSON response contract")
+        );
+    }
+
+    #[test]
+    fn parse_kimi_stream_payload_no_chunks_reports_recovery_data() {
+        let error = parse_model_response_payload("not json and no sse chunks", ProviderKind::Kimi)
+            .expect_err("empty kimi stream should fail");
+        assert_eq!(error.error_class, "upstream_invalid_response");
+        let data = error.data.as_ref().expect("kimi stream invalid response data");
+        assert_eq!(
+            data["diagnostic_kind"].as_str(),
+            Some("upstream_invalid_response")
+        );
+        assert_eq!(data["source"].as_str(), Some("model.kimi_stream"));
+        assert_eq!(data["stage"].as_str(), Some("stream_no_data_chunks"));
+        assert_eq!(data["provider"].as_str(), Some("kimi"));
+    }
+
     #[test]
     fn executor_injects_reasoning_content_for_kimi_tool_call_message() {
         let _env_guard = lock_env();

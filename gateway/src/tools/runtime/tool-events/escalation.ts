@@ -7,6 +7,7 @@ import type {
 import {
   browserEnvironmentRecoveryPlan,
   mcpEnvironmentRecoveryPlan,
+  runtimeEnvironmentRecoveryPlan,
 } from "./environment-plans";
 
 function normalizeRecoveryKeyPart(value: string | undefined): string {
@@ -88,6 +89,23 @@ export function applyRepeatedRecoveryEscalation(input: {
       requiresUserIntervention: true,
       escalated: true,
       escalationReason: "mcp_environment_error_repeated",
+      baseStage,
+      baseRecommendedNextAction,
+    };
+  }
+  if (
+    runtimeEnvironmentRecoveryPlan(base)
+    && input.sameToolErrorCount >= RUNTIME_TOOL_RECOVERY_POLICY.escalation.environmentAskUserThreshold
+    && recoveryStageRank(base.stage) < recoveryStageRank("ask_user")
+  ) {
+    return {
+      ...common,
+      stage: "ask_user",
+      recommendedNextAction: "ask_user_for_config_or_switch_provider",
+      recoverable: false,
+      requiresUserIntervention: true,
+      escalated: true,
+      escalationReason: "runtime_environment_error_repeated",
       baseStage,
       baseRecommendedNextAction,
     };

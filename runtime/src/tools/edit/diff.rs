@@ -1,17 +1,16 @@
-fn build_edit_diff(matches: &[EditMatch], edits: &[NormalizedEditOperation]) -> String {
+fn build_edit_diff(matches: &[EditMatch]) -> String {
     let mut lines: Vec<String> = Vec::new();
     for item in matches {
-        let edit = &edits[item.edit_index];
-        let old_count = line_count_for_diff(edit.old_text.as_str());
-        let new_count = line_count_for_diff(edit.new_text.as_str());
+        let old_count = line_count_for_diff(item.actual_old_text.as_str());
+        let new_count = line_count_for_diff(item.actual_new_text.as_str());
         lines.push(format!(
             "@@ -{},{} +{},{} @@",
             item.start_line, old_count, item.start_line, new_count
         ));
-        for line in lines_for_diff(edit.old_text.as_str()) {
+        for line in lines_for_diff(item.actual_old_text.as_str()) {
             lines.push(format!("-{line}"));
         }
-        for line in lines_for_diff(edit.new_text.as_str()) {
+        for line in lines_for_diff(item.actual_new_text.as_str()) {
             lines.push(format!("+{line}"));
         }
     }

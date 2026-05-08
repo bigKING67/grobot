@@ -90,9 +90,13 @@ fn upload_kimi_file_for_read(
     mime: &str,
 ) -> Result<String, ToolExecutionError> {
     let file_bytes = fs::read(target).map_err(|error| {
-        ToolExecutionError::new(
-            "tool_execution_failed",
+        file_io_error(
             format!("failed to read file for kimi upload: {error}"),
+            target,
+            None,
+            "read.kimi_media",
+            "read_upload_file",
+            "confirm the media file still exists and is readable before retrying remote extraction",
         )
     })?;
     let file_name = target
@@ -105,9 +109,16 @@ fn upload_kimi_file_for_read(
         .file_name(file_name)
         .mime_str(mime)
         .map_err(|error| {
-            ToolExecutionError::new(
-                "invalid_tool_arguments",
-                format!("invalid mime for kimi upload: {mime} ({error})"),
+            kimi_tool_error_with_fields(
+                kimi_tool_error(
+                    "invalid_tool_arguments",
+                    format!("invalid mime for kimi upload: {mime} ({error})"),
+                    "invalid_tool_arguments",
+                    "read.kimi_media",
+                    "build_upload_part",
+                    "use a supported MIME type for the media kind and retry",
+                ),
+                &[("mime", json!(mime))],
             )
         })?;
     let form = reqwest::blocking::multipart::Form::new()
@@ -119,33 +130,37 @@ fn upload_kimi_file_for_read(
         .multipart(form)
         .send()
         .map_err(|error| {
-            let class = if error.is_timeout() {
-                "upstream_timeout"
-            } else if error.is_connect() {
-                "upstream_connect_failed"
-            } else {
-                "upstream_request_failed"
-            };
-            ToolExecutionError::new(class, format!("kimi file upload failed: {error}"))
+            kimi_request_error(
+                &error,
+                format!("kimi file upload failed: {error}"),
+                "read.kimi_media",
+                "upload_file_request",
+                "retry later or verify provider network connectivity and files capability",
+            )
         })?;
     let status = response.status();
     let body_text = response.text().map_err(|error| {
-        ToolExecutionError::new(
-            "upstream_response_read_failed",
+        kimi_response_read_error(
             format!("failed to read kimi upload response: {error}"),
+            "read.kimi_media",
+            "upload_file_response_read",
         )
     })?;
     if !status.is_success() {
         let detail = body_text.chars().take(240).collect::<String>();
-        return Err(ToolExecutionError::new(
-            "upstream_http_error",
+        return Err(kimi_http_error(
             format!("kimi file upload status={} body={detail}", status.as_u16()),
+            status,
+            detail.as_str(),
+            "read.kimi_media",
+            "upload_file_http_status",
         ));
     }
     let payload: Value = serde_json::from_str(&body_text).map_err(|error| {
-        ToolExecutionError::new(
-            "upstream_invalid_json",
+        kimi_invalid_json_error(
             format!("invalid kimi upload response json: {error}"),
+            "read.kimi_media",
+            "upload_file_parse_json",
         )
     })?;
     payload
@@ -154,9 +169,10 @@ fn upload_kimi_file_for_read(
         .map(|value| value.to_string())
         .filter(|value| !value.is_empty())
         .ok_or_else(|| {
-            ToolExecutionError::new(
-                "upstream_invalid_response",
+            kimi_invalid_response_error(
                 "missing file id in kimi upload response",
+                "read.kimi_media",
+                "upload_file_parse_id",
             )
         })
 }
@@ -177,27 +193,33 @@ fn fetch_kimi_file_content_for_read(
         .bearer_auth(api_key)
         .send()
         .map_err(|error| {
-            let class = if error.is_timeout() {
-                "upstream_timeout"
-            } else if error.is_connect() {
-                "upstream_connect_failed"
-            } else {
-                "upstream_request_failed"
-            };
-            ToolExecutionError::new(class, format!("kimi file content fetch failed: {error}"))
+            kimi_request_error(
+                &error,
+                format!("kimi file content fetch failed: {error}"),
+                "read.kimi_media",
+                "fetch_file_content_request",
+                "retry later or verify provider network connectivity and files capability",
+            )
         })?;
     let status = response.status();
     let body_text = response.text().map_err(|error| {
-        ToolExecutionError::new(
-            "upstream_response_read_failed",
+        kimi_response_read_error(
             format!("failed to read kimi file content response: {error}"),
+            "read.kimi_media",
+            "fetch_file_content_response_read",
         )
     })?;
     if !status.is_success() {
         let detail = body_text.chars().take(240).collect::<String>();
-        return Err(ToolExecutionError::new(
-            "upstream_http_error",
-            format!("kimi file content status={} body={detail}", status.as_u16()),
+        return Err(kimi_tool_error_with_fields(
+            kimi_http_error(
+                format!("kimi file content status={} body={detail}", status.as_u16()),
+                status,
+                detail.as_str(),
+                "read.kimi_media",
+                "fetch_file_content_http_status",
+            ),
+            &[("file_id", json!(file_id))],
         ));
     }
     Ok(body_text)
@@ -287,9 +309,10 @@ fn parse_kimi_file_extract_response(body_text: &str) -> KimiFileExtractParseResu
 
 fn parse_kimi_chat_text_response(body_text: &str) -> Result<String, ToolExecutionError> {
     let payload: Value = serde_json::from_str(body_text).map_err(|error| {
-        ToolExecutionError::new(
-            "upstream_invalid_json",
+        kimi_invalid_json_error(
             format!("invalid kimi chat response json: {error}"),
+            "read.kimi_media",
+            "chat_parse_json",
         )
     })?;
     let content_value = payload
@@ -300,9 +323,10 @@ fn parse_kimi_chat_text_response(body_text: &str) -> Result<String, ToolExecutio
         .and_then(|message| message.get("content"))
         .cloned()
         .ok_or_else(|| {
-            ToolExecutionError::new(
-                "upstream_invalid_response",
+            kimi_invalid_response_error(
                 "missing choices[0].message.content in kimi chat response",
+                "read.kimi_media",
+                "chat_parse_content",
             )
         })?;
     if let Some(text) = content_value.as_str() {
@@ -320,9 +344,10 @@ fn parse_kimi_chat_text_response(body_text: &str) -> Result<String, ToolExecutio
             .join("\n");
         return Ok(merged);
     }
-    Err(ToolExecutionError::new(
-        "upstream_invalid_response",
+    Err(kimi_invalid_response_error(
         "unsupported kimi chat message.content payload",
+        "read.kimi_media",
+        "chat_parse_content_type",
     ))
 }
 
@@ -351,7 +376,14 @@ fn run_kimi_multimodal_extract_for_read(
             return Err(ToolExecutionError::new(
                 "tool_execution_failed",
                 "kimi multimodal extract only supports image/video",
-            ))
+            )
+            .with_data(json!({
+                "diagnostic_kind": "read_internal_state_error",
+                "source": "read.kimi_media",
+                "stage": "multimodal_kind_dispatch",
+                "kind": kind.as_str(),
+                "recovery_hint": "report this internal routing bug with the read payload and media kind"
+            })))
         }
     }
     let body = json!({
@@ -371,27 +403,37 @@ fn run_kimi_multimodal_extract_for_read(
         .json(&body)
         .send()
         .map_err(|error| {
-            let class = if error.is_timeout() {
-                "upstream_timeout"
-            } else if error.is_connect() {
-                "upstream_connect_failed"
-            } else {
-                "upstream_request_failed"
-            };
-            ToolExecutionError::new(class, format!("kimi multimodal chat request failed: {error}"))
+            kimi_request_error(
+                &error,
+                format!("kimi multimodal chat request failed: {error}"),
+                "read.kimi_media",
+                "chat_request",
+                "retry later or verify provider network connectivity and multimodal support",
+            )
         })?;
     let status = response.status();
     let body_text = response.text().map_err(|error| {
-        ToolExecutionError::new(
-            "upstream_response_read_failed",
+        kimi_response_read_error(
             format!("failed to read kimi multimodal chat response: {error}"),
+            "read.kimi_media",
+            "chat_response_read",
         )
     })?;
     if !status.is_success() {
         let detail = body_text.chars().take(240).collect::<String>();
-        return Err(ToolExecutionError::new(
-            "upstream_http_error",
-            format!("kimi multimodal chat status={} body={detail}", status.as_u16()),
+        return Err(kimi_tool_error_with_fields(
+            kimi_http_error(
+                format!("kimi multimodal chat status={} body={detail}", status.as_u16()),
+                status,
+                detail.as_str(),
+                "read.kimi_media",
+                "chat_http_status",
+            ),
+            &[
+                ("kind", json!(kind.as_str())),
+                ("model", json!(model)),
+                ("media_url", json!(media_url)),
+            ],
         ));
     }
     parse_kimi_chat_text_response(&body_text)
@@ -408,7 +450,14 @@ fn maybe_read_media_payload_via_kimi(
         return Ok(None);
     }
     let metadata = fs::metadata(target).map_err(|error| {
-        ToolExecutionError::new("tool_execution_failed", format!("failed to read file metadata: {error}"))
+        file_io_error(
+            format!("failed to read file metadata: {error}"),
+            target,
+            Some(relative_path),
+            "read.kimi_media",
+            "read_metadata",
+            "confirm the media target still exists and is readable, then retry",
+        )
     })?;
     let size_bytes = metadata.len();
     let (base_url, api_key, timeout_ms) = resolve_kimi_connection(input)?;
@@ -416,9 +465,10 @@ fn maybe_read_media_payload_via_kimi(
         .timeout(Duration::from_millis(timeout_ms))
         .build()
         .map_err(|error| {
-            ToolExecutionError::new(
-                "client_init_failed",
+            kimi_client_init_error(
                 format!("failed to init http client for kimi read route: {error}"),
+                "read.kimi_media",
+                "read_route_client_init",
             )
         })?;
     let remote_model = resolve_kimi_model_name_for_read(input);

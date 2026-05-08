@@ -25,6 +25,11 @@ export function normalizePositiveInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
+function payloadFiniteNumber(payload: Record<string, unknown>, key: string): number | undefined {
+  const value = payload[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 export function normalizeRecoveryHint(payload: Record<string, unknown>): RuntimeToolRecoveryHint | undefined {
   const stage = normalizeRecoveryStage(payload.recovery_stage ?? payload.stage);
   if (!stage || stage === "none") {
@@ -91,7 +96,7 @@ export function normalizeTurnFailedRuntimeEnvironmentRecovery(
     stage: "ask_user",
     reason: errorClass,
     recommendedNextAction:
-      plan.errorCode === "CONFIG_MISSING"
+      plan.errorCode === "CONFIG_MISSING" || plan.errorCode === "CONFIG_INVALID"
         ? "ask_user_for_config_or_switch_provider"
         : "request_environment_fix",
     errorClass,
@@ -99,5 +104,53 @@ export function normalizeTurnFailedRuntimeEnvironmentRecovery(
     errorData,
     recoverable: false,
     requiresUserIntervention: true,
+  };
+}
+
+export function normalizeTurnFailedProviderRecovery(
+  payload: Record<string, unknown>,
+): RuntimeToolRecoveryHint | undefined {
+  const errorClass = payloadString(payload, "error_class") || payloadString(payload, "errorClass") || undefined;
+  if (!errorClass) {
+    return undefined;
+  }
+  const errorData = payloadRecord(payload, "error_data") ?? payloadRecord(payload, "errorData");
+  if (!errorData) {
+    return undefined;
+  }
+  const diagnosticKind = payloadString(errorData, "diagnostic_kind");
+  const source = payloadString(errorData, "source");
+  const providerLike =
+    diagnosticKind.startsWith("upstream_")
+    || errorClass.startsWith("upstream_")
+    || source.startsWith("model.")
+    || typeof errorData.provider === "string"
+    || typeof errorData.http_status === "number";
+  if (!providerLike) {
+    return undefined;
+  }
+
+  const retryable = payloadBoolean(errorData, "retryable");
+  const attempt = payloadFiniteNumber(errorData, "attempt");
+  const maxAttempts = payloadFiniteNumber(errorData, "max_attempts");
+  const attemptsExhausted =
+    typeof attempt === "number"
+    && typeof maxAttempts === "number"
+    && attempt >= maxAttempts
+    && maxAttempts > 0;
+  const errorMessage = payloadString(payload, "error_message") || payloadString(payload, "errorMessage");
+  const requiresUserIntervention = retryable === false || (retryable !== true && attemptsExhausted);
+  return {
+    stage: requiresUserIntervention ? "ask_user" : "strategy_switch",
+    reason: diagnosticKind || errorClass,
+    recommendedNextAction: requiresUserIntervention
+      ? "ask_user_for_config_or_switch_provider"
+      : "retry_with_smaller_scope_or_wait",
+    toolName: payloadString(errorData, "tool_name") || "model_provider",
+    errorClass,
+    errorMessage: compactRecoveryDetail(errorMessage),
+    errorData,
+    recoverable: !requiresUserIntervention,
+    requiresUserIntervention,
   };
 }

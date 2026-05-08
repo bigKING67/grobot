@@ -130,5 +130,45 @@
             .execute_tool_call(&call, &input)
             .expect_err("binary read should fail");
         assert_eq!(error.error_class, "binary_file_not_supported");
+        let data = error.data.as_ref().expect("binary read error data");
+        assert_eq!(
+            data["diagnostic_kind"].as_str(),
+            Some("binary_file_not_supported")
+        );
+        assert_eq!(data["path"].as_str(), Some("binary.dat"));
+        assert_eq!(data["reason"].as_str(), Some("binary_extension"));
+        assert_eq!(data["source"].as_str(), Some("read"));
+        assert_eq!(data["extension"].as_str(), Some("dat"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_rejects_non_utf8_text_files_with_recovery_data() {
+        let workspace = make_temp_workspace("read-v2-non-utf8");
+        fs::write(workspace.join("sample.txt"), [0xff, 0xfe, b't', b'e', b'x', b't'])
+            .expect("write non-UTF8 file");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-non-utf8".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "sample.txt"
+            }),
+        };
+        let error = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect_err("non-UTF8 read should fail");
+        assert_eq!(error.error_class, "binary_file_not_supported");
+        let data = error.data.as_ref().expect("non-UTF8 read error data");
+        assert_eq!(
+            data["diagnostic_kind"].as_str(),
+            Some("binary_file_not_supported")
+        );
+        assert_eq!(data["path"].as_str(), Some("sample.txt"));
+        assert_eq!(
+            data["reason"].as_str(),
+            Some("non_utf8_existing_file")
+        );
+        assert_eq!(data["source"].as_str(), Some("read"));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }

@@ -4,15 +4,27 @@ fn parse_tool_arguments(raw: &str, tool_name: &str) -> Result<Value, ModelExecut
         return Ok(json!({}));
     }
     let parsed: Value = serde_json::from_str(trimmed).map_err(|error| {
-        ModelExecutionError::new(
-            "invalid_tool_arguments",
-            format!("tool arguments are invalid JSON ({tool_name}): {error}"),
+        model_error_with_fields(
+            model_diagnostic_error(
+                "invalid_tool_arguments",
+                format!("tool arguments are invalid JSON ({tool_name}): {error}"),
+                "model.tooling",
+                "tool_arguments_parse_json",
+                "inspect the provider tool_call.function.arguments payload and retry with a JSON object string",
+            ),
+            &[("tool_name", json!(tool_name))],
         )
     })?;
     if !parsed.is_object() {
-        return Err(ModelExecutionError::new(
-            "invalid_tool_arguments",
-            format!("tool arguments must be an object ({tool_name})"),
+        return Err(model_error_with_fields(
+            model_diagnostic_error(
+                "invalid_tool_arguments",
+                format!("tool arguments must be an object ({tool_name})"),
+                "model.tooling",
+                "tool_arguments_validate_object",
+                "retry with tool_call.function.arguments encoded as a JSON object",
+            ),
+            &[("tool_name", json!(tool_name))],
         ));
     }
     Ok(parsed)
@@ -23,21 +35,24 @@ fn extract_tool_calls(response: &Value) -> Result<Vec<ToolCallInput>, ModelExecu
         .get("choices")
         .and_then(Value::as_array)
         .ok_or_else(|| {
-            ModelExecutionError::new(
-                "upstream_invalid_response",
+            model_invalid_response_error(
                 "missing choices in model response",
+                "model.tooling",
+                "tool_calls_choices_parse",
             )
         })?;
     let first = choices.first().ok_or_else(|| {
-        ModelExecutionError::new(
-            "upstream_invalid_response",
+        model_invalid_response_error(
             "empty choices in model response",
+            "model.tooling",
+            "tool_calls_first_choice_parse",
         )
     })?;
     let message = first.get("message").and_then(Value::as_object).ok_or_else(|| {
-        ModelExecutionError::new(
-            "upstream_invalid_response",
+        model_invalid_response_error(
             "missing choices[0].message in model response",
+            "model.tooling",
+            "tool_calls_message_parse",
         )
     })?;
     let Some(raw_calls) = message.get("tool_calls").and_then(Value::as_array) else {
@@ -52,9 +67,13 @@ fn extract_tool_calls(response: &Value) -> Result<Vec<ToolCallInput>, ModelExecu
             .get("function")
             .and_then(Value::as_object)
             .ok_or_else(|| {
-                ModelExecutionError::new(
-                    "upstream_invalid_response",
-                    "tool_call.function is missing",
+                model_error_with_fields(
+                    model_invalid_response_error(
+                        "tool_call.function is missing",
+                        "model.tooling",
+                        "tool_call_function_parse",
+                    ),
+                    &[("tool_call_index", json!(index))],
                 )
             })?;
         let name = function
@@ -63,9 +82,13 @@ fn extract_tool_calls(response: &Value) -> Result<Vec<ToolCallInput>, ModelExecu
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .ok_or_else(|| {
-                ModelExecutionError::new(
-                    "upstream_invalid_response",
-                    "tool_call.function.name is missing",
+                model_error_with_fields(
+                    model_invalid_response_error(
+                        "tool_call.function.name is missing",
+                        "model.tooling",
+                        "tool_call_name_parse",
+                    ),
+                    &[("tool_call_index", json!(index))],
                 )
             })?
             .to_string();

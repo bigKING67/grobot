@@ -1,49 +1,3 @@
-#[derive(Debug, Clone)]
-struct BashAllowMatch {
-    segment: String,
-    matched_rule: String,
-}
-
-#[derive(Debug, Clone)]
-struct BashAllowDecision {
-    allowed: bool,
-    matches: Vec<BashAllowMatch>,
-    denied_segment: Option<String>,
-}
-
-fn evaluate_bash_allowlist(command: &str, allowlist: &[String]) -> BashAllowDecision {
-    let segments = split_bash_command_segments(command);
-    if segments.is_empty() {
-        return BashAllowDecision {
-            allowed: false,
-            matches: Vec::new(),
-            denied_segment: None,
-        };
-    }
-
-    let mut matches = Vec::new();
-    for segment in segments {
-        if let Some(matched_rule) = find_bash_allowlist_match(segment.as_str(), allowlist) {
-            matches.push(BashAllowMatch {
-                segment,
-                matched_rule,
-            });
-            continue;
-        }
-        return BashAllowDecision {
-            allowed: false,
-            matches,
-            denied_segment: Some(segment),
-        };
-    }
-
-    BashAllowDecision {
-        allowed: true,
-        matches,
-        denied_segment: None,
-    }
-}
-
 fn split_bash_command_segments(command: &str) -> Vec<String> {
     let mut segments: Vec<String> = Vec::new();
     let mut current = String::new();
@@ -60,7 +14,7 @@ fn split_bash_command_segments(command: &str) -> Vec<String> {
             continue;
         }
 
-        if ch == '\\' {
+        if ch == '\\' && !in_single_quote {
             current.push(ch);
             escaped = true;
             continue;
@@ -95,6 +49,10 @@ fn split_bash_command_segments(command: &str) -> Vec<String> {
                     continue;
                 }
                 '&' => {
+                    if current.ends_with('>') || current.ends_with('<') {
+                        current.push(ch);
+                        continue;
+                    }
                     if chars.peek() == Some(&'&') {
                         let _ = chars.next();
                     }
@@ -150,4 +108,16 @@ fn find_bash_allowlist_match(segment: &str, allowlist: &[String]) -> Option<Stri
     }
 
     None
+}
+
+fn find_bash_allowlist_match_for_segment(
+    segment: &ParsedBashSegment,
+    allowlist: &[String],
+) -> Option<String> {
+    find_bash_allowlist_match(segment.raw.as_str(), allowlist).or_else(|| {
+        if segment.argv.is_empty() {
+            return None;
+        }
+        find_bash_allowlist_match(segment.argv.join(" ").as_str(), allowlist)
+    })
 }

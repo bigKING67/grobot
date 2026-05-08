@@ -27,6 +27,25 @@
         assert_eq!(data["reason"].as_str(), Some("target_does_not_exist"));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
+
+    #[test]
+    fn read_v2_path_guard_metadata_error_reports_recovery_data() {
+        let workspace = make_temp_workspace("read-v2-path-guard-metadata-error");
+        let missing = workspace.join("missing.txt");
+        let error = read_resolved_read_target_metadata(&missing)
+            .expect_err("direct path guard metadata read failure should include recovery data");
+        assert_eq!(error.error_class, "tool_execution_failed");
+        let data = error.data.as_ref().expect("path guard metadata error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("file_io_error"));
+        assert_eq!(
+            data["source"].as_str(),
+            Some("read.path_guard")
+        );
+        assert_eq!(data["stage"].as_str(), Some("read_target_metadata"));
+        assert!(data["path"].as_str().unwrap_or_default().ends_with("missing.txt"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
     #[test]
     fn read_v2_include_metadata_false_omits_meta_field() {
         let workspace = make_temp_workspace("read-v2-no-meta");
@@ -85,6 +104,122 @@
         let bom_single_line = inspect_text_content_format("\u{FEFF}single-line");
         assert_eq!(bom_single_line.line_ending, "none");
         assert!(bom_single_line.bom_detected);
+    }
+
+    #[test]
+    fn read_v2_mtime_guard_reports_structured_metadata_errors() {
+        let workspace = make_temp_workspace("read-v2-mtime-error");
+        let missing = workspace.join("missing.txt");
+        let error = read_file_mtime_ms(&missing).expect_err("missing mtime target should fail");
+        assert_eq!(error.error_class, "tool_execution_failed");
+        let data = error.data.as_ref().expect("mtime metadata error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("file_io_error"));
+        assert_eq!(
+            data["source"].as_str(),
+            Some("file_snapshot_guard")
+        );
+        assert_eq!(data["stage"].as_str(), Some("read_metadata_for_mtime"));
+        assert!(data["path"].as_str().unwrap_or_default().ends_with("missing.txt"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_text_window_open_error_reports_recovery_data() {
+        let workspace = make_temp_workspace("read-v2-text-window-open-error");
+        let missing = workspace.join("missing.txt");
+        let request = ReadRequest {
+            path: "missing.txt".to_string(),
+            start_line: 1,
+            line_limit: None,
+            include_metadata: true,
+            pages: None,
+            range_mode: "full",
+        };
+        let error = read_text_window(&missing, Some("missing.txt"), &request)
+            .expect_err("missing text window target should fail");
+        assert_eq!(error.error_class, "tool_execution_failed");
+        let data = error.data.as_ref().expect("text window IO error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("file_io_error"));
+        assert_eq!(data["path"].as_str(), Some("missing.txt"));
+        assert_eq!(data["source"].as_str(), Some("read.text"));
+        assert_eq!(data["stage"].as_str(), Some("open_text_window"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_text_format_open_error_reports_recovery_data() {
+        let workspace = make_temp_workspace("read-v2-text-format-open-error");
+        let missing = workspace.join("missing.txt");
+        let error = inspect_text_file_format(&missing, Some("missing.txt"))
+            .expect_err("missing text format target should fail");
+        assert_eq!(error.error_class, "tool_execution_failed");
+        let data = error.data.as_ref().expect("text format IO error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("file_io_error"));
+        assert_eq!(data["path"].as_str(), Some("missing.txt"));
+        assert_eq!(data["source"].as_str(), Some("read.text_format"));
+        assert_eq!(data["stage"].as_str(), Some("open_format_scan"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_v2_text_window_line_error_reports_recovery_data() {
+        let workspace = make_temp_workspace("read-v2-text-window-line-error");
+        let request = ReadRequest {
+            path: ".".to_string(),
+            start_line: 1,
+            line_limit: None,
+            include_metadata: true,
+            pages: None,
+            range_mode: "full",
+        };
+        let error = read_text_window(&workspace, Some("."), &request)
+            .expect_err("reading a directory as text should fail on line read");
+        assert_eq!(error.error_class, "tool_execution_failed");
+        let data = error.data.as_ref().expect("text line IO error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("file_io_error"));
+        assert_eq!(data["path"].as_str(), Some("."));
+        assert_eq!(data["source"].as_str(), Some("read.text"));
+        assert_eq!(data["stage"].as_str(), Some("read_text_line"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_v2_text_format_read_error_reports_recovery_data() {
+        let workspace = make_temp_workspace("read-v2-text-format-read-error");
+        let error = inspect_text_file_format(&workspace, Some("."))
+            .expect_err("reading a directory for text format should fail");
+        assert_eq!(error.error_class, "tool_execution_failed");
+        let data = error.data.as_ref().expect("text format read IO error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("file_io_error"));
+        assert_eq!(data["path"].as_str(), Some("."));
+        assert_eq!(data["source"].as_str(), Some("read.text_format"));
+        assert_eq!(data["stage"].as_str(), Some("read_format_scan"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_v2_full_hash_read_error_reports_recovery_data() {
+        let workspace = make_temp_workspace("read-v2-full-hash-read-error");
+        let request = ReadRequest {
+            path: ".".to_string(),
+            start_line: 1,
+            line_limit: None,
+            include_metadata: true,
+            pages: None,
+            range_mode: "full",
+        };
+        let error = read_text_window_with_guard_hash(&workspace, ".", &request)
+            .expect_err("reading a directory for full hash should fail");
+        assert_eq!(error.error_class, "tool_execution_failed");
+        let data = error.data.as_ref().expect("full hash read IO error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("file_io_error"));
+        assert_eq!(data["path"].as_str(), Some("."));
+        assert_eq!(data["source"].as_str(), Some("read.text"));
+        assert_eq!(data["stage"].as_str(), Some("read_full_for_hash"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
     #[test]
@@ -263,5 +398,10 @@
             .execute_tool_call(&call, &input)
             .expect_err("out of bounds read should fail");
         assert_eq!(error.error_class, "range_out_of_bounds");
+        let data = error.data.as_ref().expect("range error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("range_out_of_bounds"));
+        assert_eq!(data["range_kind"].as_str(), Some("line"));
+        assert_eq!(data["requested_offset"].as_u64(), Some(9));
+        assert_eq!(data["available_count"].as_u64(), Some(2));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }

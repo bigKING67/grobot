@@ -91,9 +91,13 @@ fn build_runtime_messages(
             .map(str::trim)
             .unwrap_or("");
         if source.is_empty() {
-            return Err(ModelExecutionError::new(
-                "attachment_invalid",
+            return Err(attachment_invalid_error(
                 "attachment source is empty",
+                "attachment_source_validate",
+                &[
+                    ("attachment_type", json!(attachment_type)),
+                    ("source_type", json!(source_type)),
+                ],
             ));
         }
         match attachment_type.as_str() {
@@ -107,15 +111,23 @@ fn build_runtime_messages(
                         map_kimi_upload_purpose("file").unwrap_or("file-extract"),
                     )?,
                     "url" => {
-                        return Err(ModelExecutionError::new(
-                            "attachment_invalid",
+                        return Err(attachment_invalid_error(
                             "file attachment with source_type=url is not supported yet",
+                            "file_attachment_source_type_validate",
+                            &[
+                                ("attachment_type", json!(attachment_type)),
+                                ("source_type", json!(source_type)),
+                            ],
                         ))
                     }
                     _ => {
-                        return Err(ModelExecutionError::new(
-                            "attachment_invalid",
+                        return Err(attachment_invalid_error(
                             format!("unsupported attachment source_type: {}", attachment.source_type),
+                            "file_attachment_source_type_validate",
+                            &[
+                                ("attachment_type", json!(attachment_type)),
+                                ("source_type", json!(source_type)),
+                            ],
                         ))
                     }
                 };
@@ -135,9 +147,13 @@ fn build_runtime_messages(
                     "file_id" => format!("ms://{}", source),
                     "path" => {
                         let purpose = map_kimi_upload_purpose(attachment_type.as_str()).ok_or_else(|| {
-                            ModelExecutionError::new(
-                                "attachment_invalid",
+                            attachment_invalid_error(
                                 format!("unsupported attachment type: {}", attachment.attachment_type),
+                                "media_attachment_type_to_purpose",
+                                &[
+                                    ("attachment_type", json!(attachment_type)),
+                                    ("source_type", json!(source_type)),
+                                ],
                             )
                         })?;
                         let file_id = upload_kimi_file_from_path(client, config, source, purpose)?;
@@ -145,9 +161,13 @@ fn build_runtime_messages(
                     }
                     "url" => source.to_string(),
                     _ => {
-                        return Err(ModelExecutionError::new(
-                            "attachment_invalid",
+                        return Err(attachment_invalid_error(
                             format!("unsupported attachment source_type: {}", attachment.source_type),
+                            "media_attachment_source_type_validate",
+                            &[
+                                ("attachment_type", json!(attachment_type)),
+                                ("source_type", json!(source_type)),
+                            ],
                         ))
                     }
                 };
@@ -168,9 +188,13 @@ fn build_runtime_messages(
                 }
             }
             _ => {
-                return Err(ModelExecutionError::new(
-                    "attachment_invalid",
+                return Err(attachment_invalid_error(
                     format!("unsupported attachment type: {}", attachment.attachment_type),
+                    "attachment_type_validate",
+                    &[
+                        ("attachment_type", json!(attachment_type)),
+                        ("source_type", json!(source_type)),
+                    ],
                 ))
             }
         }

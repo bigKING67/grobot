@@ -9,11 +9,133 @@ mod tests {
     use std::collections::HashMap as StdHashMap;
     use std::collections::HashSet as StdHashSet;
     use std::fs;
+    use std::io::{ErrorKind, Read, Write};
+    use std::net::{TcpListener, TcpStream};
     use std::process;
     use std::sync::Arc;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     static BROWSER_MCP_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    #[derive(Debug, Clone)]
+    struct ToolRecordedRequest {
+        path: String,
+    }
+
+    #[derive(Debug)]
+    struct ToolMockHttpServer {
+        base_url: String,
+        requests: Arc<Mutex<Vec<ToolRecordedRequest>>>,
+        handle: Option<thread::JoinHandle<()>>,
+    }
+
+    impl ToolMockHttpServer {
+        fn finish(mut self) -> Vec<ToolRecordedRequest> {
+            if let Some(handle) = self.handle.take() {
+                handle.join().expect("join tool mock HTTP server");
+            }
+            self.requests
+                .lock()
+                .expect("read mock HTTP requests")
+                .clone()
+        }
+    }
+
+    fn read_tool_http_request(stream: &mut TcpStream) -> String {
+        let mut buffer = [0_u8; 4096];
+        let mut raw = Vec::new();
+        loop {
+            match stream.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(count) => {
+                    raw.extend_from_slice(&buffer[..count]);
+                    if raw.windows(4).any(|window| window == b"\r\n\r\n") {
+                        break;
+                    }
+                }
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted
+                    ) =>
+                {
+                    break;
+                }
+                Err(_) => break,
+            }
+        }
+        String::from_utf8_lossy(&raw).to_string()
+    }
+
+    fn parse_tool_recorded_request(raw: &str) -> Option<ToolRecordedRequest> {
+        let request_line = raw.lines().next()?;
+        let mut parts = request_line.split_whitespace();
+        let _method = parts.next()?;
+        let path = parts.next()?.to_string();
+        Some(ToolRecordedRequest { path })
+    }
+
+    fn start_mock_http_server(status_line: &str, response_body: &str) -> ToolMockHttpServer {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind tool mock HTTP server");
+        let addr = listener.local_addr().expect("read tool mock addr");
+        listener
+            .set_nonblocking(true)
+            .expect("set tool mock non-blocking listener");
+        let requests = Arc::new(Mutex::new(Vec::<ToolRecordedRequest>::new()));
+        let requests_for_thread = Arc::clone(&requests);
+        let status = status_line.to_string();
+        let body = response_body.to_string();
+        let handle = thread::spawn(move || {
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            loop {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        stream
+                            .set_read_timeout(Some(Duration::from_secs(2)))
+                            .expect("set tool mock read timeout");
+                        if let Some(request) = parse_tool_recorded_request(&read_tool_http_request(&mut stream)) {
+                            if let Ok(mut guard) = requests_for_thread.lock() {
+                                guard.push(request);
+                            }
+                        }
+                        let response = format!(
+                            "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                            body.as_bytes().len(),
+                            body
+                        );
+                        let _ = stream.write_all(response.as_bytes());
+                        let _ = stream.flush();
+                        break;
+                    }
+                    Err(error)
+                        if matches!(
+                            error.kind(),
+                            ErrorKind::WouldBlock
+                                | ErrorKind::Interrupted
+                                | ErrorKind::ConnectionAborted
+                        ) =>
+                    {
+                        if std::time::Instant::now() >= deadline {
+                            break;
+                        }
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(_) => {
+                        if std::time::Instant::now() >= deadline {
+                            break;
+                        }
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                }
+            }
+        });
+
+        ToolMockHttpServer {
+            base_url: format!("http://127.0.0.1:{}/v1", addr.port()),
+            requests,
+            handle: Some(handle),
+        }
+    }
 
     fn make_temp_workspace(prefix: &str) -> PathBuf {
         let nonce = SystemTime::now()

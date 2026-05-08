@@ -1,6 +1,7 @@
 import { SimpleContextAssembler } from "../models/context/context-assembler";
 import { resolveMigrationOptions } from "./migration";
 import { AgentLoop } from "./orchestrator/agent-loop";
+import { GLOBAL_TURN_GATE, type TurnGate } from "./orchestrator/turn-gate";
 import { DeterministicRuntimeClient, BasicTurnVerifier } from "../tools/runtime/client";
 import { StdioRustRuntimeClient } from "../tools/runtime/stdio-client";
 import { buildSessionKey } from "../models/session-key";
@@ -29,6 +30,7 @@ export interface GatewayRuntimeOptions {
   abortSignal?: AbortSignal;
   onEvent?: (event: RuntimeEvent) => void;
   streamEvents?: boolean;
+  turnGate?: TurnGate;
 }
 
 export function createTurnRequest(
@@ -84,6 +86,7 @@ export async function runGatewayTurn(
       : undefined,
     verifier: new BasicTurnVerifier(),
     persister: new InMemorySessionPersister(),
+    turnGate: runtimeOptions?.turnGate ?? GLOBAL_TURN_GATE,
   });
 
   return loop.runTurn(

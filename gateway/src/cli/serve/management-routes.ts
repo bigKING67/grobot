@@ -512,10 +512,12 @@ export async function dispatchManagementRoutes(
     }
 
     context.setInterruptFlag(sessionId, ttlSecs);
+    context.forceEndTurnGate(sessionId);
     context.writeJson(response, 200, {
       status: "ok",
       session_id: sessionId,
       ttl_secs: ttlSecs,
+      turn_gate_forced_end: true,
     });
     return true;
   }

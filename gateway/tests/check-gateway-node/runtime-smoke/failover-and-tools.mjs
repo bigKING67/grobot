@@ -176,6 +176,45 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(String(upstreamFailurePayload.stderr).includes("upstream_connect_failed"), false);
   logStep("start-smoke-contract failover-runs-ts-rust-upstream-failure");
 
+  const providerFailureStatusResult = runContract(
+    "start-smoke-contract.mjs",
+    "provider-failure-route-status-ts-rust",
+    ["--repo-root", repoRoot],
+    { timeoutMs: 240_000 },
+  );
+  const providerFailureStatusPayload = parseJsonOutput(
+    "start-smoke-contract provider-failure-route-status-ts-rust",
+    providerFailureStatusResult.stdout,
+  );
+  assert.equal(providerFailureStatusPayload.exit_code !== 0, true);
+  assert.equal(providerFailureStatusPayload.status_exit_code, 0);
+  assert.equal(providerFailureStatusPayload.legacy_text_exit_code, 0);
+  assert.equal(providerFailureStatusPayload.default_text_exit_code, 0);
+  assert.equal(providerFailureStatusPayload.status_json_parse_ok, true);
+  assert.equal(providerFailureStatusPayload.registry_exists, true);
+  assert.equal(Number(providerFailureStatusPayload.status_provider_state_count) >= 2, true);
+  assert.equal(Number(providerFailureStatusPayload.registry_provider_state_count) >= 2, true);
+  assert.equal(providerFailureStatusPayload.start_stderr_has_human_failure, true);
+  assert.equal(providerFailureStatusPayload.start_stderr_hides_raw_error_class, true);
+  assert.equal(providerFailureStatusPayload.status_has_failing_state, true);
+  assert.equal(providerFailureStatusPayload.status_has_success_state, true);
+  assert.equal(providerFailureStatusPayload.status_failing_last_error_class, "upstream_connect_failed");
+  assert.equal(providerFailureStatusPayload.status_failing_last_error_diagnostic, "upstream_connect_failed");
+  assert.equal(providerFailureStatusPayload.status_failing_last_error_source, "model.transport");
+  assert.equal(providerFailureStatusPayload.status_failing_last_error_stage, "chat_request");
+  assert.equal(providerFailureStatusPayload.status_failing_last_error_retryable, false);
+  assert.equal(providerFailureStatusPayload.status_failing_attempts_exhausted, true);
+  assert.equal(providerFailureStatusPayload.status_failing_redacts_body_preview, true);
+  assert.equal(providerFailureStatusPayload.status_failing_redacts_response_headers, true);
+  assert.equal(providerFailureStatusPayload.registry_has_failing_last_error_data, true);
+  assert.equal(
+    providerFailureStatusPayload.registry_failing_last_error_diagnostic,
+    "upstream_connect_failed",
+  );
+  assert.equal(providerFailureStatusPayload.legacy_text_has_route_provider_errors, true);
+  assert.equal(providerFailureStatusPayload.default_text_has_last_provider_error, true);
+  logStep("start-smoke-contract provider-failure-route-status-ts-rust");
+
   const toolCallFailureResult = runContract(
     "runtime-smoke-contract.mjs",
     "tool-call-fail-fast",

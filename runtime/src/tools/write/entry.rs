@@ -7,6 +7,106 @@ fn count_visible_lines(content: &str) -> usize {
     }
 }
 
+fn build_write_diff(old_content: Option<&str>, new_content: &str) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    let old_count = old_content.map(line_count_for_diff).unwrap_or(0);
+    let new_count = line_count_for_diff(new_content);
+    lines.push(format!("@@ -1,{old_count} +1,{new_count} @@"));
+    if let Some(old) = old_content {
+        for line in lines_for_diff(old) {
+            lines.push(format!("-{line}"));
+        }
+    }
+    for line in lines_for_diff(new_content) {
+        lines.push(format!("+{line}"));
+    }
+    lines.join("\n")
+}
+
+fn write_binary_file_error(
+    target: &Path,
+    relative_path: &str,
+    reason: &str,
+) -> ToolExecutionError {
+    binary_file_not_supported_error(
+        target,
+        Some(relative_path),
+        reason,
+        TOOL_WRITE,
+        None,
+    )
+}
+
+fn ensure_write_text_update_allowed(
+    target: &Path,
+    relative_path: &str,
+) -> Result<(), ToolExecutionError> {
+    let extension = target
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if has_binary_extension(extension.as_str()) {
+        return Err(binary_file_not_supported_error(
+            target,
+            Some(relative_path),
+            "binary_extension",
+            TOOL_WRITE,
+            Some(extension.as_str()),
+        ));
+    }
+    if file_has_nul_byte(target)? {
+        return Err(write_binary_file_error(
+            target,
+            relative_path,
+            "nul_byte_in_existing_file",
+        ));
+    }
+    Ok(())
+}
+
+fn read_write_target_metadata(
+    target: &Path,
+    relative_path: &str,
+) -> Result<fs::Metadata, ToolExecutionError> {
+    fs::metadata(target).map_err(|error| {
+        file_io_error(
+            format!("failed to read file metadata: {error}"),
+            target,
+            Some(relative_path),
+            TOOL_WRITE,
+            "read_target_metadata",
+            "confirm the target still exists and is readable, then reread before retrying write",
+        )
+    })
+}
+
+fn read_write_target_content(
+    target: &Path,
+    relative_path: &str,
+) -> Result<String, ToolExecutionError> {
+    let current_bytes = fs::read(target).map_err(|error| {
+        file_io_error(
+            format!("failed to read file: {error}"),
+            target,
+            Some(relative_path),
+            TOOL_WRITE,
+            "read_target_content",
+            "confirm the target still exists and is readable, then reread before retrying write",
+        )
+    })?;
+    if current_bytes.contains(&0_u8) {
+        return Err(write_binary_file_error(
+            target,
+            relative_path,
+            "nul_byte_in_existing_file",
+        ));
+    }
+    String::from_utf8(current_bytes).map_err(|_| {
+        write_binary_file_error(target, relative_path, "non_utf8_existing_file")
+    })
+}
+
 fn run_write(
     context: &ToolContextResolved,
     args: &Map<String, Value>,
@@ -14,18 +114,21 @@ fn run_write(
     let request = parse_write_request(args)?;
     let target = ensure_within_workspace(&context.work_dir, &request.path, true)?;
     let relative_path = relative_to_work_dir(&context.work_dir, &target);
+    if request.content.as_bytes().contains(&0_u8) {
+        return Err(ToolExecutionError::new(
+            "binary_file_not_supported",
+            "write only supports utf-8 text content without NUL bytes",
+        )
+        .with_data(json!({
+            "diagnostic_kind": "binary_file_not_supported",
+            "path": relative_path,
+            "reason": "nul_byte_in_content",
+            "recovery_hint": "use a text-safe representation or a dedicated binary/file-asset path"
+        })));
+    }
     let text_format = inspect_text_content_format(request.content.as_str());
 
     let mut created_parent_dirs = false;
-    if let Some(parent) = target.parent() {
-        created_parent_dirs = !parent.exists();
-        fs::create_dir_all(parent).map_err(|error| {
-            ToolExecutionError::new(
-                "tool_execution_failed",
-                format!("failed to create parent directories: {error}"),
-            )
-        })?;
-    }
 
     let file_lock = acquire_file_mutation_lock(&target)?;
     let _file_guard = file_lock
@@ -39,13 +142,9 @@ fn run_write(
         })?;
 
     let existed_before = target.exists();
+    let mut original_content_for_diff: Option<String> = None;
     let (operation, preserved_permissions) = if existed_before {
-        let metadata = fs::metadata(&target).map_err(|error| {
-            ToolExecutionError::new(
-                "tool_execution_failed",
-                format!("failed to read file metadata: {error}"),
-            )
-        })?;
+        let metadata = read_write_target_metadata(&target, relative_path.as_str())?;
         if !metadata.is_file() {
             return Err(ToolExecutionError::new(
                 "path_invalid",
@@ -59,7 +158,7 @@ fn run_write(
                 "recovery_hint": "choose an existing regular file path or a safe missing leaf"
             })));
         }
-        ensure_text_read_allowed(&target)?;
+        ensure_write_text_update_allowed(&target, relative_path.as_str())?;
         let current_mtime_ms = read_file_mtime_ms(&target)?;
         let snapshot = lookup_write_read_snapshot(context.session_key.as_str(), &target).ok_or_else(|| {
             ToolExecutionError::new(
@@ -86,21 +185,7 @@ fn run_write(
                 "recovery_hint": "read the full target file before retrying write"
             })));
         }
-        let current_bytes = fs::read(&target).map_err(|error| {
-            ToolExecutionError::new("tool_execution_failed", format!("failed to read file: {error}"))
-        })?;
-        if current_bytes.contains(&0_u8) {
-            return Err(ToolExecutionError::new(
-                "binary_file_not_supported",
-                "binary file content is not supported by write tool",
-            ));
-        }
-        let current_content = String::from_utf8(current_bytes).map_err(|_| {
-            ToolExecutionError::new(
-                "binary_file_not_supported",
-                "write only supports utf-8 text files",
-            )
-        })?;
+        let current_content = read_write_target_content(&target, relative_path.as_str())?;
         let current_hash = hash_write_guard_text(current_content.as_str());
         let snapshot_hash = snapshot.content_hash.ok_or_else(|| {
             ToolExecutionError::new(
@@ -146,8 +231,22 @@ fn run_write(
                 "recovery_hint": "stop retrying or change content intentionally"
             })));
         }
+        original_content_for_diff = Some(current_content);
         ("update", Some(metadata.permissions()))
     } else {
+        if let Some(parent) = target.parent() {
+            created_parent_dirs = !parent.exists();
+            fs::create_dir_all(parent).map_err(|error| {
+                file_io_error(
+                    format!("failed to create parent directories: {error}"),
+                    &target,
+                    Some(relative_path.as_str()),
+                    TOOL_WRITE,
+                    "create_parent_dirs",
+                    "check parent directory permissions and choose a writable workspace path",
+                )
+            })?;
+        }
         ("create", None)
     };
 
@@ -164,6 +263,10 @@ fn run_write(
         "bom_written": text_format.bom_detected,
         "created_parent_dirs": created_parent_dirs,
         "existed_before": existed_before,
+        "diff": build_write_diff(
+            original_content_for_diff.as_deref(),
+            request.content.as_str()
+        ),
     });
     Ok(ToolCallOutput::from_payload(payload))
 }

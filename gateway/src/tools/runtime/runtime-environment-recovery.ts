@@ -9,6 +9,7 @@ import {
 
 export type RuntimeEnvironmentRecoveryErrorCode =
   | "CONFIG_MISSING"
+  | "CONFIG_INVALID"
   | "TOOL_CONTEXT_MISSING"
   | "TOOL_CONTEXT_INVALID"
   | "RUNTIME_STATE_UNAVAILABLE";
@@ -53,6 +54,9 @@ function runtimeEnvironmentErrorCode(errorClass: string | undefined): RuntimeEnv
   if (errorClass === "config_missing") {
     return "CONFIG_MISSING";
   }
+  if (errorClass === "config_invalid") {
+    return "CONFIG_INVALID";
+  }
   if (errorClass === "tool_context_missing") {
     return "TOOL_CONTEXT_MISSING";
   }
@@ -68,7 +72,7 @@ function runtimeEnvironmentErrorCode(errorClass: string | undefined): RuntimeEnv
 function runtimeEnvironmentRecoveryAction(
   errorCode: RuntimeEnvironmentRecoveryErrorCode,
 ): RuntimeEnvironmentRecoveryAction {
-  if (errorCode === "CONFIG_MISSING") {
+  if (errorCode === "CONFIG_MISSING" || errorCode === "CONFIG_INVALID") {
     return "fix_config_or_switch_provider_and_check_status";
   }
   if (errorCode === "RUNTIME_STATE_UNAVAILABLE") {
@@ -78,7 +82,7 @@ function runtimeEnvironmentRecoveryAction(
 }
 
 function runtimeEnvironmentRecoveryCommands(errorCode: RuntimeEnvironmentRecoveryErrorCode): string[] {
-  if (errorCode === "CONFIG_MISSING") {
+  if (errorCode === "CONFIG_MISSING" || errorCode === "CONFIG_INVALID") {
     return ["grobot status --json", "grobot status --probe --json"];
   }
   return ["grobot status --json"];
@@ -159,6 +163,12 @@ export function runtimeEnvironmentRecoveryActionInstruction(
       "do not retry the failing tool until status/probe confirms the configuration is usable.",
     ].join(" ");
   }
+  if (plan.errorCode === "CONFIG_INVALID") {
+    return [
+      `Ask the user to fix the invalid or unusable runtime configuration or switch to a configured provider/tool path; inspect readiness with ${commands};`,
+      "do not retry the failing tool until status/probe confirms the configuration is usable.",
+    ].join(" ");
+  }
   if (plan.errorCode === "RUNTIME_STATE_UNAVAILABLE") {
     return [
       `Ask the user to inspect runtime state with ${commands};`,
@@ -181,9 +191,10 @@ export function runtimeEnvironmentRecoveryFixInstruction(input: {
   }
   const toolName = input.toolName.trim().length > 0 ? input.toolName.trim() : "the failing tool";
   const commands = formatEnvironmentCommands(plan);
-  if (plan.errorCode === "CONFIG_MISSING") {
-    const required = plan.requiredConfig ? ` Missing config: ${plan.requiredConfig}.` : "";
-    return `Runtime environment fix: Do not retry ${toolName} automatically. Ask the user to provide missing config or switch provider/tool path, run ${commands}, and retry only after status/probe passes.${required}`;
+  if (plan.errorCode === "CONFIG_MISSING" || plan.errorCode === "CONFIG_INVALID") {
+    const required = plan.requiredConfig ? ` Affected config: ${plan.requiredConfig}.` : "";
+    const configState = plan.errorCode === "CONFIG_INVALID" ? "fix invalid config" : "provide missing config";
+    return `Runtime environment fix: Do not retry ${toolName} automatically. Ask the user to ${configState} or switch provider/tool path, run ${commands}, and retry only after status/probe passes.${required}`;
   }
   if (plan.errorCode === "RUNTIME_STATE_UNAVAILABLE") {
     return `Runtime environment fix: Do not retry ${toolName} automatically. Ask the user to run ${commands}; if runtime state remains unavailable, restart the current grobot session before retrying.`;

@@ -10,6 +10,7 @@ import {
 import {
   runStartRecoveryGateBlocksSurfaceAdaptation,
   runStatusBrowserEnvironmentToolRecovery,
+  runStatusInvalidConfigRuntimeRecovery,
   runStatusMcpEnvironmentToolRecovery,
   runStatusNonRecoverableToolRecovery,
   runStatusNonRecoverableToolRecoveryConsumed,
@@ -71,6 +72,7 @@ import {
 import {
   runFailoverRejectsPython,
   runFailoverTsRust,
+  runProviderFailureRouteStatusTsRust,
   runProviderPoolMultiTurnTsRust,
   runStartSessionStoreRedisFallback,
 } from "./start-smoke-contract/failover-flows.mjs";
@@ -159,6 +161,9 @@ function runCli(argv) {
     case "failover-runs-ts-rust":
       payload = runFailoverTsRust(buildStartSmokeFlowContext(repoRoot));
       break;
+    case "provider-failure-route-status-ts-rust":
+      payload = runProviderFailureRouteStatusTsRust(buildStartSmokeFlowContext(repoRoot));
+      break;
     case "start-recovery-gate-blocks-surface-adaptation":
       payload = runStartRecoveryGateBlocksSurfaceAdaptation(buildStartSmokeFlowContext(repoRoot));
       break;
@@ -185,6 +190,9 @@ function runCli(argv) {
     }
     case "status-nonrecoverable-tool-recovery":
       payload = runStatusNonRecoverableToolRecovery(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "status-invalid-config-runtime-recovery":
+      payload = runStatusInvalidConfigRuntimeRecovery(buildStartSmokeFlowContext(repoRoot));
       break;
     case "status-browser-environment-tool-recovery":
       payload = runStatusBrowserEnvironmentToolRecovery(buildStartSmokeFlowContext(repoRoot));

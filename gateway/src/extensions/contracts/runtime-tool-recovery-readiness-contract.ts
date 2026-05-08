@@ -252,6 +252,41 @@ expectEqual(
   "blocked runtime gate adaptation reason",
 );
 
+const blockedInvalidConfigGate = buildRuntimeToolRecoveryReadinessGate({
+  readiness: makeReadiness({
+    status: "blocked",
+    ready: false,
+    automaticRecoveryAllowed: false,
+    operatorActionRequired: true,
+    reason: "health_risk:active_nonrecoverable_recovery",
+    recommendedNextAction: "ask_user_for_config_or_switch_provider",
+    recommendedActionFamily: "user_intervention",
+    recommendedActionReason: "ask_user_for_config_or_switch_provider",
+    healthLevel: "risk",
+    healthScore: 35,
+    attentionSource: "latest",
+    attentionStage: "ask_user",
+    attentionToolName: "model_provider",
+    attentionErrorClass: "config_invalid",
+    attentionRequiresUserIntervention: true,
+    attentionRuntimeEnvironmentRecovery: buildRuntimeEnvironmentRecoveryPlan({
+      errorClass: "config_invalid",
+      errorMessage: "model=auto returned no available models",
+      errorData: {
+        source: "model.catalog",
+        stage: "auto_model_select",
+      },
+    }),
+  }),
+});
+expectEqual(blockedInvalidConfigGate.blockerKind, "runtime_environment", "invalid config gate blocker kind");
+expectEqual(blockedInvalidConfigGate.blockerCode, "CONFIG_INVALID", "invalid config gate blocker code");
+expectEqual(
+  runtimeToolRecoveryGateAdaptationReason(blockedInvalidConfigGate),
+  "recovery_gate_runtime_environment_config_invalid",
+  "invalid config gate adaptation reason",
+);
+
 const blockedBrowserGate = buildRuntimeToolRecoveryReadinessGate({
   readiness: makeReadiness({
     status: "blocked",

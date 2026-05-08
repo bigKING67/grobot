@@ -202,8 +202,15 @@ mod tests {
         ) -> Result<ModelExecutionOutput, ModelExecutionError> {
             Err(ModelExecutionError::new(
                 "tool_call_not_supported",
-                "runtime v1 does not support tool calls yet: lookup",
-            ))
+                "runtime v1 does not support tool calls yet: stale-message-name",
+            )
+            .with_data(json!({
+                "diagnostic_kind": "tool_call_not_supported",
+                "source": "model.executor",
+                "stage": "tool_call_context_validate",
+                "recovery_hint": "enable local tool_context or route only provider-native Kimi tools before retrying",
+                "tool_name": "lookup"
+            })))
         }
     }
 
@@ -237,23 +244,100 @@ mod tests {
             .expect("tool_end payload");
         assert_eq!(tool_end_payload["status"], "failed");
         assert_eq!(tool_end_payload["error_class"], "tool_call_not_supported");
+        assert_eq!(
+            tool_end_payload["error_data"]["diagnostic_kind"].as_str(),
+            Some("tool_call_not_supported")
+        );
+        assert_eq!(
+            tool_end_payload["error_data"]["tool_name"].as_str(),
+            Some("lookup")
+        );
         let tool_recovery_payload = failure.events[4]
             .payload
             .as_ref()
             .expect("tool_recovery payload");
         assert_eq!(tool_recovery_payload["tool_name"], "lookup");
+        assert_eq!(
+            tool_recovery_payload["error_data"]["stage"].as_str(),
+            Some("tool_call_context_validate")
+        );
         assert_eq!(tool_recovery_payload["recovery_stage"], "strategy_switch");
         assert!(
             tool_recovery_payload["error_message"]
                 .as_str()
                 .unwrap_or_default()
-                .contains("lookup")
+                .contains("stale-message-name")
         );
         assert_eq!(
             tool_recovery_payload["recommended_next_action"],
             "switch_tool_strategy"
         );
         assert_eq!(tool_recovery_payload["recoverable"], true);
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct StubInvalidToolArgumentsModel;
+
+    impl ModelExecutor for StubInvalidToolArgumentsModel {
+        fn generate_assistant_message_with_telemetry(
+            &self,
+            _input: &TurnExecuteInput,
+            _tools: &dyn ToolExecutor,
+            _telemetry_sink: &mut dyn ModelTelemetryEventSink,
+        ) -> Result<ModelExecutionOutput, ModelExecutionError> {
+            Err(ModelExecutionError::new(
+                "invalid_tool_arguments",
+                "tool arguments are invalid JSON (list): expected value",
+            )
+            .with_data(json!({
+                "diagnostic_kind": "invalid_tool_arguments",
+                "source": "model.tooling",
+                "stage": "tool_arguments_parse_json",
+                "recovery_hint": "retry with a JSON object string",
+                "tool_name": "list"
+            })))
+        }
+    }
+
+    #[test]
+    fn invalid_tool_arguments_emits_synthetic_tool_recovery() {
+        let orchestrator = TurnOrchestrator::new(StubInvalidToolArgumentsModel, LocalToolExecutor);
+        let failure = orchestrator
+            .execute_turn(sample_input())
+            .expect_err("expected invalid_tool_arguments");
+        let event_types: Vec<&str> =
+            failure.events.iter().map(|event| event.event_type.as_str()).collect();
+        assert_eq!(
+            event_types,
+            vec![
+                "turn_start",
+                "model_request",
+                "tool_start",
+                "tool_end",
+                "tool_recovery",
+                "turn_failed",
+                "turn_end"
+            ]
+        );
+        let tool_end_payload = failure.events[3]
+            .payload
+            .as_ref()
+            .expect("tool_end payload");
+        assert_eq!(tool_end_payload["tool_name"], "list");
+        assert_eq!(tool_end_payload["status"], "failed");
+        assert_eq!(tool_end_payload["error_class"], "invalid_tool_arguments");
+        assert_eq!(
+            tool_end_payload["error_data"]["stage"].as_str(),
+            Some("tool_arguments_parse_json")
+        );
+        let recovery_payload = failure.events[4]
+            .payload
+            .as_ref()
+            .expect("tool_recovery payload");
+        assert_eq!(recovery_payload["tool_name"], "list");
+        assert_eq!(recovery_payload["recovery_stage"], "local_fix");
+        assert_eq!(recovery_payload["recommended_next_action"], "fix_tool_arguments");
+        assert_eq!(recovery_payload["recoverable"], true);
     }
 
     #[derive(Debug, Clone, Copy)]

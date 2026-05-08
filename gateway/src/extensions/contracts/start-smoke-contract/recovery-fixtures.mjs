@@ -55,6 +55,57 @@ export function writeNonRecoverableToolRecoveryMetrics(workDir) {
   return observedAt;
 }
 
+export function writeInvalidConfigRuntimeRecoveryMetrics(workDir) {
+  const runtimeDir = `${workDir}/.grobot/runtime`;
+  mkdirSync(runtimeDir, { recursive: true });
+  const observedAt = new Date().toISOString();
+  writeFileSync(
+    `${runtimeDir}/tool-surface-metrics.json`,
+    `${JSON.stringify({
+      version: 1,
+      updatedAt: observedAt,
+      callsTotal: 1,
+      failedTotal: 1,
+      deferredTotal: 0,
+      callsByTool: { model_provider: 1 },
+      failuresByErrorClass: { config_invalid: 1 },
+      recoveryStages: { ask_user: 1 },
+      recoveryCountsByKey: { "tool_error:model_provider:config_invalid": 1 },
+      latestRecoveryRepeatKey: "tool_error:model_provider:config_invalid",
+      latestRecoveryRepeatCount: 1,
+      durationTotalMsByTool: { model_provider: 15 },
+      durationCountByTool: { model_provider: 1 },
+      recentRecoveries: [
+        {
+          stage: "ask_user",
+          reason: "config_invalid",
+          recommendedNextAction: "ask_user_for_config_or_switch_provider",
+          toolName: "model_provider",
+          errorClass: "config_invalid",
+          errorMessage: "model config invalid: provider catalog is empty",
+          errorData: {
+            diagnostic_kind: "config_invalid",
+            source: "model.config",
+            stage: "load_provider_catalog",
+            model_count: 0,
+            recovery_hint: "fix invalid model config or switch provider before retrying",
+          },
+          recoverable: false,
+          requiresUserIntervention: true,
+          sameToolErrorCount: 1,
+          escalated: false,
+          escalationReason: null,
+          escalationPolicyVersion: "v1",
+          baseStage: null,
+          baseRecommendedNextAction: null,
+          observedAt,
+        },
+      ],
+    }, null, 2)}\n`,
+    "utf8",
+  );
+}
+
 export function writeBrowserEnvironmentToolRecoveryMetrics(workDir) {
   const runtimeDir = `${workDir}/.grobot/runtime`;
   mkdirSync(runtimeDir, { recursive: true });

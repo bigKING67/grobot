@@ -169,6 +169,77 @@ export async function runRuntimeRecoverySurfaceSmoke() {
   assert.equal(statusNonRecoverablePayload.text_has_recovery_gate_thresholds, true);
   logStep("start-smoke-contract status-nonrecoverable-tool-recovery");
 
+  const statusInvalidConfigRecoveryResult = runContract(
+    "start-smoke-contract.mjs",
+    "status-invalid-config-runtime-recovery",
+    [
+      "--repo-root",
+      repoRoot,
+    ],
+    {
+      timeoutMs: 240_000,
+    },
+  );
+  const statusInvalidConfigRecoveryPayload = parseJsonOutput(
+    "start-smoke-contract status-invalid-config-runtime-recovery",
+    statusInvalidConfigRecoveryResult.stdout,
+  );
+  assert.equal(statusInvalidConfigRecoveryPayload.exit_code, 0);
+  assert.equal(statusInvalidConfigRecoveryPayload.text_exit_code, 0);
+  assert.equal(statusInvalidConfigRecoveryPayload.status_json_parse_ok, true);
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_feedback_active, true);
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_feedback_stage, "ask_user");
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_feedback_tool_name, "model_provider");
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_feedback_error_class, "config_invalid");
+  assert.equal(
+    statusInvalidConfigRecoveryPayload.recovery_feedback_action,
+    "ask_user_for_config_or_switch_provider",
+  );
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_feedback_recoverable, false);
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_feedback_requires_user_intervention, true);
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_feedback_runtime_error_code, "CONFIG_INVALID");
+  assert.equal(
+    statusInvalidConfigRecoveryPayload.recovery_feedback_runtime_action,
+    "fix_config_or_switch_provider_and_check_status",
+  );
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_feedback_runtime_retry_allowed, false);
+  assert.equal(
+    statusInvalidConfigRecoveryPayload.recovery_feedback_runtime_commands,
+    "grobot status --json|grobot status --probe --json",
+  );
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_timeline_count, 1);
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_timeline_latest_tool_name, "model_provider");
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_timeline_latest_error_class, "config_invalid");
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_timeline_latest_runtime_error_code, "CONFIG_INVALID");
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_health_attention_runtime_error_code, "CONFIG_INVALID");
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_readiness_status, "blocked");
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_readiness_ready, false);
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_readiness_auto_allowed, false);
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_readiness_operator_action_required, true);
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_readiness_attention_runtime_error_code, "CONFIG_INVALID");
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_gate_status, "fail");
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_gate_passed, false);
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_gate_blocking, true);
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_gate_reason, "blocked_operator_action_required");
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_gate_blocker_kind, "runtime_environment");
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_gate_blocker_code, "CONFIG_INVALID");
+  assert.equal(
+    statusInvalidConfigRecoveryPayload.recovery_gate_blocker_action,
+    "fix_config_or_switch_provider_and_check_status",
+  );
+  assert.equal(statusInvalidConfigRecoveryPayload.recovery_gate_attention_runtime_error_code, "CONFIG_INVALID");
+  assert.equal(statusInvalidConfigRecoveryPayload.surface_adaptation_active, false);
+  assert.equal(
+    statusInvalidConfigRecoveryPayload.surface_adaptation_reason,
+    "recovery_gate_runtime_environment_config_invalid",
+  );
+  assert.equal(statusInvalidConfigRecoveryPayload.surface_adaptation_auto_adaptation_blocked, true);
+  assert.equal(statusInvalidConfigRecoveryPayload.text_has_recovery_feedback_runtime_environment, true);
+  assert.equal(statusInvalidConfigRecoveryPayload.text_has_recovery_readiness_runtime_environment, true);
+  assert.equal(statusInvalidConfigRecoveryPayload.text_has_recovery_gate_runtime_environment, true);
+  assert.equal(statusInvalidConfigRecoveryPayload.text_has_invalid_config_blocker, true);
+  logStep("start-smoke-contract status-invalid-config-runtime-recovery");
+
   const statusBrowserEnvironmentRecoveryResult = runContract(
     "start-smoke-contract.mjs",
     "status-browser-environment-tool-recovery",

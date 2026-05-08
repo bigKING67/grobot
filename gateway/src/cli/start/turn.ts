@@ -14,7 +14,11 @@ import {
   type PromptCompactionStage,
 } from "../../tools/context";
 import { recordRuntimeToolSuccessfulRecoveryConsumption } from "../../tools/runtime/tool-surface-adaptation-state";
-import { extractRuntimeErrorEvents } from "../../tools/runtime/runtime-error";
+import {
+  extractRuntimeErrorClass,
+  extractRuntimeErrorData,
+  extractRuntimeErrorEvents,
+} from "../../tools/runtime/runtime-error";
 import {
   type CreateRunStartTurnRunnerInput,
   type RunStartTurnExecuteOptions,
@@ -26,6 +30,7 @@ import {
   normalizeProviderStateMap,
   releaseProviderCapacity,
   resolveProviderOrder,
+  resolveProviderRetryReason,
   resolveTurnModelConfig,
   shouldRetryProviderRequest,
   shouldRetryWithKimiBuiltinFallback,
@@ -53,6 +58,7 @@ import {
   prepareSuccessfulTurnReportPresentation,
   writeSuccessfulTurnDiagnostics,
 } from "./turn/report-success";
+import { normalizeProviderLastErrorData } from "./session-registry/normalization";
 
 export type {
   CreateRunStartTurnRunnerInput,
@@ -273,13 +279,16 @@ export function createRunStartTurnRunner(
                 abortSignal: turnSignal,
                 onEvent: options?.onRuntimeEvent,
                 streamEvents: Boolean(options?.onRuntimeEvent),
+                turnGate: input.turnGate,
                 systemPrompt: grobotSystemPrompt,
               },
             );
             break;
           } catch (error) {
             const retryMessage = String(error);
-            const retryErrorClass = resolveErrorClass(retryMessage);
+            const retryErrorClass =
+              extractRuntimeErrorClass(error) ?? resolveErrorClass(retryMessage);
+            const retryErrorData = extractRuntimeErrorData(error);
             if (
               shouldRetryWithKimiBuiltinFallback({
                 provider,
@@ -365,19 +374,21 @@ export function createRunStartTurnRunner(
               );
             }
             if (
-              !shouldRetryProviderRequest(
-                retryErrorClass,
-                retryMessage,
-                providerRetryCount,
-              )
+              !shouldRetryProviderRequest({
+                errorClass: retryErrorClass,
+                errorMessage: retryMessage,
+                retryCount: providerRetryCount,
+                errorData: retryErrorData,
+              })
             ) {
               throw error;
             }
             providerRetryCount += 1;
-            const retryReason =
-              retryErrorClass === "upstream_http_error"
-                ? "upstream_429"
-                : retryErrorClass;
+            const retryReason = resolveProviderRetryReason({
+              errorClass: retryErrorClass,
+              errorMessage: retryMessage,
+              errorData: retryErrorData,
+            });
             const backoffBaseMs =
               retryErrorClass === "upstream_response_read_failed" ? 600 : 1_500;
             const backoffMs = providerRetryCount * backoffBaseMs;
@@ -403,6 +414,7 @@ export function createRunStartTurnRunner(
         state.circuit_open_until_ms = 0;
         state.last_error_class = undefined;
         state.last_error_message = undefined;
+        state.last_error_data = undefined;
         state.last_failed_at = undefined;
         state.last_succeeded_at = nowIso();
         providerStateMap.set(provider.name, state);
@@ -505,7 +517,11 @@ export function createRunStartTurnRunner(
       } catch (error) {
         const rawMessage = String(error);
         const compactMessage = compactSingleLine(rawMessage, 240);
-        const errorClass = resolveErrorClass(rawMessage);
+        const errorClass =
+          extractRuntimeErrorClass(error) ?? resolveErrorClass(rawMessage);
+        const errorData = normalizeProviderLastErrorData(
+          extractRuntimeErrorData(error),
+        );
         const runtimeErrorEvents = extractRuntimeErrorEvents(error);
         recordRuntimeToolMetricsForEvents({
           workDir: input.workDir,
@@ -567,6 +583,7 @@ export function createRunStartTurnRunner(
         state.consecutive_failures += 1;
         state.last_error_class = errorClass;
         state.last_error_message = compactMessage;
+        state.last_error_data = errorData;
         state.last_failed_at = nowIso();
         if (
           state.consecutive_failures >=

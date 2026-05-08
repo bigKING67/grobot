@@ -76,6 +76,26 @@ fn parse_ask_user_questions(payload: &serde_json::Map<String, Value>) -> Vec<Mod
     questions
 }
 
+fn invalid_tool_output_error(
+    tool_call: &ToolCallInput,
+    message: impl Into<String>,
+    stage: &str,
+) -> ModelExecutionError {
+    model_error_with_fields(
+        model_diagnostic_error(
+            "invalid_tool_output",
+            message,
+            "model.ask_user_interrupt",
+            stage,
+            "ensure ask_user tool output is a JSON object with type=ask_user and non-empty questions[]",
+        ),
+        &[
+            ("tool_name", json!(tool_call.name.clone())),
+            ("tool_call_id", json!(tool_call.id.clone())),
+        ],
+    )
+}
+
 fn parse_tool_interrupt(
     tool_call: &ToolCallInput,
     output: &ToolCallOutput,
@@ -87,29 +107,33 @@ fn parse_tool_interrupt(
         return Ok(None);
     }
     let parsed: Value = serde_json::from_str(output.content.as_str()).map_err(|error| {
-        ModelExecutionError::new(
-            "invalid_tool_output",
+        invalid_tool_output_error(
+            tool_call,
             format!("{tool_name} output is not valid JSON: {error}"),
+            "ask_user_output_parse_json",
         )
     })?;
     let payload = parsed.as_object().ok_or_else(|| {
-        ModelExecutionError::new(
-            "invalid_tool_output",
+        invalid_tool_output_error(
+            tool_call,
             format!("{tool_name} output must be a JSON object"),
+            "ask_user_output_validate_object",
         )
     })?;
     let payload_type = parse_non_empty_string_field(payload, "type").unwrap_or_default();
     if payload_type != "ask_user" {
-        return Err(ModelExecutionError::new(
-            "invalid_tool_output",
+        return Err(invalid_tool_output_error(
+            tool_call,
             format!("{tool_name} output type must be ask_user"),
+            "ask_user_output_validate_type",
         ));
     }
     let questions = parse_ask_user_questions(payload);
     if questions.is_empty() {
-        return Err(ModelExecutionError::new(
-            "invalid_tool_output",
+        return Err(invalid_tool_output_error(
+            tool_call,
             format!("{tool_name} output missing valid questions[]"),
+            "ask_user_output_validate_questions",
         ));
     }
     let blocking_node_id = parse_non_empty_string_field(payload, "blocking_node_id")

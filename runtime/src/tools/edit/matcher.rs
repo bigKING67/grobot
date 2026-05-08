@@ -49,3 +49,11 @@ fn line_number_for_offset(content: &str, byte_offset: usize) -> usize {
         .filter(|value| **value == b'\n')
         .count()
 }
+
+fn end_line_number_for_range(content: &str, start: usize, end: usize) -> usize {
+    if end <= start {
+        return line_number_for_offset(content, start);
+    }
+    let end_for_line = end.saturating_sub(1);
+    line_number_for_offset(content, end_for_line)
+}

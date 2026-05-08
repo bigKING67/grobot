@@ -121,7 +121,15 @@ fn compute_pdf_extract_plan(
             return Err(ToolExecutionError::new(
                 "range_out_of_bounds",
                 format!("requested page {} exceeds total pages {}", first_page, total),
-            ));
+            )
+            .with_data(json!({
+                "diagnostic_kind": "range_out_of_bounds",
+                "range_kind": "pdf_page",
+                "requested_page": first_page,
+                "available_count": total,
+                "max_window_pages": READ_PDF_MAX_PAGES,
+                "recovery_hint": "retry with read.pages inside the reported page count"
+            })));
         }
         last_page = last_page.min(total);
     }

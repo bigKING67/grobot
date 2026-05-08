@@ -15,6 +15,23 @@ fn map_kimi_upload_purpose(attachment_type: &str) -> Option<&'static str> {
     }
 }
 
+fn attachment_invalid_error(
+    message: impl Into<String>,
+    stage: &str,
+    fields: &[(&str, Value)],
+) -> ModelExecutionError {
+    model_error_with_fields(
+        model_diagnostic_error(
+            "attachment_invalid",
+            message,
+            "model.kimi_attachments",
+            stage,
+            "provide a supported attachment type/source_type and ensure local file paths are readable before retrying",
+        ),
+        fields,
+    )
+}
+
 fn upload_kimi_file_from_path(
     client: &Client,
     config: &RuntimeModelConfig,
@@ -23,9 +40,10 @@ fn upload_kimi_file_from_path(
 ) -> Result<String, ModelExecutionError> {
     let path = std::path::Path::new(source_path);
     if !path.is_file() {
-        return Err(ModelExecutionError::new(
-            "attachment_invalid",
+        return Err(attachment_invalid_error(
             format!("attachment source is not a readable file: {}", path.display()),
+            "upload_file_path_validate",
+            &[("path", json!(path.display().to_string())), ("purpose", json!(purpose))],
         ));
     }
     let file_name = path
@@ -34,9 +52,10 @@ fn upload_kimi_file_from_path(
         .map(str::to_string)
         .unwrap_or_else(|| "upload.bin".to_string());
     let file = std::fs::File::open(path).map_err(|error| {
-        ModelExecutionError::new(
-            "attachment_invalid",
+        attachment_invalid_error(
             format!("failed to open attachment file {}: {error}", path.display()),
+            "upload_file_open",
+            &[("path", json!(path.display().to_string())), ("purpose", json!(purpose))],
         )
     })?;
     let file_part = Part::reader(file).file_name(file_name);
@@ -50,37 +69,62 @@ fn upload_kimi_file_from_path(
         .multipart(form)
         .send()
         .map_err(|error| {
-            let class = if error.is_timeout() {
-                "upstream_timeout"
-            } else if error.is_connect() {
-                "upstream_connect_failed"
-            } else {
-                "upstream_request_failed"
-            };
-            ModelExecutionError::new(class, format!("kimi file upload failed: {error}"))
+            model_error_with_fields(
+                model_request_error(
+                    &error,
+                    format!("kimi file upload failed: {error}"),
+                    "model.kimi_attachments",
+                    "upload_file_request",
+                    "retry later or verify provider network connectivity and files capability",
+                ),
+                &[("provider", json!("kimi")), ("purpose", json!(purpose))],
+            )
         })?;
     let status = response.status();
     let response_headers = summarize_response_headers_for_diagnostics(response.headers());
     let body = response.text().map_err(|error| {
-        ModelExecutionError::new(
-            "upstream_response_read_failed",
-            format!(
-                "failed to read kimi upload response: {error}; status={}; headers={response_headers}",
-                status.as_u16()
+        model_error_with_fields(
+            model_response_read_error(
+                format!(
+                    "failed to read kimi upload response: {error}; status={}; headers={response_headers}",
+                    status.as_u16()
+                ),
+                "model.kimi_attachments",
+                "upload_file_response_read",
             ),
+            &[
+                ("provider", json!("kimi")),
+                ("purpose", json!(purpose)),
+                ("http_status", json!(status.as_u16())),
+                ("response_headers", json!(response_headers)),
+            ],
         )
     })?;
     if !status.is_success() {
         let detail = body.chars().take(240).collect::<String>();
-        return Err(ModelExecutionError::new(
-            "upstream_http_error",
-            format!("kimi file upload status={} body={detail}", status.as_u16()),
+        return Err(model_error_with_fields(
+            model_http_error(
+                format!("kimi file upload status={} body={detail}", status.as_u16()),
+                status,
+                detail.as_str(),
+                "model.kimi_attachments",
+                "upload_file_http_status",
+            ),
+            &[
+                ("provider", json!("kimi")),
+                ("purpose", json!(purpose)),
+                ("response_headers", json!(response_headers)),
+            ],
         ));
     }
     let parsed: Value = serde_json::from_str(&body).map_err(|error| {
-        ModelExecutionError::new(
-            "upstream_invalid_json",
-            format!("invalid kimi upload response json: {error}"),
+        model_error_with_fields(
+            model_invalid_json_error(
+                format!("invalid kimi upload response json: {error}"),
+                "model.kimi_attachments",
+                "upload_file_parse_json",
+            ),
+            &[("provider", json!("kimi")), ("purpose", json!(purpose))],
         )
     })?;
     let file_id = parsed
@@ -89,9 +133,13 @@ fn upload_kimi_file_from_path(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| {
-            ModelExecutionError::new(
-                "upstream_invalid_response",
-                "missing file id in kimi upload response",
+            model_error_with_fields(
+                model_invalid_response_error(
+                    "missing file id in kimi upload response",
+                    "model.kimi_attachments",
+                    "upload_file_parse_id",
+                ),
+                &[("provider", json!("kimi")), ("purpose", json!(purpose))],
             )
         })?;
     Ok(file_id.to_string())
@@ -108,31 +156,52 @@ fn fetch_kimi_file_content(
         .bearer_auth(&config.api_key)
         .send()
         .map_err(|error| {
-            let class = if error.is_timeout() {
-                "upstream_timeout"
-            } else if error.is_connect() {
-                "upstream_connect_failed"
-            } else {
-                "upstream_request_failed"
-            };
-            ModelExecutionError::new(class, format!("kimi file content fetch failed: {error}"))
+            model_error_with_fields(
+                model_request_error(
+                    &error,
+                    format!("kimi file content fetch failed: {error}"),
+                    "model.kimi_attachments",
+                    "fetch_file_content_request",
+                    "retry later or verify provider network connectivity and files capability",
+                ),
+                &[("provider", json!("kimi")), ("file_id", json!(file_id))],
+            )
         })?;
     let status = response.status();
     let response_headers = summarize_response_headers_for_diagnostics(response.headers());
     let body = response.text().map_err(|error| {
-        ModelExecutionError::new(
-            "upstream_response_read_failed",
-            format!(
-                "failed to read kimi file content response: {error}; status={}; headers={response_headers}",
-                status.as_u16()
+        model_error_with_fields(
+            model_response_read_error(
+                format!(
+                    "failed to read kimi file content response: {error}; status={}; headers={response_headers}",
+                    status.as_u16()
+                ),
+                "model.kimi_attachments",
+                "fetch_file_content_response_read",
             ),
+            &[
+                ("provider", json!("kimi")),
+                ("file_id", json!(file_id)),
+                ("http_status", json!(status.as_u16())),
+                ("response_headers", json!(response_headers)),
+            ],
         )
     })?;
     if !status.is_success() {
         let detail = body.chars().take(240).collect::<String>();
-        return Err(ModelExecutionError::new(
-            "upstream_http_error",
-            format!("kimi file content status={} body={detail}", status.as_u16()),
+        return Err(model_error_with_fields(
+            model_http_error(
+                format!("kimi file content status={} body={detail}", status.as_u16()),
+                status,
+                detail.as_str(),
+                "model.kimi_attachments",
+                "fetch_file_content_http_status",
+            ),
+            &[
+                ("provider", json!("kimi")),
+                ("file_id", json!(file_id)),
+                ("response_headers", json!(response_headers)),
+            ],
         ));
     }
     Ok(body)

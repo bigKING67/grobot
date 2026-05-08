@@ -10,6 +10,155 @@ enum KimiWebSearchMode {
     Off,
 }
 
+fn kimi_error_data(
+    diagnostic_kind: &str,
+    source: &str,
+    stage: &str,
+    recovery_hint: &str,
+) -> Value {
+    json!({
+        "diagnostic_kind": diagnostic_kind,
+        "provider": "kimi",
+        "source": source,
+        "stage": stage,
+        "recovery_hint": recovery_hint
+    })
+}
+
+fn kimi_tool_error(
+    error_class: &str,
+    message: impl Into<String>,
+    diagnostic_kind: &str,
+    source: &str,
+    stage: &str,
+    recovery_hint: &str,
+) -> ToolExecutionError {
+    ToolExecutionError::new(error_class, message)
+        .with_data(kimi_error_data(diagnostic_kind, source, stage, recovery_hint))
+}
+
+fn kimi_tool_error_with_fields(
+    mut error: ToolExecutionError,
+    fields: &[(&str, Value)],
+) -> ToolExecutionError {
+    if let Some(data) = error.data.as_mut().and_then(Value::as_object_mut) {
+        for (key, value) in fields {
+            data.insert((*key).to_string(), value.clone());
+        }
+    }
+    error
+}
+
+fn kimi_request_error(
+    error: &reqwest::Error,
+    message: impl Into<String>,
+    source: &str,
+    stage: &str,
+    recovery_hint: &str,
+) -> ToolExecutionError {
+    let (class, kind) = if error.is_timeout() {
+        ("upstream_timeout", "timeout")
+    } else if error.is_connect() {
+        ("upstream_connect_failed", "connect")
+    } else {
+        ("upstream_request_failed", "request")
+    };
+    kimi_tool_error_with_fields(
+        kimi_tool_error(
+            class,
+            message,
+            class,
+            source,
+            stage,
+            recovery_hint,
+        ),
+        &[("upstream_error_kind", json!(kind))],
+    )
+}
+
+fn kimi_response_read_error(
+    message: impl Into<String>,
+    source: &str,
+    stage: &str,
+) -> ToolExecutionError {
+    kimi_tool_error(
+        "upstream_response_read_failed",
+        message,
+        "upstream_response_read_failed",
+        source,
+        stage,
+        "retry the request; if this repeats, inspect provider connectivity and response truncation",
+    )
+}
+
+fn kimi_http_error(
+    message: impl Into<String>,
+    status: reqwest::StatusCode,
+    body_preview: &str,
+    source: &str,
+    stage: &str,
+) -> ToolExecutionError {
+    kimi_tool_error_with_fields(
+        kimi_tool_error(
+            "upstream_http_error",
+            message,
+            "upstream_http_error",
+            source,
+            stage,
+            "inspect provider status/body, adjust request or retry after provider-side recovery",
+        ),
+        &[
+            ("http_status", json!(status.as_u16())),
+            ("body_preview", json!(body_preview)),
+        ],
+    )
+}
+
+fn kimi_invalid_json_error(
+    message: impl Into<String>,
+    source: &str,
+    stage: &str,
+) -> ToolExecutionError {
+    kimi_tool_error(
+        "upstream_invalid_json",
+        message,
+        "upstream_invalid_json",
+        source,
+        stage,
+        "capture the provider response body and verify the expected JSON response contract",
+    )
+}
+
+fn kimi_invalid_response_error(
+    message: impl Into<String>,
+    source: &str,
+    stage: &str,
+) -> ToolExecutionError {
+    kimi_tool_error(
+        "upstream_invalid_response",
+        message,
+        "upstream_invalid_response",
+        source,
+        stage,
+        "inspect the provider response shape and update the parser or retry with a supported route",
+    )
+}
+
+fn kimi_client_init_error(
+    message: impl Into<String>,
+    source: &str,
+    stage: &str,
+) -> ToolExecutionError {
+    kimi_tool_error(
+        "client_init_failed",
+        message,
+        "client_init_failed",
+        source,
+        stage,
+        "inspect local TLS/HTTP client configuration and retry",
+    )
+}
+
 fn resolve_kimi_timeout_ms(input: &TurnExecuteInput) -> u64 {
     let from_model = input
         .model_config
@@ -210,9 +359,10 @@ fn run_kimi_formula_tool(
         .timeout(Duration::from_millis(timeout_ms))
         .build()
         .map_err(|error| {
-            ToolExecutionError::new(
-                "client_init_failed",
+            kimi_client_init_error(
                 format!("failed to init http client for kimi formula tool: {error}"),
+                "providers.kimi",
+                "formula_client_init",
             )
         })?;
     let response = client
@@ -222,37 +372,47 @@ fn run_kimi_formula_tool(
         .json(&body)
         .send()
         .map_err(|error| {
-            let class = if error.is_timeout() {
-                "upstream_timeout"
-            } else if error.is_connect() {
-                "upstream_connect_failed"
-            } else {
-                "upstream_request_failed"
-            };
-            ToolExecutionError::new(class, format!("kimi formula tool request failed: {error}"))
+            kimi_request_error(
+                &error,
+                format!("kimi formula tool request failed: {error}"),
+                "providers.kimi",
+                "formula_request",
+                "retry later or verify provider network connectivity and formula availability",
+            )
         })?;
     let status = response.status();
     let body_text = response.text().map_err(|error| {
-        ToolExecutionError::new(
-            "upstream_response_read_failed",
+        kimi_response_read_error(
             format!("failed to read kimi formula tool response: {error}"),
+            "providers.kimi",
+            "formula_response_read",
         )
     })?;
     if !status.is_success() {
         let detail = body_text.chars().take(240).collect::<String>();
-        return Err(ToolExecutionError::new(
-            "upstream_http_error",
-            format!(
-                "kimi formula tool status={} formula={} body={detail}",
-                status.as_u16(),
-                formula_uri
+        return Err(kimi_tool_error_with_fields(
+            kimi_http_error(
+                format!(
+                    "kimi formula tool status={} formula={} body={detail}",
+                    status.as_u16(),
+                    formula_uri
+                ),
+                status,
+                detail.as_str(),
+                "providers.kimi",
+                "formula_http_status",
             ),
+            &[
+                ("formula_uri", json!(formula_uri)),
+                ("tool", json!(call.name.as_str())),
+            ],
         ));
     }
     let payload: Value = serde_json::from_str(&body_text).map_err(|error| {
-        ToolExecutionError::new(
-            "upstream_invalid_json",
+        kimi_invalid_json_error(
             format!("invalid kimi formula tool response json: {error}"),
+            "providers.kimi",
+            "formula_parse_json",
         )
     })?;
     let status_text = payload
@@ -272,9 +432,21 @@ fn run_kimi_formula_tool(
                     .and_then(Value::as_str)
             })
             .unwrap_or("unknown kimi formula tool error");
-        return Err(ToolExecutionError::new(
-            "tool_execution_failed",
-            format!("kimi formula tool failed: {}", error_text),
+        return Err(kimi_tool_error_with_fields(
+            kimi_tool_error(
+                "tool_execution_failed",
+                format!("kimi formula tool failed: {}", error_text),
+                "kimi_formula_tool_failed",
+                "providers.kimi",
+                "formula_tool_status",
+                "inspect the provider formula status/error, adjust tool arguments or retry after provider-side recovery",
+            ),
+            &[
+                ("tool", json!(call.name.as_str())),
+                ("formula_uri", json!(formula_uri)),
+                ("provider_status", json!(status_text)),
+                ("error_text", json!(error_text)),
+            ],
         ));
     }
     let content_value = payload
@@ -302,9 +474,10 @@ fn run_kimi_files_list(input: &TurnExecuteInput) -> Result<ToolCallOutput, ToolE
         .timeout(Duration::from_millis(timeout_ms))
         .build()
         .map_err(|error| {
-            ToolExecutionError::new(
-                "client_init_failed",
+            kimi_client_init_error(
                 format!("failed to init http client for kimi files list: {error}"),
+                "providers.kimi",
+                "files_list_client_init",
             )
         })?;
     let response = client
@@ -312,27 +485,30 @@ fn run_kimi_files_list(input: &TurnExecuteInput) -> Result<ToolCallOutput, ToolE
         .bearer_auth(&api_key)
         .send()
         .map_err(|error| {
-            let class = if error.is_timeout() {
-                "upstream_timeout"
-            } else if error.is_connect() {
-                "upstream_connect_failed"
-            } else {
-                "upstream_request_failed"
-            };
-            ToolExecutionError::new(class, format!("kimi files list request failed: {error}"))
+            kimi_request_error(
+                &error,
+                format!("kimi files list request failed: {error}"),
+                "providers.kimi",
+                "files_list_request",
+                "retry later or verify provider network connectivity and file admin availability",
+            )
         })?;
     let status = response.status();
     let body = response.text().map_err(|error| {
-        ToolExecutionError::new(
-            "upstream_response_read_failed",
+        kimi_response_read_error(
             format!("failed to read kimi files list response: {error}"),
+            "providers.kimi",
+            "files_list_response_read",
         )
     })?;
     if !status.is_success() {
         let detail = body.chars().take(240).collect::<String>();
-        return Err(ToolExecutionError::new(
-            "upstream_http_error",
+        return Err(kimi_http_error(
             format!("kimi files list status={} body={detail}", status.as_u16()),
+            status,
+            detail.as_str(),
+            "providers.kimi",
+            "files_list_http_status",
         ));
     }
     Ok(ToolCallOutput::from_content(body))
@@ -355,9 +531,10 @@ fn run_kimi_files_delete(
         .timeout(Duration::from_millis(timeout_ms))
         .build()
         .map_err(|error| {
-            ToolExecutionError::new(
-                "client_init_failed",
+            kimi_client_init_error(
                 format!("failed to init http client for kimi files delete: {error}"),
+                "providers.kimi",
+                "files_delete_client_init",
             )
         })?;
     let response = client
@@ -365,27 +542,33 @@ fn run_kimi_files_delete(
         .bearer_auth(&api_key)
         .send()
         .map_err(|error| {
-            let class = if error.is_timeout() {
-                "upstream_timeout"
-            } else if error.is_connect() {
-                "upstream_connect_failed"
-            } else {
-                "upstream_request_failed"
-            };
-            ToolExecutionError::new(class, format!("kimi files delete request failed: {error}"))
+            kimi_request_error(
+                &error,
+                format!("kimi files delete request failed: {error}"),
+                "providers.kimi",
+                "files_delete_request",
+                "retry later or verify provider network connectivity and file admin availability",
+            )
         })?;
     let status = response.status();
     let body = response.text().map_err(|error| {
-        ToolExecutionError::new(
-            "upstream_response_read_failed",
+        kimi_response_read_error(
             format!("failed to read kimi files delete response: {error}"),
+            "providers.kimi",
+            "files_delete_response_read",
         )
     })?;
     if !status.is_success() {
         let detail = body.chars().take(240).collect::<String>();
-        return Err(ToolExecutionError::new(
-            "upstream_http_error",
-            format!("kimi files delete status={} body={detail}", status.as_u16()),
+        return Err(kimi_tool_error_with_fields(
+            kimi_http_error(
+                format!("kimi files delete status={} body={detail}", status.as_u16()),
+                status,
+                detail.as_str(),
+                "providers.kimi",
+                "files_delete_http_status",
+            ),
+            &[("file_id", json!(file_id.as_str()))],
         ));
     }
     Ok(ToolCallOutput::from_content(body))

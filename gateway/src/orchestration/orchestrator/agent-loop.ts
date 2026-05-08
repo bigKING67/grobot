@@ -13,6 +13,11 @@ import {
   TurnVerifier,
 } from "../../models/types";
 import { evaluateTurnGovernance } from "../../governance/evaluator";
+import {
+  GLOBAL_TURN_GATE,
+  TurnGate,
+  TurnGateStaleLeaseError,
+} from "./turn-gate";
 
 export interface TurnContextAssembler {
   assemble(turn: TurnRequest): Promise<string[]>;
@@ -28,6 +33,7 @@ export interface AgentLoopDependencies {
   verifier: TurnVerifier;
   persister: TurnPersister;
   shadowRuntimeClient?: RuntimeClient;
+  turnGate?: TurnGate;
 }
 
 function nowIso(): string {
@@ -90,53 +96,62 @@ export class AgentLoop {
     runtimeExecuteOptions?: RuntimeExecuteOptions,
     runtimeSystemPrompt?: string,
   ): Promise<TurnExecutionReport> {
+    const turnGate = this.deps.turnGate ?? GLOBAL_TURN_GATE;
+    const turnGateLease = turnGate.reserve(turn.sessionKey, turn.requestId);
     const startedAt = nowIso();
-    const contextLines = await this.deps.contextAssembler.assemble(turn);
-    const runtimeRequest = buildRuntimeRequest(
-      turn,
-      contextLines,
-      migration,
-      runtimeModelConfig,
-      runtimeToolContext,
-      runtimeAttachments,
-      runtimeSystemPrompt,
-    );
-
-    const primary = await this.deps.runtimeClient.executeTurn(runtimeRequest, runtimeExecuteOptions);
-
-    let shadowComparison: ShadowComparison | undefined;
-    if (migration.shadowMode && this.deps.shadowRuntimeClient) {
-      if (runtimeExecuteOptions?.signal?.aborted) {
-        throw new Error("runtime turn interrupted class=turn_interrupted detail=aborted_before_shadow_runtime_call");
+    try {
+      const contextLines = await this.deps.contextAssembler.assemble(turn);
+      if (!turnGate.start(turnGateLease)) {
+        throw new TurnGateStaleLeaseError(turnGateLease);
       }
-      const shadow = await this.deps.shadowRuntimeClient.executeTurn(runtimeRequest, {
-        ...runtimeExecuteOptions,
-        onEvent: undefined,
-        streamEvents: false,
-      });
-      shadowComparison = compareRuntimeResults(primary, shadow);
+      const runtimeRequest = buildRuntimeRequest(
+        turn,
+        contextLines,
+        migration,
+        runtimeModelConfig,
+        runtimeToolContext,
+        runtimeAttachments,
+        runtimeSystemPrompt,
+      );
+
+      const primary = await this.deps.runtimeClient.executeTurn(runtimeRequest, runtimeExecuteOptions);
+
+      let shadowComparison: ShadowComparison | undefined;
+      if (migration.shadowMode && this.deps.shadowRuntimeClient) {
+        if (runtimeExecuteOptions?.signal?.aborted) {
+          throw new Error("runtime turn interrupted class=turn_interrupted detail=aborted_before_shadow_runtime_call");
+        }
+        const shadow = await this.deps.shadowRuntimeClient.executeTurn(runtimeRequest, {
+          ...runtimeExecuteOptions,
+          onEvent: undefined,
+          streamEvents: false,
+        });
+        shadowComparison = compareRuntimeResults(primary, shadow);
+      }
+
+      const verification = await this.deps.verifier.verify(primary);
+      const governance = evaluateTurnGovernance(verification, shadowComparison);
+
+      const report: TurnExecutionReport = {
+        traceId: primary.traceId,
+        requestId: turn.requestId,
+        sessionKey: turn.sessionKey,
+        startedAtIso: startedAt,
+        finishedAtIso: nowIso(),
+        primaryRuntime: primary.runtimeLabel,
+        assistantMessage: primary.assistantMessage,
+        runtimeInterrupt: primary.interrupt,
+        verification,
+        governance,
+        shadowComparison,
+        events: primary.events,
+        eventCount: primary.events.length,
+      };
+
+      await this.deps.persister.persist(report);
+      return report;
+    } finally {
+      turnGate.end(turnGateLease);
     }
-
-    const verification = await this.deps.verifier.verify(primary);
-    const governance = evaluateTurnGovernance(verification, shadowComparison);
-
-    const report: TurnExecutionReport = {
-      traceId: primary.traceId,
-      requestId: turn.requestId,
-      sessionKey: turn.sessionKey,
-      startedAtIso: startedAt,
-      finishedAtIso: nowIso(),
-      primaryRuntime: primary.runtimeLabel,
-      assistantMessage: primary.assistantMessage,
-      runtimeInterrupt: primary.interrupt,
-      verification,
-      governance,
-      shadowComparison,
-      events: primary.events,
-      eventCount: primary.events.length,
-    };
-
-    await this.deps.persister.persist(report);
-    return report;
   }
 }

@@ -102,7 +102,7 @@ export function recordRuntimeToolMetricsForEvents(input: {
   writeStderr(message: string): void;
 }): void {
   const toolEventSummary = summarizeRuntimeToolEvents(input.events);
-  if (toolEventSummary.callsTotal === 0) {
+  if (toolEventSummary.callsTotal === 0 && !toolEventSummary.latestRecovery) {
     return;
   }
   const metrics = recordRuntimeToolSurfaceMetrics({

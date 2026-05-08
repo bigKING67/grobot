@@ -55,6 +55,33 @@ function quoteRecoveryPreview(value: string): string {
   return JSON.stringify(compactRecoveryDetail(value) ?? "") ?? "\"\"";
 }
 
+function pushCompactStringPart(
+  parts: string[],
+  label: string,
+  value: unknown,
+  options?: { quote?: boolean },
+): void {
+  const compact = typeof value === "string" ? compactRecoveryDetail(value) : undefined;
+  if (!compact) {
+    return;
+  }
+  parts.push(`${label}=${options?.quote ? quoteRecoveryPreview(compact) : compact}`);
+}
+
+function pushFiniteNumberPart(parts: string[], label: string, value: unknown): void {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return;
+  }
+  parts.push(`${label}=${String(Math.trunc(value))}`);
+}
+
+function pushBooleanPart(parts: string[], label: string, value: unknown): void {
+  if (typeof value !== "boolean") {
+    return;
+  }
+  parts.push(`${label}=${String(value)}`);
+}
+
 function compactRecoveryCandidateList(label: string, value: unknown): string | undefined {
   if (!Array.isArray(value)) {
     return undefined;
@@ -144,6 +171,9 @@ export function compactRecoveryErrorData(errorData: Record<string, unknown> | un
   if (toolName) {
     parts.push(`tool_name=${toolName}`);
   }
+  pushCompactStringPart(parts, "provider", errorData.provider);
+  pushCompactStringPart(parts, "provider_kind", errorData.provider_kind);
+  pushCompactStringPart(parts, "model", errorData.model);
   const backend = typeof errorData.backend === "string" ? compactRecoveryDetail(errorData.backend) : undefined;
   if (backend) {
     parts.push(`backend=${backend}`);
@@ -189,6 +219,11 @@ export function compactRecoveryErrorData(errorData: Record<string, unknown> | un
   if (source) {
     parts.push(`source=${source}`);
   }
+  pushCompactStringPart(parts, "stage", errorData.stage);
+  pushCompactStringPart(parts, "purpose", errorData.purpose);
+  pushCompactStringPart(parts, "file_id", errorData.file_id);
+  pushCompactStringPart(parts, "upstream_error_kind", errorData.upstream_error_kind);
+  pushCompactStringPart(parts, "thinking", errorData.thinking);
   const path = typeof errorData.path === "string" ? compactRecoveryDetail(errorData.path) : undefined;
   if (path) {
     parts.push(`path=${path}`);
@@ -232,6 +267,14 @@ export function compactRecoveryErrorData(errorData: Record<string, unknown> | un
   if (typeof errorData.source_count === "number" && Number.isFinite(errorData.source_count)) {
     parts.push(`source_count=${String(Math.trunc(errorData.source_count))}`);
   }
+  pushFiniteNumberPart(parts, "http_status", errorData.http_status);
+  pushFiniteNumberPart(parts, "attempt", errorData.attempt);
+  pushFiniteNumberPart(parts, "max_attempts", errorData.max_attempts);
+  pushFiniteNumberPart(parts, "model_count", errorData.model_count);
+  pushFiniteNumberPart(parts, "tool_round", errorData.tool_round);
+  pushFiniteNumberPart(parts, "max_tool_rounds", errorData.max_tool_rounds);
+  pushFiniteNumberPart(parts, "batch_index", errorData.batch_index);
+  pushFiniteNumberPart(parts, "tool_call_index", errorData.tool_call_index);
   if (
     typeof errorData.transport_attempts_count === "number"
     && Number.isFinite(errorData.transport_attempts_count)
@@ -271,6 +314,8 @@ export function compactRecoveryErrorData(errorData: Record<string, unknown> | un
   if (typeof errorData.retryable === "boolean") {
     parts.push(`retryable=${String(errorData.retryable)}`);
   }
+  pushBooleanPart(parts, "kimi_reasoning_context_error", errorData.kimi_reasoning_context_error);
+  pushBooleanPart(parts, "kimi_temperature_validation_error", errorData.kimi_temperature_validation_error);
   if (typeof errorData.advanced_tool_schema === "boolean") {
     parts.push(`advanced_tool_schema=${String(errorData.advanced_tool_schema)}`);
   }
@@ -350,6 +395,9 @@ export function compactRecoveryErrorData(errorData: Record<string, unknown> | un
   if (diagnosticHint) {
     parts.push(`diagnostic_hint=${quoteRecoveryPreview(diagnosticHint)}`);
   }
+  pushCompactStringPart(parts, "recovery_hint", errorData.recovery_hint, { quote: true });
+  pushCompactStringPart(parts, "body_preview", errorData.body_preview, { quote: true });
+  pushCompactStringPart(parts, "response_headers", errorData.response_headers, { quote: true });
   const resultPreview =
     typeof errorData.result_preview === "string" ? compactRecoveryDetail(errorData.result_preview) : undefined;
   if (resultPreview) {

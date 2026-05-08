@@ -162,6 +162,59 @@ export async function runCoreContracts() {
   assert.equal(Number(mcpCallAllowToolsPayload?.snapshot?.policy_denied_calls), 1);
   logStep("local-tools-contract mcp-call-allow-tools");
 
+  const turnGateResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/turn-gate-contract.ts",
+  ]);
+  assertSuccess("turn-gate-contract", turnGateResult);
+  const turnGatePayload = parseJsonOutput("turn-gate-contract", turnGateResult.stdout);
+  assert.equal(turnGatePayload.first_same_session_active, true);
+  assert.equal(turnGatePayload.reentrant_rejected, true);
+  assert.equal(turnGatePayload.reentrant_error_class, "turn_gate_reentrant");
+  assert.equal(turnGatePayload.different_session_completed, true);
+  assert.equal(Number(turnGatePayload.runtime_call_count_after_reject), 1);
+  assert.equal(Number(turnGatePayload.final_active_sessions), 0);
+  assert.equal(Number(turnGatePayload.rejected_reentrant_total), 1);
+  assert.equal(turnGatePayload.stale_end_returned, false);
+  assert.equal(Number(turnGatePayload.stale_cleanup_total), 1);
+  assert.equal(turnGatePayload.stale_start_typed, true);
+  assert.equal(turnGatePayload.serialized_has_snake_case, true);
+  assert.equal(Number(turnGatePayload.persisted_reports), 2);
+  logStep("turn-gate-contract");
+
+  const providerRoutingResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/provider-routing-contract.ts",
+  ]);
+  assertSuccess("provider-routing-contract", providerRoutingResult);
+  const providerRoutingPayload = parseJsonOutput("provider-routing-contract", providerRoutingResult.stdout);
+  assert.equal(providerRoutingPayload.structured_retryable_503_retries, true);
+  assert.equal(providerRoutingPayload.structured_retryable_false_429_does_not_retry, true);
+  assert.equal(providerRoutingPayload.exhausted_attempts_do_not_retry_without_retryable, true);
+  assert.equal(providerRoutingPayload.retry_503_reason_matches, true);
+  logStep("provider-routing-contract");
+
+  const routeStatusResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/route-status-contract.ts",
+  ]);
+  assertSuccess("route-status-contract", routeStatusResult);
+  const routeStatusPayload = parseJsonOutput("route-status-contract", routeStatusResult.stdout);
+  assert.equal(routeStatusPayload.serialized_has_last_error_data, true);
+  assert.equal(routeStatusPayload.legacy_text_has_provider_error_data, true);
+  assert.equal(routeStatusPayload.default_summary_has_provider_error_data, true);
+  assert.equal(routeStatusPayload.normalized_drops_body_preview, true);
+  logStep("route-status-contract");
+
   const homeDir = makeTempDir("grobot-home");
   const workDir = makeTempDir("grobot-work");
   const runtimePathsResult = runContract("runtime-paths-contract.mjs", "resolve-runtime-paths", [

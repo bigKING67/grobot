@@ -92,7 +92,19 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
         events.push(event);
     }
 
-    fn extract_tool_name_from_not_supported(error_message: &str) -> String {
+    fn extract_tool_name_from_synthetic_failure(
+        error_message: &str,
+        error_data: Option<&Value>,
+    ) -> String {
+        if let Some(tool_name) = error_data
+            .and_then(Value::as_object)
+            .and_then(|data| data.get("tool_name"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return tool_name.to_string();
+        }
         let prefix = "runtime v1 does not support tool calls yet:";
         if let Some(raw) = error_message.strip_prefix(prefix) {
             let normalized = raw.trim();
@@ -101,6 +113,22 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
             }
         }
         "unknown_tool".to_string()
+    }
+
+    fn should_emit_synthetic_tool_failure(error_class: &str, error_data: Option<&Value>) -> bool {
+        if error_class == "tool_call_not_supported" {
+            return true;
+        }
+        if error_class != "invalid_tool_arguments" {
+            return false;
+        }
+        error_data
+            .and_then(Value::as_object)
+            .and_then(|data| data.get("tool_name"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .map(|value| !value.is_empty())
+            .unwrap_or(false)
     }
 
     fn map_model_interrupt(interrupt: ModelExecutionInterrupt) -> TurnInterruptOutput {
@@ -327,8 +355,9 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
                     &realtime_telemetry_events,
                     &mut realtime_event_index,
                 );
-                if error_class == "tool_call_not_supported" {
-                    let tool_name = Self::extract_tool_name_from_not_supported(&error_message);
+                if Self::should_emit_synthetic_tool_failure(&error_class, error_data.as_ref()) {
+                    let tool_name =
+                        Self::extract_tool_name_from_synthetic_failure(&error_message, error_data.as_ref());
                     let recovery_policy = classify_tool_recovery(&error_class, "unknown");
                     Self::push_event(
                         &mut events,

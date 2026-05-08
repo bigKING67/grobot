@@ -111,6 +111,171 @@ impl ModelExecutionError {
     }
 }
 
+fn provider_kind_label(provider_kind: ProviderKind) -> &'static str {
+    match provider_kind {
+        ProviderKind::OpenAiCompatible => "openai_compatible",
+        ProviderKind::Kimi => "kimi",
+    }
+}
+
+fn model_error_data(
+    diagnostic_kind: &str,
+    source: &str,
+    stage: &str,
+    recovery_hint: &str,
+) -> Value {
+    json!({
+        "diagnostic_kind": diagnostic_kind,
+        "source": source,
+        "stage": stage,
+        "recovery_hint": recovery_hint
+    })
+}
+
+fn model_error_with_data(
+    error_class: &str,
+    message: impl Into<String>,
+    diagnostic_kind: &str,
+    source: &str,
+    stage: &str,
+    recovery_hint: &str,
+) -> ModelExecutionError {
+    ModelExecutionError::new(error_class, message)
+        .with_data(model_error_data(diagnostic_kind, source, stage, recovery_hint))
+}
+
+fn model_error_with_fields(
+    mut error: ModelExecutionError,
+    fields: &[(&str, Value)],
+) -> ModelExecutionError {
+    if let Some(data) = error.data.as_mut().and_then(Value::as_object_mut) {
+        for (key, value) in fields {
+            data.insert((*key).to_string(), value.clone());
+        }
+    }
+    error
+}
+
+fn model_diagnostic_error(
+    error_class: &str,
+    message: impl Into<String>,
+    source: &str,
+    stage: &str,
+    recovery_hint: &str,
+) -> ModelExecutionError {
+    model_error_with_data(
+        error_class,
+        message,
+        error_class,
+        source,
+        stage,
+        recovery_hint,
+    )
+}
+
+fn model_request_error(
+    error: &reqwest::Error,
+    message: impl Into<String>,
+    source: &str,
+    stage: &str,
+    recovery_hint: &str,
+) -> ModelExecutionError {
+    let (class, kind) = if error.is_timeout() {
+        ("upstream_timeout", "timeout")
+    } else if error.is_connect() {
+        ("upstream_connect_failed", "connect")
+    } else {
+        ("upstream_request_failed", "request")
+    };
+    model_error_with_fields(
+        model_error_with_data(class, message, class, source, stage, recovery_hint),
+        &[("upstream_error_kind", json!(kind))],
+    )
+}
+
+fn model_response_read_error(
+    message: impl Into<String>,
+    source: &str,
+    stage: &str,
+) -> ModelExecutionError {
+    model_error_with_data(
+        "upstream_response_read_failed",
+        message,
+        "upstream_response_read_failed",
+        source,
+        stage,
+        "retry the request; if this repeats, inspect provider connectivity and response truncation",
+    )
+}
+
+fn model_http_error(
+    message: impl Into<String>,
+    status: reqwest::StatusCode,
+    body_preview: &str,
+    source: &str,
+    stage: &str,
+) -> ModelExecutionError {
+    model_error_with_fields(
+        model_error_with_data(
+            "upstream_http_error",
+            message,
+            "upstream_http_error",
+            source,
+            stage,
+            "inspect provider status/body, adjust request or retry after provider-side recovery",
+        ),
+        &[
+            ("http_status", json!(status.as_u16())),
+            ("body_preview", json!(body_preview)),
+        ],
+    )
+}
+
+fn model_invalid_json_error(
+    message: impl Into<String>,
+    source: &str,
+    stage: &str,
+) -> ModelExecutionError {
+    model_error_with_data(
+        "upstream_invalid_json",
+        message,
+        "upstream_invalid_json",
+        source,
+        stage,
+        "capture the provider response body and verify the expected JSON response contract",
+    )
+}
+
+fn model_invalid_response_error(
+    message: impl Into<String>,
+    source: &str,
+    stage: &str,
+) -> ModelExecutionError {
+    model_error_with_data(
+        "upstream_invalid_response",
+        message,
+        "upstream_invalid_response",
+        source,
+        stage,
+        "inspect the provider response shape and update the parser or retry with a supported route",
+    )
+}
+
+fn model_client_init_error(
+    message: impl Into<String>,
+    source: &str,
+    stage: &str,
+) -> ModelExecutionError {
+    model_error_with_data(
+        "client_init_failed",
+        message,
+        "client_init_failed",
+        source,
+        stage,
+        "inspect local TLS/HTTP client configuration and retry",
+    )
+}
+
 #[derive(Debug, Clone)]
 struct RuntimeModelConfig {
     base_url: String,

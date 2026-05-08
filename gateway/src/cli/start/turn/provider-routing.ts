@@ -9,7 +9,17 @@ import {
 const EWMA_ALPHA = 0.25;
 const KIMI_SEARCH_TURN_TIMEOUT_MS = 120_000;
 const PROVIDER_UPSTREAM_429_RETRY_LIMIT = 1;
+const PROVIDER_UPSTREAM_TRANSIENT_HTTP_RETRY_LIMIT = 1;
 const PROVIDER_UPSTREAM_READ_RETRY_LIMIT = 1;
+const PROVIDER_UPSTREAM_CONNECT_RETRY_LIMIT = 1;
+const PROVIDER_UPSTREAM_TIMEOUT_RETRY_LIMIT = 1;
+
+export interface ProviderRetryRequest {
+  errorClass: string;
+  errorMessage: string;
+  retryCount: number;
+  errorData?: Record<string, unknown> | undefined;
+}
 
 export interface ProviderAttemptFailure {
   providerName: string;
@@ -135,6 +145,65 @@ function normalizePositiveInt(value: number | undefined): number | undefined {
     return undefined;
   }
   return normalized;
+}
+
+function recordBooleanField(
+  value: Record<string, unknown> | undefined,
+  key: string,
+): boolean | undefined {
+  const raw = value?.[key];
+  return typeof raw === "boolean" ? raw : undefined;
+}
+
+function recordFiniteNumberField(
+  value: Record<string, unknown> | undefined,
+  key: string,
+): number | undefined {
+  const raw = value?.[key];
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return undefined;
+  }
+  return raw;
+}
+
+function hasAttemptsExhausted(errorData: Record<string, unknown> | undefined): boolean {
+  const attempt = recordFiniteNumberField(errorData, "attempt");
+  const maxAttempts = recordFiniteNumberField(errorData, "max_attempts");
+  if (typeof attempt !== "number" || typeof maxAttempts !== "number") {
+    return false;
+  }
+  return maxAttempts > 0 && attempt >= maxAttempts;
+}
+
+function isTransientProviderHttpStatus(status: number | undefined): boolean {
+  if (typeof status !== "number") {
+    return false;
+  }
+  const normalized = Math.trunc(status);
+  return normalized === 408
+    || normalized === 425
+    || normalized === 429
+    || normalized === 500
+    || normalized === 502
+    || normalized === 503
+    || normalized === 504;
+}
+
+function normalizeProviderRetryRequest(
+  inputOrErrorClass: string | ProviderRetryRequest,
+  errorMessage?: string,
+  retryCount?: number,
+): ProviderRetryRequest {
+  if (typeof inputOrErrorClass !== "string") {
+    return inputOrErrorClass;
+  }
+  return {
+    errorClass: inputOrErrorClass,
+    errorMessage: errorMessage ?? "",
+    retryCount: typeof retryCount === "number" && Number.isFinite(retryCount)
+      ? retryCount
+      : 0,
+  };
 }
 
 function resolveProviderBurst(provider: RuntimeProviderCandidate): number | undefined {
@@ -445,17 +514,64 @@ export function shouldRetryProviderRequest(
   errorClass: string,
   errorMessage: string,
   retryCount: number,
+): boolean;
+export function shouldRetryProviderRequest(input: ProviderRetryRequest): boolean;
+export function shouldRetryProviderRequest(
+  inputOrErrorClass: string | ProviderRetryRequest,
+  errorMessage?: string,
+  retryCount?: number,
 ): boolean {
-  if (errorClass === "upstream_http_error") {
-    if (retryCount >= PROVIDER_UPSTREAM_429_RETRY_LIMIT) {
+  const input = normalizeProviderRetryRequest(
+    inputOrErrorClass,
+    errorMessage,
+    retryCount,
+  );
+  const retryable = recordBooleanField(input.errorData, "retryable");
+  if (retryable === false || hasAttemptsExhausted(input.errorData)) {
+    return false;
+  }
+  const httpStatus = recordFiniteNumberField(input.errorData, "http_status");
+  const allowStructuredRetry = retryable === true;
+
+  if (input.errorClass === "upstream_http_error") {
+    if (httpStatus === 429) {
+      return input.retryCount < PROVIDER_UPSTREAM_429_RETRY_LIMIT;
+    }
+    if (allowStructuredRetry && isTransientProviderHttpStatus(httpStatus)) {
+      return input.retryCount < PROVIDER_UPSTREAM_TRANSIENT_HTTP_RETRY_LIMIT;
+    }
+    if (input.retryCount >= PROVIDER_UPSTREAM_429_RETRY_LIMIT) {
       return false;
     }
-    return errorMessage.includes("status=429");
+    return input.errorMessage.includes("status=429");
   }
-  if (errorClass === "upstream_response_read_failed") {
-    return retryCount < PROVIDER_UPSTREAM_READ_RETRY_LIMIT;
+  if (input.errorClass === "upstream_response_read_failed") {
+    return input.retryCount < PROVIDER_UPSTREAM_READ_RETRY_LIMIT;
+  }
+  if (input.errorClass === "upstream_connect_failed") {
+    return allowStructuredRetry && input.retryCount < PROVIDER_UPSTREAM_CONNECT_RETRY_LIMIT;
+  }
+  if (input.errorClass === "upstream_timeout") {
+    return allowStructuredRetry && input.retryCount < PROVIDER_UPSTREAM_TIMEOUT_RETRY_LIMIT;
   }
   return false;
+}
+
+export function resolveProviderRetryReason(input: {
+  errorClass: string;
+  errorMessage: string;
+  errorData?: Record<string, unknown> | undefined;
+}): string {
+  if (input.errorClass === "upstream_http_error") {
+    const httpStatus = recordFiniteNumberField(input.errorData, "http_status");
+    if (typeof httpStatus === "number") {
+      return `upstream_http_${String(Math.trunc(httpStatus))}`;
+    }
+    if (input.errorMessage.includes("status=429")) {
+      return "upstream_429";
+    }
+  }
+  return input.errorClass;
 }
 
 export function shouldRetryWithKimiBuiltinFallback(input: {

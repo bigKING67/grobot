@@ -5,20 +5,41 @@ fn read_media_payload(
     request: &ReadRequest,
 ) -> Result<Value, ToolExecutionError> {
     let metadata = fs::metadata(target).map_err(|error| {
-        ToolExecutionError::new("tool_execution_failed", format!("failed to read file metadata: {error}"))
+        file_io_error(
+            format!("failed to read file metadata: {error}"),
+            target,
+            Some(relative_path),
+            "read.media",
+            "read_metadata",
+            "confirm the media target still exists and is readable, then retry",
+        )
     })?;
     let size_bytes = metadata.len();
 
     match kind {
         ReadKind::Notebook => {
             let raw = fs::read_to_string(target).map_err(|error| {
-                ToolExecutionError::new("tool_execution_failed", format!("failed to read notebook file: {error}"))
+                file_io_error(
+                    format!("failed to read notebook file: {error}"),
+                    target,
+                    Some(relative_path),
+                    "read.notebook",
+                    "read_notebook_file",
+                    "confirm the notebook is readable UTF-8 JSON, then retry",
+                )
             })?;
             let parsed: Value = serde_json::from_str(&raw).map_err(|error| {
                 ToolExecutionError::new(
                     "tool_execution_failed",
                     format!("failed to parse notebook json: {error}"),
                 )
+                .with_data(json!({
+                    "diagnostic_kind": "notebook_parse_error",
+                    "path": relative_path,
+                    "source": "read.notebook",
+                    "stage": "parse_notebook_json",
+                    "recovery_hint": "repair notebook JSON or export a valid .ipynb, then retry"
+                }))
             })?;
             let cells = parsed
                 .get("cells")
@@ -35,7 +56,15 @@ fn read_media_payload(
                             "read offset {} is beyond end of notebook (0 cells)",
                             request.start_line
                         ),
-                    ));
+                    )
+                    .with_data(json!({
+                        "diagnostic_kind": "range_out_of_bounds",
+                        "path": relative_path,
+                        "range_kind": "notebook_cell",
+                        "requested_offset": request.start_line,
+                        "available_count": 0,
+                        "recovery_hint": "retry with offset=1 or inspect notebook metadata first"
+                    })));
                 }
                 let payload = build_media_payload(
                     relative_path,
@@ -67,7 +96,15 @@ fn read_media_payload(
                         "read offset {} is beyond end of notebook ({} cells)",
                         request.start_line, total_cells
                     ),
-                ));
+                )
+                .with_data(json!({
+                    "diagnostic_kind": "range_out_of_bounds",
+                    "path": relative_path,
+                    "range_kind": "notebook_cell",
+                    "requested_offset": request.start_line,
+                    "available_count": total_cells,
+                    "recovery_hint": "retry with an offset within the reported cell range"
+                })));
             }
             let requested_limit = request
                 .line_limit
@@ -548,6 +585,13 @@ fn read_media_payload(
         ReadKind::Text => Err(ToolExecutionError::new(
             "tool_execution_failed",
             "read media branch received text kind unexpectedly",
-        )),
+        )
+        .with_data(json!({
+            "diagnostic_kind": "read_internal_state_error",
+            "path": relative_path,
+            "source": "read.media",
+            "stage": "dispatch_kind",
+            "recovery_hint": "report this internal routing bug with the read payload and file extension"
+        }))),
     }
 }

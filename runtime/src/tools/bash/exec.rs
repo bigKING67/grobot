@@ -26,6 +26,26 @@ struct BashStreamCapture {
     spill_file: Option<fs::File>,
 }
 
+fn bash_io_error(
+    message: impl Into<String>,
+    stage: &str,
+    stream: Option<&str>,
+    recovery_hint: &str,
+) -> ToolExecutionError {
+    let mut data = json!({
+        "diagnostic_kind": "bash_io_error",
+        "source": TOOL_BASH,
+        "stage": stage,
+        "recovery_hint": recovery_hint
+    });
+    if let Some(stream) = stream {
+        if let Some(data_object) = data.as_object_mut() {
+            data_object.insert("stream".to_string(), json!(stream));
+        }
+    }
+    ToolExecutionError::new("tool_execution_failed", message).with_data(data)
+}
+
 impl BashStreamCapture {
     fn new(max_tail_bytes: usize, output_root: &Path) -> Self {
         Self {
@@ -51,9 +71,11 @@ impl BashStreamCapture {
 
         if let Some(file) = self.spill_file.as_mut() {
             file.write_all(chunk).map_err(|error| {
-                ToolExecutionError::new(
-                    "tool_execution_failed",
+                bash_io_error(
                     format!("failed to persist {stream_label} stream: {error}"),
+                    "persist_stream_chunk",
+                    Some(stream_label),
+                    "check temporary output storage permissions and retry with a smaller command output",
                 )
             })?;
         }
@@ -102,24 +124,30 @@ impl BashStreamCapture {
     fn write_full_to<W: Write>(&self, writer: &mut W, stream_label: &str) -> Result<(), ToolExecutionError> {
         if let Some(path) = self.spill_path.as_ref() {
             let file = fs::File::open(path).map_err(|error| {
-                ToolExecutionError::new(
-                    "tool_execution_failed",
+                bash_io_error(
                     format!("failed to open persisted {stream_label} stream: {error}"),
+                    "open_persisted_stream",
+                    Some(stream_label),
+                    "inspect the persisted output path and retry the command if the temp file was removed",
                 )
             })?;
             let mut reader = BufReader::new(file);
             std::io::copy(&mut reader, writer).map_err(|error| {
-                ToolExecutionError::new(
-                    "tool_execution_failed",
+                bash_io_error(
                     format!("failed to copy persisted {stream_label} stream: {error}"),
+                    "copy_persisted_stream",
+                    Some(stream_label),
+                    "retry with a smaller command output or inspect the persisted output path manually",
                 )
             })?;
         } else {
             let bytes: Vec<u8> = self.tail.iter().copied().collect();
             writer.write_all(bytes.as_slice()).map_err(|error| {
-                ToolExecutionError::new(
-                    "tool_execution_failed",
+                bash_io_error(
                     format!("failed to write {stream_label} stream: {error}"),
+                    "write_stream_tail",
+                    Some(stream_label),
+                    "retry with a smaller command output or inspect command output directly",
                 )
             })?;
         }
@@ -139,18 +167,22 @@ impl BashStreamCapture {
 
         let (path, mut file) = create_bash_output_file(self.output_root.as_path(), stream_label, "stream")
             .map_err(|error| {
-                ToolExecutionError::new(
-                    "tool_execution_failed",
+                bash_io_error(
                     format!("failed to create {stream_label} stream buffer: {error}"),
+                    "create_stream_buffer",
+                    Some(stream_label),
+                    "check temporary output directory permissions and retry",
                 )
             })?;
 
         if !self.tail.is_empty() {
             let bytes: Vec<u8> = self.tail.iter().copied().collect();
             file.write_all(bytes.as_slice()).map_err(|error| {
-                ToolExecutionError::new(
-                    "tool_execution_failed",
+                bash_io_error(
                     format!("failed to seed {stream_label} stream buffer: {error}"),
+                    "seed_stream_buffer",
+                    Some(stream_label),
+                    "retry with a smaller command output or clear stale temporary output files",
                 )
             })?;
         }
@@ -182,17 +214,29 @@ fn execute_bash_command(
     let mut child = command
         .spawn()
         .map_err(|error| {
-            ToolExecutionError::new(
-                "tool_execution_failed",
+            bash_io_error(
                 format!("bash execution failed: {error}"),
+                "spawn_process",
+                None,
+                "confirm bash is available and the workspace is accessible, then retry",
             )
         })?;
 
     let stdout_reader = child.stdout.take().ok_or_else(|| {
-        ToolExecutionError::new("tool_execution_failed", "failed to capture bash stdout")
+        bash_io_error(
+            "failed to capture bash stdout",
+            "capture_stdout_pipe",
+            Some("stdout"),
+            "retry the command; if it repeats, inspect runtime pipe setup",
+        )
     })?;
     let stderr_reader = child.stderr.take().ok_or_else(|| {
-        ToolExecutionError::new("tool_execution_failed", "failed to capture bash stderr")
+        bash_io_error(
+            "failed to capture bash stderr",
+            "capture_stderr_pipe",
+            Some("stderr"),
+            "retry the command; if it repeats, inspect runtime pipe setup",
+        )
     })?;
 
     let (sender, receiver) = std::sync::mpsc::channel::<BashStreamEvent>();
@@ -212,9 +256,11 @@ fn execute_bash_command(
             status = child
                 .try_wait()
                 .map_err(|error| {
-                    ToolExecutionError::new(
-                        "tool_execution_failed",
+                    bash_io_error(
                         format!("failed to poll bash process: {error}"),
+                        "poll_process",
+                        None,
+                        "retry the command and inspect process state if polling failures repeat",
                     )
                 })?;
         }
@@ -253,9 +299,11 @@ fn execute_bash_command(
                 let _ = stdout_handle.join();
                 let _ = stderr_handle.join();
                 cleanup_bash_spill_files(&stdout_capture, &stderr_capture);
-                return Err(ToolExecutionError::new(
-                    "tool_execution_failed",
+                return Err(bash_io_error(
                     format!("failed to read bash {stream}: {message}"),
+                    "read_process_stream",
+                    Some(stream),
+                    "retry with a smaller command output or inspect the command for pipe/encoding issues",
                 ));
             }
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
@@ -273,9 +321,11 @@ fn execute_bash_command(
             status = child
                 .try_wait()
                 .map_err(|error| {
-                    ToolExecutionError::new(
-                        "tool_execution_failed",
+                    bash_io_error(
                         format!("failed to poll timed-out bash process: {error}"),
+                        "poll_timed_out_process",
+                        None,
+                        "retry with a shorter-running command or inspect process state manually",
                     )
                 })?;
         }
@@ -283,9 +333,11 @@ fn execute_bash_command(
 
     if status.is_none() {
         status = Some(child.wait().map_err(|error| {
-            ToolExecutionError::new(
-                "tool_execution_failed",
+            bash_io_error(
                 format!("failed to wait bash process: {error}"),
+                "wait_process",
+                None,
+                "retry the command and inspect process state if the wait failure repeats",
             )
         })?);
     }
@@ -397,32 +449,40 @@ fn persist_full_bash_output(
     stderr: &BashStreamCapture,
 ) -> Result<String, ToolExecutionError> {
     let (path, mut file) = create_bash_output_file(stdout.output_root.as_path(), "full", "output").map_err(|error| {
-        ToolExecutionError::new(
-            "tool_execution_failed",
+        bash_io_error(
             format!("failed to create full bash output file: {error}"),
+            "create_full_output_file",
+            None,
+            "check temporary output directory permissions and retry with a smaller command output",
         )
     })?;
 
     file.write_all(b"### stdout\n").map_err(|error| {
-        ToolExecutionError::new(
-            "tool_execution_failed",
+        bash_io_error(
             format!("failed to write stdout header: {error}"),
+            "write_full_output_header",
+            Some("stdout"),
+            "check temporary output storage permissions and retry",
         )
     })?;
     stdout.write_full_to(&mut file, "stdout")?;
 
     file.write_all(b"\n\n### stderr\n").map_err(|error| {
-        ToolExecutionError::new(
-            "tool_execution_failed",
+        bash_io_error(
             format!("failed to write stderr header: {error}"),
+            "write_full_output_header",
+            Some("stderr"),
+            "check temporary output storage permissions and retry",
         )
     })?;
     stderr.write_full_to(&mut file, "stderr")?;
 
     file.flush().map_err(|error| {
-        ToolExecutionError::new(
-            "tool_execution_failed",
+        bash_io_error(
             format!("failed to flush full bash output file: {error}"),
+            "flush_full_output_file",
+            None,
+            "check filesystem health for the temporary output directory and retry",
         )
     })?;
 
@@ -437,9 +497,11 @@ fn cleanup_bash_spill_files(stdout: &BashStreamCapture, stderr: &BashStreamCaptu
 fn ensure_bash_output_root_dir(policy: &BashRuntimePolicy) -> Result<PathBuf, ToolExecutionError> {
     let root = env::temp_dir().join("grobot-bash-output-v2");
     fs::create_dir_all(&root).map_err(|error| {
-        ToolExecutionError::new(
-            "tool_execution_failed",
+        bash_io_error(
             format!("failed to create bash output directory: {error}"),
+            "create_output_directory",
+            None,
+            "check temporary directory permissions and retry",
         )
     })?;
     harden_bash_output_root_permissions(root.as_path());
@@ -468,9 +530,11 @@ fn cleanup_bash_output_directory(root: &Path, policy: &BashRuntimePolicy) -> Res
     let mut files: Vec<(PathBuf, u64)> = Vec::new();
 
     let entries = fs::read_dir(root).map_err(|error| {
-        ToolExecutionError::new(
-            "tool_execution_failed",
+        bash_io_error(
             format!("failed to read bash output directory: {error}"),
+            "read_output_directory",
+            None,
+            "check temporary directory permissions and retry",
         )
     })?;
 

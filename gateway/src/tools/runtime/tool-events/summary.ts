@@ -3,6 +3,7 @@ import type { RuntimeToolEventSummary } from "./contract";
 import { emptySummary, increment } from "./counters";
 import {
   normalizeRecoveryHint,
+  normalizeTurnFailedProviderRecovery,
   normalizeTurnFailedRuntimeEnvironmentRecovery,
 } from "./normalize";
 import { payloadNumber, payloadString } from "./payload";
@@ -38,7 +39,9 @@ export function summarizeRuntimeToolEvents(events: readonly RuntimeEvent[]): Run
         summary.latestRecovery = recovery;
       }
     } else if (event.eventType === "turn_failed" && !summary.latestRecovery) {
-      const recovery = normalizeTurnFailedRuntimeEnvironmentRecovery(payload);
+      const recovery =
+        normalizeTurnFailedRuntimeEnvironmentRecovery(payload)
+        ?? normalizeTurnFailedProviderRecovery(payload);
       if (recovery) {
         increment(summary.failuresByErrorClass, recovery.errorClass ?? recovery.reason);
         increment(summary.recoveryStages, recovery.stage);

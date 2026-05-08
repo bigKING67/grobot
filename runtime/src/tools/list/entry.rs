@@ -46,9 +46,13 @@ fn collect_list_entries(
         }
     } else {
         let read_dir = fs::read_dir(target).map_err(|error| {
-            ToolExecutionError::new(
-                "tool_execution_failed",
+            file_io_error(
                 format!("failed to read directory: {error}"),
+                target,
+                Some(relative_to_work_dir(&context.work_dir, target).as_str()),
+                "list",
+                "read_directory",
+                "confirm the directory still exists and is readable, then retry",
             )
         })?;
         for item in read_dir {

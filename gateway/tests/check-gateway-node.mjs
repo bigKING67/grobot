@@ -98,6 +98,7 @@ function ensureContractsExist() {
     "semantic-search-regression-contract.mjs",
     "browser-structured-mcp-contract.mjs",
     "runtime-tool-recovery-readiness-contract.ts",
+    "turn-gate-contract.ts",
     "bridge-plan-failure-policy-contract.ts",
     "bridge-plan-apply-failure-contract.mjs",
     "bridge-cli-contract.mjs",

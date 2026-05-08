@@ -28,3 +28,15 @@ export class RuntimeRpcError extends Error {
 export function extractRuntimeErrorEvents(error: unknown): readonly RuntimeEvent[] {
   return error instanceof RuntimeRpcError ? error.runtimeEvents : [];
 }
+
+export function extractRuntimeErrorData(error: unknown): Record<string, unknown> | undefined {
+  return error instanceof RuntimeRpcError ? error.errorData : undefined;
+}
+
+export function extractRuntimeErrorClass(error: unknown): string | undefined {
+  if (!(error instanceof RuntimeRpcError)) {
+    return undefined;
+  }
+  const trimmed = error.errorClass.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}

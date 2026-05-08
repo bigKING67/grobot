@@ -146,6 +146,69 @@
     }
 
     #[test]
+    fn read_v2_notebook_reports_offset_out_of_bounds_with_recovery_data() {
+        let workspace = make_temp_workspace("read-v2-notebook-oob");
+        let notebook = json!({
+            "cells": [
+                { "cell_type": "markdown", "source": ["cell1"] },
+                { "cell_type": "code", "source": ["cell2"] }
+            ]
+        });
+        fs::write(
+            workspace.join("nb.ipynb"),
+            serde_json::to_string(&notebook).expect("serialize notebook"),
+        )
+        .expect("write notebook file");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-notebook-oob".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "nb.ipynb",
+                "offset": 9
+            }),
+        };
+        let error = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect_err("notebook out-of-bounds read should fail");
+        assert_eq!(error.error_class, "range_out_of_bounds");
+        let data = error.data.as_ref().expect("notebook range error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("range_out_of_bounds"));
+        assert_eq!(data["path"].as_str(), Some("nb.ipynb"));
+        assert_eq!(data["range_kind"].as_str(), Some("notebook_cell"));
+        assert_eq!(data["requested_offset"].as_u64(), Some(9));
+        assert_eq!(data["available_count"].as_u64(), Some(2));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn read_v2_notebook_parse_error_reports_recovery_data() {
+        let workspace = make_temp_workspace("read-v2-notebook-parse-error");
+        fs::write(workspace.join("bad.ipynb"), "{not-json").expect("write invalid notebook");
+        let input = make_read_only_input(&workspace);
+        let call = ToolCallInput {
+            id: "read-v2-notebook-parse-error".to_string(),
+            name: "read".to_string(),
+            arguments: json!({
+                "path": "bad.ipynb"
+            }),
+        };
+        let error = LocalToolExecutor
+            .execute_tool_call(&call, &input)
+            .expect_err("invalid notebook JSON should fail");
+        assert_eq!(error.error_class, "tool_execution_failed");
+        let data = error.data.as_ref().expect("notebook parse error data");
+        assert_eq!(
+            data["diagnostic_kind"].as_str(),
+            Some("notebook_parse_error")
+        );
+        assert_eq!(data["path"].as_str(), Some("bad.ipynb"));
+        assert_eq!(data["source"].as_str(), Some("read.notebook"));
+        assert_eq!(data["stage"].as_str(), Some("parse_notebook_json"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
     fn read_v2_pdf_pages_is_reflected_in_meta() {
         let workspace = make_temp_workspace("read-v2-pdf-pages");
         fs::write(workspace.join("report.pdf"), "%PDF-1.4\nplaceholder\n").expect("write pdf placeholder");
@@ -619,4 +682,9 @@
         let error = compute_pdf_extract_plan(Some((30, 35)), Some(18))
             .expect_err("out of range should fail");
         assert_eq!(error.error_class, "range_out_of_bounds");
+        let data = error.data.as_ref().expect("pdf range error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("range_out_of_bounds"));
+        assert_eq!(data["range_kind"].as_str(), Some("pdf_page"));
+        assert_eq!(data["requested_page"].as_u64(), Some(30));
+        assert_eq!(data["available_count"].as_u64(), Some(18));
     }

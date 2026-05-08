@@ -35,6 +35,38 @@
         assert_eq!(payload["truncation"]["max_entries"].as_u64(), Some(2));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
+
+    #[test]
+    fn list_v2_read_dir_error_reports_recovery_data() {
+        let workspace = make_temp_workspace("list-v2-read-dir-error");
+        let request = ListRequest {
+            path: ".".to_string(),
+            recursive: false,
+            max_entries: DEFAULT_MAX_ENTRIES,
+        };
+        let context = ToolContextResolved {
+            session_key: "list-v2-read-dir-error".to_string(),
+            work_dir: workspace.clone(),
+            enabled_tools: HashSet::from([TOOL_LIST.to_string()]),
+            model_visible_tools: HashSet::from([TOOL_LIST.to_string()]),
+            tool_surface_profile: "coding".to_string(),
+            advanced_tool_schema: false,
+            bash_allowlist: Vec::new(),
+        };
+        let missing = workspace.join("missing-dir");
+
+        let error = collect_list_entries(&context, &missing, &request)
+            .expect_err("direct read_dir failure should include recovery data");
+        assert_eq!(error.error_class, "tool_execution_failed");
+        let data = error.data.as_ref().expect("list read_dir error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("file_io_error"));
+        assert_eq!(data["source"].as_str(), Some("list"));
+        assert_eq!(data["stage"].as_str(), Some("read_directory"));
+        assert!(data["path"].as_str().unwrap_or_default().ends_with("missing-dir"));
+
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
     #[test]
     fn glob_v2_rejects_unknown_arguments() {
         let workspace = make_temp_workspace("glob-v2-unknown-arg");

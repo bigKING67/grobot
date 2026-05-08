@@ -119,6 +119,62 @@ export function normalizePlanMeta(raw: unknown): SessionPlanMeta | undefined {
   };
 }
 
+const PROVIDER_ERROR_DATA_STRING_FIELDS = [
+  "diagnostic_kind",
+  "source",
+  "stage",
+  "provider",
+  "provider_kind",
+  "model",
+  "upstream_error_kind",
+  "recovery_hint",
+] as const;
+
+const PROVIDER_ERROR_DATA_NUMBER_FIELDS = [
+  "http_status",
+  "attempt",
+  "max_attempts",
+] as const;
+
+const PROVIDER_ERROR_DATA_BOOLEAN_FIELDS = [
+  "retryable",
+] as const;
+
+function compactProviderErrorDataString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  return trimmed.length > 0 ? trimmed.slice(0, 240) : undefined;
+}
+
+export function normalizeProviderLastErrorData(raw: unknown): Record<string, unknown> | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return undefined;
+  }
+  const record = raw as Record<string, unknown>;
+  const normalized: Record<string, unknown> = {};
+  for (const key of PROVIDER_ERROR_DATA_STRING_FIELDS) {
+    const value = compactProviderErrorDataString(record[key]);
+    if (typeof value === "string") {
+      normalized[key] = value;
+    }
+  }
+  for (const key of PROVIDER_ERROR_DATA_NUMBER_FIELDS) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      normalized[key] = Math.trunc(value);
+    }
+  }
+  for (const key of PROVIDER_ERROR_DATA_BOOLEAN_FIELDS) {
+    const value = record[key];
+    if (typeof value === "boolean") {
+      normalized[key] = value;
+    }
+  }
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
 export function normalizeProviderRuntimeStates(raw: unknown): SessionProviderRuntimeState[] | undefined {
   if (!Array.isArray(raw)) {
     return undefined;
@@ -139,6 +195,7 @@ export function normalizeProviderRuntimeStates(raw: unknown): SessionProviderRun
       circuit_open_until_ms: parseNonNegativeInt(record.circuit_open_until_ms),
       last_error_class: parseOptionalString(record.last_error_class),
       last_error_message: parseOptionalString(record.last_error_message),
+      last_error_data: normalizeProviderLastErrorData(record.last_error_data),
       last_failed_at: parseOptionalString(record.last_failed_at),
       last_succeeded_at: parseOptionalString(record.last_succeeded_at),
       ewma_latency_ms: parseOptionalNonNegativeNumber(record.ewma_latency_ms),

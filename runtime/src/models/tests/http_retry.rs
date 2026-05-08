@@ -90,9 +90,117 @@
             .expect_err("expected upstream_http_error");
         assert_eq!(error.error_class, "upstream_http_error");
         assert!(error.message.contains("status=503"));
+        let data = error.data.as_ref().expect("upstream HTTP error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("upstream_http_error"));
+        assert_eq!(data["source"].as_str(), Some("model.transport"));
+        assert_eq!(data["stage"].as_str(), Some("chat_http_status"));
+        assert_eq!(data["provider"].as_str(), Some("openai_compatible"));
+        assert_eq!(data["http_status"].as_u64(), Some(503));
+        assert_eq!(data["attempt"].as_u64(), Some(1));
+        assert_eq!(data["max_attempts"].as_u64(), Some(1));
+        assert!(data["body_preview"].as_str().unwrap_or_default().contains("unavailable"));
+        assert!(data["recovery_hint"].as_str().unwrap_or_default().contains("provider"));
 
         let calls = server.finish();
         assert_eq!(calls.len(), 1);
+    }
+
+    #[test]
+    fn executor_kimi_retry_exhaustion_preserves_last_structured_error_data() {
+        let _env_guard = lock_env();
+        let server = start_mock_http_server_sequence(&[
+            ("429 Too Many Requests", r#"{"error":"busy 1"}"#),
+            ("500 Internal Server Error", r#"{"error":"busy 2"}"#),
+            ("503 Service Unavailable", r#"{"error":"busy 3"}"#),
+        ]);
+        let _restore = apply_env(&[
+            (ENV_BASE_URL, None),
+            (ENV_API_KEY, None),
+            (ENV_MODEL, None),
+            (ENV_RUNTIME_TIMEOUT_MS, None),
+        ]);
+        let input = TurnExecuteInput {
+            request_id: "req_rt_kimi_retry_exhausted".to_string(),
+            session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
+            user_message: "ping".to_string(),
+            context_lines: vec![],
+            model_config: Some(RuntimeModelConfigInput {
+                base_url: Some(server.base_url.clone()),
+                api_key: Some("runtime-test-key".to_string()),
+                model: Some("kimi-k2.5".to_string()),
+                timeout_ms: Some(5_000),
+                provider_kind: Some("kimi".to_string()),
+                provider_options: None,
+            }),
+            tool_context: None,
+            attachments: vec![],
+        };
+
+        let executor = OpenAiCompatibleModelExecutor;
+        let error = executor
+            .generate_assistant_message(&input, &LocalToolExecutor)
+            .expect_err("expected retry exhaustion to keep last upstream error");
+        assert_eq!(error.error_class, "upstream_http_error");
+        let data = error.data.as_ref().expect("kimi retry exhaustion data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("upstream_http_error"));
+        assert_eq!(data["source"].as_str(), Some("model.transport"));
+        assert_eq!(data["stage"].as_str(), Some("chat_http_status"));
+        assert_eq!(data["provider"].as_str(), Some("kimi"));
+        assert_eq!(data["http_status"].as_u64(), Some(503));
+        assert_eq!(data["attempt"].as_u64(), Some(3));
+        assert_eq!(data["max_attempts"].as_u64(), Some(3));
+        assert_eq!(data["retryable"].as_bool(), Some(false));
+        assert!(data["body_preview"].as_str().unwrap_or_default().contains("busy 3"));
+
+        let calls = server.finish();
+        assert_eq!(calls.len(), 3, "recorded requests: {calls:?}");
+    }
+
+    #[test]
+    fn executor_kimi_request_error_reports_retryable_false_after_attempts_exhausted() {
+        let _env_guard = lock_env();
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind unused local port");
+        let port = listener.local_addr().expect("read unused local port").port();
+        drop(listener);
+        let base_url = format!("http://127.0.0.1:{port}/v1");
+        let _restore = apply_env(&[
+            (ENV_BASE_URL, None),
+            (ENV_API_KEY, None),
+            (ENV_MODEL, None),
+            (ENV_RUNTIME_TIMEOUT_MS, None),
+        ]);
+        let input = TurnExecuteInput {
+            request_id: "req_rt_kimi_request_retry_exhausted".to_string(),
+            session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
+            user_message: "ping".to_string(),
+            context_lines: vec![],
+            model_config: Some(RuntimeModelConfigInput {
+                base_url: Some(base_url),
+                api_key: Some("runtime-test-key".to_string()),
+                model: Some("kimi-k2.5".to_string()),
+                timeout_ms: Some(1_000),
+                provider_kind: Some("kimi".to_string()),
+                provider_options: None,
+            }),
+            tool_context: None,
+            attachments: vec![],
+        };
+
+        let executor = OpenAiCompatibleModelExecutor;
+        let error = executor
+            .generate_assistant_message(&input, &LocalToolExecutor)
+            .expect_err("expected exhausted request error");
+        assert_eq!(error.error_class, "upstream_connect_failed");
+        let data = error.data.as_ref().expect("request error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("upstream_connect_failed"));
+        assert_eq!(data["source"].as_str(), Some("model.transport"));
+        assert_eq!(data["stage"].as_str(), Some("chat_request"));
+        assert_eq!(data["provider"].as_str(), Some("kimi"));
+        assert_eq!(data["attempt"].as_u64(), Some(3));
+        assert_eq!(data["max_attempts"].as_u64(), Some(3));
+        assert_eq!(data["retryable"].as_bool(), Some(false));
     }
 
     #[test]

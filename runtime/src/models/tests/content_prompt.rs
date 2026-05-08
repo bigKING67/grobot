@@ -140,6 +140,67 @@
     }
 
     #[test]
+    fn build_runtime_messages_reports_structured_attachment_path_error() {
+        let model_config_input = RuntimeModelConfigInput {
+            base_url: Some("https://api.moonshot.cn/v1".to_string()),
+            api_key: Some("runtime-test-key".to_string()),
+            model: Some("kimi-k2.5".to_string()),
+            timeout_ms: Some(5_000),
+            provider_kind: Some("kimi".to_string()),
+            provider_options: Some(RuntimeProviderOptionsInput {
+                kimi: Some(RuntimeKimiOptionsInput {
+                    web_search_mode: None,
+                    disable_thinking_on_builtin_web_search: None,
+                    official_tools_allowlist: None,
+                    official_tool_formulas: None,
+                    prompt_cache: None,
+                    max_tokens: None,
+                    stream: None,
+                    temperature: None,
+                    top_p: None,
+                    files_enabled: Some(true),
+                    allow_file_admin: None,
+                }),
+            }),
+        };
+        let config = load_runtime_model_config(Some(&model_config_input))
+            .expect("resolve kimi config");
+        let client = Client::new();
+        let input = TurnExecuteInput {
+            request_id: "req_kimi_missing_attachment".to_string(),
+            session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
+            user_message: "describe this file".to_string(),
+            context_lines: vec![],
+            model_config: Some(model_config_input),
+            tool_context: None,
+            attachments: vec![crate::models::engine::RuntimeAttachmentInput {
+                attachment_type: "image".to_string(),
+                source_type: "path".to_string(),
+                source: "__missing_kimi_attachment__.png".to_string(),
+                mime_type: Some("image/png".to_string()),
+                filename: Some("missing.png".to_string()),
+            }],
+        };
+        let error = build_runtime_messages(&input, &client, &config)
+            .expect_err("missing attachment path should fail");
+        assert_eq!(error.error_class, "attachment_invalid");
+        let data = error.data.as_ref().expect("attachment diagnostic data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("attachment_invalid"));
+        assert_eq!(data["source"].as_str(), Some("model.kimi_attachments"));
+        assert_eq!(data["stage"].as_str(), Some("upload_file_path_validate"));
+        assert_eq!(
+            data["path"].as_str(),
+            Some("__missing_kimi_attachment__.png")
+        );
+        assert_eq!(data["purpose"].as_str(), Some("image"));
+        assert!(data["recovery_hint"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("local file paths"));
+    }
+
+    #[test]
     fn kimi_defaults_declare_builtin_web_search_and_disable_thinking() {
         let model_config_input = RuntimeModelConfigInput {
             base_url: Some("https://api.moonshot.cn/v1".to_string()),
@@ -208,6 +269,36 @@
         let selected =
             pick_auto_model(&models, ProviderKind::OpenAiCompatible).expect("selected model");
         assert_eq!(selected, "model-a");
+    }
+
+    #[test]
+    fn model_auto_empty_catalog_reports_structured_config_error() {
+        let server = start_mock_http_server("200 OK", r#"{"data":[]}"#);
+        let model_config_input = RuntimeModelConfigInput {
+            base_url: Some(server.base_url.clone()),
+            api_key: Some("runtime-test-key".to_string()),
+            model: Some("auto".to_string()),
+            timeout_ms: Some(5_000),
+            provider_kind: Some("openai_compatible".to_string()),
+            provider_options: None,
+        };
+        let error = load_runtime_model_config(Some(&model_config_input))
+            .expect_err("empty /models catalog should fail auto model selection");
+        assert_eq!(error.error_class, "config_invalid");
+        let data = error.data.as_ref().expect("auto model diagnostic data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("config_invalid"));
+        assert_eq!(data["source"].as_str(), Some("model.catalog"));
+        assert_eq!(data["stage"].as_str(), Some("auto_model_select"));
+        assert_eq!(data["provider"].as_str(), Some("openai_compatible"));
+        assert_eq!(data["model_count"].as_u64(), Some(0));
+        assert!(data["recovery_hint"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("explicit model"));
+
+        let calls = server.finish();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].path, "/v1/models");
     }
 
     #[test]

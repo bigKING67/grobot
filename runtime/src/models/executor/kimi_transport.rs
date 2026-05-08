@@ -8,16 +8,6 @@ const KIMI_MODEL_REQUEST_RETRY_MAX_DELAY_MS: u64 = 50;
 #[cfg(not(test))]
 const KIMI_MODEL_REQUEST_RETRY_MAX_DELAY_MS: u64 = 3_000;
 
-fn classify_request_error_class(error: &reqwest::Error) -> &'static str {
-    if error.is_timeout() {
-        "upstream_timeout"
-    } else if error.is_connect() {
-        "upstream_connect_failed"
-    } else {
-        "upstream_request_failed"
-    }
-}
-
 fn truncate_header_value_for_diagnostics(raw: &str, max_chars: usize) -> String {
     let normalized = raw.trim().replace('\n', " ").replace('\r', " ");
     if normalized.chars().count() <= max_chars {
@@ -156,28 +146,52 @@ fn send_chat_completion_with_optional_kimi_retry(
         {
             Ok(value) => value,
             Err(error) => {
-                let class = classify_request_error_class(&error);
                 let message = format!("model request failed: {error}");
                 let is_retryable = retry_enabled
                     && attempt + 1 < max_attempts
                     && (error.is_timeout() || error.is_connect());
+                let model_error = model_error_with_fields(
+                    model_request_error(
+                        &error,
+                        message,
+                        "model.transport",
+                        "chat_request",
+                        "retry later or verify provider network connectivity",
+                    ),
+                    &[
+                        ("provider", json!(provider_kind_label(provider_kind))),
+                        ("attempt", json!(attempt + 1)),
+                        ("max_attempts", json!(max_attempts)),
+                        ("retryable", json!(is_retryable)),
+                    ],
+                );
                 if is_retryable {
-                    last_retryable_error = Some(ModelExecutionError::new(class, message));
+                    last_retryable_error = Some(model_error);
                     continue;
                 }
-                return Err(ModelExecutionError::new(class, message));
+                return Err(model_error);
             }
         };
 
         let status = response.status();
         let response_headers = summarize_response_headers_for_diagnostics(response.headers());
         let body_text = response.text().map_err(|error| {
-            ModelExecutionError::new(
-                "upstream_response_read_failed",
-                format!(
-                    "failed to read model response body: {error}; status={}; headers={response_headers}",
-                    status.as_u16()
+            model_error_with_fields(
+                model_response_read_error(
+                    format!(
+                        "failed to read model response body: {error}; status={}; headers={response_headers}",
+                        status.as_u16()
+                    ),
+                    "model.transport",
+                    "chat_response_read",
                 ),
+                &[
+                    ("provider", json!(provider_kind_label(provider_kind))),
+                    ("http_status", json!(status.as_u16())),
+                    ("response_headers", json!(response_headers)),
+                    ("attempt", json!(attempt + 1)),
+                    ("max_attempts", json!(max_attempts)),
+                ],
             )
         })?;
         if status.is_success() {
@@ -192,6 +206,29 @@ fn send_chat_completion_with_optional_kimi_retry(
             && (reasoning_context_error
                 || temperature_validation_error
                 || should_retry_kimi_http_error(status, &body_text));
+        let model_error = model_error_with_fields(
+            model_http_error(
+                format!(
+                    "upstream status={} thinking={} body={detail}",
+                    status.as_u16(),
+                    request_thinking_state
+                ),
+                status,
+                detail.as_str(),
+                "model.transport",
+                "chat_http_status",
+            ),
+            &[
+                ("provider", json!(provider_kind_label(provider_kind))),
+                ("thinking", json!(request_thinking_state)),
+                ("response_headers", json!(response_headers)),
+                ("attempt", json!(attempt + 1)),
+                ("max_attempts", json!(max_attempts)),
+                ("retryable", json!(is_retryable)),
+                ("kimi_reasoning_context_error", json!(reasoning_context_error)),
+                ("kimi_temperature_validation_error", json!(temperature_validation_error)),
+            ],
+        );
         if is_retryable {
             if reasoning_context_error {
                 force_disable_thinking_on_retry = true;
@@ -199,30 +236,26 @@ fn send_chat_completion_with_optional_kimi_retry(
             if temperature_validation_error {
                 drop_sampling_controls_on_retry = true;
             }
-            last_retryable_error = Some(ModelExecutionError::new(
-                "upstream_http_error",
-                format!(
-                    "upstream status={} thinking={} body={detail}",
-                    status.as_u16(),
-                    request_thinking_state
-                ),
-            ));
+            last_retryable_error = Some(model_error);
             continue;
         }
-        return Err(ModelExecutionError::new(
-            "upstream_http_error",
-            format!(
-                "upstream status={} thinking={} body={detail}",
-                status.as_u16(),
-                request_thinking_state
-            ),
-        ));
+        return Err(model_error);
     }
 
     Err(last_retryable_error.unwrap_or_else(|| {
-        ModelExecutionError::new(
-            "upstream_request_failed",
-            "model request failed after retries without a terminal response",
+        model_error_with_fields(
+            model_error_with_data(
+                "upstream_request_failed",
+                "model request failed after retries without a terminal response",
+                "upstream_request_failed",
+                "model.transport",
+                "chat_retry_exhausted",
+                "retry later or inspect provider/network stability before re-running the turn",
+            ),
+            &[
+                ("provider", json!(provider_kind_label(provider_kind))),
+                ("max_attempts", json!(max_attempts)),
+            ],
         )
     }))
 }

@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct WriteReadSnapshot {
     mtime_ms: u128,
     full_view: bool,

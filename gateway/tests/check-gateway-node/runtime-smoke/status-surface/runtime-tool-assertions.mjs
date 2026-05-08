@@ -12,6 +12,12 @@ export function assertRuntimeToolStatusSurface(statusPayload) {
   assert.equal(statusPayload.status_has_route_observed_provider_runtime_states, true);
   assert.equal(statusPayload.status_has_route_ordered_providers, true);
   assert.equal(statusPayload.status_has_route_failover, true);
+  assert.equal(statusPayload.status_has_turn_gate, true);
+  assert.equal(statusPayload.status_turn_gate_active_sessions_type, "number");
+  assert.equal(statusPayload.status_turn_gate_tracked_sessions_type, "number");
+  assert.equal(statusPayload.status_turn_gate_rejected_reentrant_total_type, "number");
+  assert.equal(statusPayload.status_turn_gate_stale_cleanup_total_type, "number");
+  assert.equal(statusPayload.status_turn_gate_sessions_is_array, true);
   assert.equal(statusPayload.status_has_runtime_tools, true);
   assert.equal(statusPayload.status_has_runtime_tools_quality, true);
   assert.equal(statusPayload.status_runtime_tool_quality_status, "ok");

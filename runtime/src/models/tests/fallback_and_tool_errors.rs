@@ -280,9 +280,98 @@
             .expect_err("expected tool_call_not_supported");
         assert_eq!(error.error_class, "tool_call_not_supported");
         assert!(error.message.contains("lookup"));
+        let data = error.data.as_ref().expect("tool route diagnostic data");
+        assert_eq!(
+            data["diagnostic_kind"].as_str(),
+            Some("tool_call_not_supported")
+        );
+        assert_eq!(data["source"].as_str(), Some("model.executor"));
+        assert_eq!(data["stage"].as_str(), Some("tool_call_context_validate"));
+        assert_eq!(data["tool_name"].as_str(), Some("lookup"));
 
         let calls = server.finish();
         assert_eq!(calls.len(), 1);
+    }
+
+    #[test]
+    fn executor_invalid_tool_arguments_reports_structured_data() {
+        let _env_guard = lock_env();
+        let server = start_mock_http_server(
+            "200 OK",
+            r#"{"id":"mock","choices":[{"message":{"tool_calls":[{"id":"call_1","type":"function","function":{"name":"list","arguments":"not-json"}}]}}]}"#,
+        );
+        let _restore = apply_env(&[
+            (ENV_BASE_URL, None),
+            (ENV_API_KEY, None),
+            (ENV_MODEL, None),
+            (ENV_RUNTIME_TIMEOUT_MS, None),
+        ]);
+
+        let input = TurnExecuteInput {
+            request_id: "req_rt_bad_tool_args".to_string(),
+            session_key: "feishu:tenant:dm:user".to_string(),
+            system_prompt: None,
+            user_message: "list files".to_string(),
+            context_lines: vec![],
+            model_config: Some(RuntimeModelConfigInput {
+                base_url: Some(server.base_url.clone()),
+                api_key: Some("runtime-test-key".to_string()),
+                model: Some("runtime-test-model".to_string()),
+                timeout_ms: Some(5_000),
+                provider_kind: None,
+                provider_options: None,
+            }),
+            tool_context: Some(RuntimeToolContextInput {
+                work_dir: Some(".".to_string()),
+                enabled_tools: Some(vec!["list".to_string()]),
+                model_visible_tools: Some(vec!["list".to_string()]),
+                tool_surface_profile: Some("coding".to_string()),
+                tool_surface_source: Some("test".to_string()),
+                tool_surface_reason: Some("test".to_string()),
+                tool_policy_version: Some("v1".to_string()),
+                advanced_tool_schema: Some(false),
+                bash_allowlist: None,
+                max_tool_rounds: Some(4),
+                no_tool_fallback_mode: None,
+                max_recovery_rounds: None,
+            }),
+            attachments: vec![],
+        };
+        let executor = OpenAiCompatibleModelExecutor;
+        let error = executor
+            .generate_assistant_message(&input, &LocalToolExecutor)
+            .expect_err("invalid tool arguments should fail before tool execution");
+        assert_eq!(error.error_class, "invalid_tool_arguments");
+        let data = error.data.as_ref().expect("tool arguments diagnostic data");
+        assert_eq!(
+            data["diagnostic_kind"].as_str(),
+            Some("invalid_tool_arguments")
+        );
+        assert_eq!(data["source"].as_str(), Some("model.tooling"));
+        assert_eq!(data["stage"].as_str(), Some("tool_arguments_parse_json"));
+        assert_eq!(data["tool_name"].as_str(), Some("list"));
+
+        let calls = server.finish();
+        assert_eq!(calls.len(), 1);
+    }
+
+    #[test]
+    fn parse_ask_user_interrupt_invalid_json_reports_structured_data() {
+        let tool_call = ToolCallInput {
+            id: "ask_1".to_string(),
+            name: "ask_user".to_string(),
+            arguments: json!({}),
+        };
+        let output = ToolCallOutput::from_content("not-json".to_string());
+        let error = parse_tool_interrupt(&tool_call, &output)
+            .expect_err("invalid ask_user output should fail");
+        assert_eq!(error.error_class, "invalid_tool_output");
+        let data = error.data.as_ref().expect("ask-user diagnostic data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("invalid_tool_output"));
+        assert_eq!(data["source"].as_str(), Some("model.ask_user_interrupt"));
+        assert_eq!(data["stage"].as_str(), Some("ask_user_output_parse_json"));
+        assert_eq!(data["tool_name"].as_str(), Some("ask_user"));
+        assert_eq!(data["tool_call_id"].as_str(), Some("ask_1"));
     }
 
     #[test]

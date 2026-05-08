@@ -16,6 +16,7 @@ import {
   writeNonRecoverableToolRecoveryMetrics,
 } from "./recovery-fixtures.mjs";
 export {
+  runStatusInvalidConfigRuntimeRecovery,
   runStatusNonRecoverableToolRecovery,
 } from "./recovery-flows/nonrecoverable-status.mjs";
 

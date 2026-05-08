@@ -218,11 +218,11 @@
             }),
         )
         .expect_err("compound command should fail when any segment is not allowlisted");
-        assert_eq!(error.error_class, "bash_not_allowed");
+        assert_eq!(error.error_class, "bash_policy_forbidden");
         let data = error.data.as_ref().expect("bash allowlist error data");
-        assert_eq!(data["diagnostic_kind"].as_str(), Some("bash_not_allowed"));
-        assert_eq!(data["denied_segment"].as_str(), Some("uname"));
-        assert_eq!(data["allowlist_rule_count"].as_u64(), Some(1));
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("bash_policy_forbidden"));
+        assert_eq!(data["decision"].as_str(), Some("forbidden"));
+        assert_eq!(data["reason"].as_str(), Some("unknown_command_forbidden"));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -240,7 +240,7 @@
             }),
         )
         .expect_err("background-separated commands should be checked per segment");
-        assert_eq!(error.error_class, "bash_not_allowed");
+        assert_eq!(error.error_class, "bash_policy_forbidden");
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -268,6 +268,26 @@
             data["reason"].as_str(),
             Some("command substitution using $(...) is blocked")
         );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_blocks_ansi_c_shell_quoting() {
+        let workspace = make_temp_workspace("bash-v2-ansi-c-quoting");
+        let input = make_bash_input(&workspace, vec!["find".to_string()]);
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "find . $'-exec' printf x \\;"
+            }),
+        )
+        .expect_err("ANSI-C quoting can hide dangerous flags and should be blocked");
+        assert_eq!(error.error_class, "bash_security_denied");
+        let data = error.data.as_ref().expect("ANSI-C quoting error data");
+        assert_eq!(data["reason"].as_str(), Some("ANSI-C shell quoting is blocked"));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -368,6 +388,78 @@
     }
 
     #[test]
+    fn bash_v2_blocks_shell_variable_expansion() {
+        let workspace = make_temp_workspace("bash-v2-variable-expansion");
+        let input = make_bash_input(&workspace, Vec::new());
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf $HOME"
+            }),
+        )
+        .expect_err("shell variable expansion should be blocked before execution");
+        assert_eq!(error.error_class, "bash_security_denied");
+        let data = error.data.as_ref().expect("variable expansion error data");
+        assert_eq!(
+            data["reason"].as_str(),
+            Some("shell variable expansion is blocked")
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_blocks_unquoted_glob_expansion() {
+        let workspace = make_temp_workspace("bash-v2-glob-expansion");
+        let input = make_bash_input(&workspace, Vec::new());
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf *"
+            }),
+        )
+        .expect_err("unquoted glob expansion should be blocked before execution");
+        assert_eq!(error.error_class, "bash_security_denied");
+        let data = error.data.as_ref().expect("glob expansion error data");
+        assert_eq!(
+            data["reason"].as_str(),
+            Some("unquoted shell glob expansion is blocked")
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_blocks_unquoted_brace_expansion() {
+        let workspace = make_temp_workspace("bash-v2-brace-expansion");
+        let input = make_bash_input(&workspace, Vec::new());
+        let executor = LocalToolExecutor;
+        let error = execute_tool_payload(
+            &executor,
+            &input,
+            "bash",
+            json!({
+                "command": "printf %s {1..3}"
+            }),
+        )
+        .expect_err("unquoted brace expansion should be blocked before execution");
+        assert_eq!(error.error_class, "bash_security_denied");
+        let data = error.data.as_ref().expect("brace expansion error data");
+        assert_eq!(
+            data["reason"].as_str(),
+            Some("unquoted shell brace expansion is blocked")
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    include!("bash/security_guards.rs");
+    include!("bash/policy_guards.rs");
+
+    #[test]
     fn bash_v2_returns_timeout_error_for_long_running_command() {
         let workspace = make_temp_workspace("bash-v2-timeout");
         let input = make_bash_input(&workspace, vec!["sleep".to_string()]);
@@ -404,7 +496,7 @@
             &input,
             "bash",
             json!({
-                "command": "printf 'line-%s\\n' {1..40}",
+                "command": "printf 'line-%s\\n' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40",
                 "max_output_lines": 5
             }),
         )
@@ -415,7 +507,7 @@
         assert_eq!(payload["timed_out"].as_bool(), Some(false));
         assert_eq!(payload["audit"]["policy"].as_str(), Some("bash_v2_strict"));
         assert_eq!(
-            payload["audit"]["allowlist_matches"]
+            payload["audit"]["segments"]
                 .as_array()
                 .map(|rows| rows.len()),
             Some(1)
@@ -454,6 +546,39 @@
 
         let _ = fs::remove_file(full_output_path);
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_output_persist_errors_include_recovery_data() {
+        let workspace = make_temp_workspace("bash-v2-persist-error-data");
+        let output_root = workspace.join("missing-output-root");
+        let mut capture = BashStreamCapture::new(1, output_root.as_path());
+        let error = capture
+            .ingest(b"this output must spill", "stdout")
+            .expect_err("missing output root should fail when creating stream buffer");
+        assert_eq!(error.error_class, "tool_execution_failed");
+        let data = error.data.as_ref().expect("bash IO error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("bash_io_error"));
+        assert_eq!(data["source"].as_str(), Some("bash"));
+        assert_eq!(data["stage"].as_str(), Some("create_stream_buffer"));
+        assert_eq!(data["stream"].as_str(), Some("stdout"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn bash_v2_capture_pipe_error_includes_recovery_data() {
+        let error = bash_io_error(
+            "failed to capture bash stdout",
+            "capture_stdout_pipe",
+            Some("stdout"),
+            "retry the command; if it repeats, inspect runtime pipe setup",
+        );
+        assert_eq!(error.error_class, "tool_execution_failed");
+        let data = error.data.as_ref().expect("bash pipe error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("bash_io_error"));
+        assert_eq!(data["source"].as_str(), Some("bash"));
+        assert_eq!(data["stage"].as_str(), Some("capture_stdout_pipe"));
+        assert_eq!(data["stream"].as_str(), Some("stdout"));
     }
 
     #[test]
@@ -604,3 +729,5 @@ audit_redact_secrets = false
         assert_eq!(payload["stdout"].as_str(), Some("a;b"));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
+
+    include!("bash/policy_sed_guards.rs");

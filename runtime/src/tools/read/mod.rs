@@ -40,6 +40,7 @@ struct ReadRequest {
 #[derive(Debug, Clone)]
 struct ReadTextResult {
     content: String,
+    visible_content: String,
     line_start: usize,
     line_end: usize,
     has_more: bool,
@@ -58,6 +59,8 @@ struct ReadCacheEntry {
     next_offset: Option<usize>,
     kind: &'static str,
     content_hash: Option<u64>,
+    visible_text_hash: u64,
+    visible_text: Option<String>,
     size_bytes: u64,
     read_bytes: usize,
     line_ending: &'static str,
@@ -87,20 +90,32 @@ fn should_try_small_file_full_read_for_hash(request: &ReadRequest, target: &Path
 
 fn read_text_window_with_guard_hash(
     target: &Path,
+    relative_path: &str,
     request: &ReadRequest,
 ) -> Result<(ReadTextResult, Option<u64>, TextFormatMetadata), ToolExecutionError> {
     if !should_try_small_file_full_read_for_hash(request, target) {
-        let text_result = read_text_window(target, request)?;
-        let text_format = inspect_text_file_format(target)?;
+        let text_result = read_text_window(target, Some(relative_path), request)?;
+        let text_format = inspect_text_file_format(target, Some(relative_path))?;
         return Ok((text_result, None, text_format));
     }
 
-    let file_bytes = fs::read(target)
-        .map_err(|error| ToolExecutionError::new("tool_execution_failed", format!("failed to read file: {error}")))?;
+    let file_bytes = fs::read(target).map_err(|error| {
+        file_io_error(
+            format!("failed to read file: {error}"),
+            target,
+            Some(relative_path),
+            "read.text",
+            "read_full_for_hash",
+            "confirm the text file still exists and is readable, then retry",
+        )
+    })?;
     let file_content = String::from_utf8(file_bytes).map_err(|_| {
-        ToolExecutionError::new(
-            "binary_file_not_supported",
-            "read only supports utf-8 text files",
+        binary_file_not_supported_error(
+            target,
+            Some(relative_path),
+            "non_utf8_existing_file",
+            TOOL_READ,
+            None,
         )
     })?;
     let text_format = inspect_text_content_format(file_content.as_str());
@@ -131,7 +146,7 @@ fn run_read(
     }
 
     if kind == ReadKind::Text {
-        ensure_text_read_allowed(&target)?;
+        ensure_text_read_allowed(&target, Some(relative_path.as_str()), TOOL_READ)?;
         let mtime_ms = read_file_mtime_ms(&target)?;
         let cache_key = build_read_cache_key(context.session_key.as_str(), &target, &request);
         if let Some(cached) = lookup_read_cache(&cache_key, mtime_ms) {
@@ -150,13 +165,19 @@ fn run_read(
                 mtime_ms,
                 full_view,
                 content_hash,
+                cached.line_start,
+                cached.line_end,
+                cached.visible_text_hash,
+                cached.visible_text.clone(),
+                cached.line_ending,
+                cached.bom_detected,
             );
             let payload = build_file_unchanged_payload(&relative_path, &request, &cached, mtime_ms);
             return Ok(ToolCallOutput::from_payload(payload));
         }
 
         let (text_result, precomputed_content_hash, text_format) =
-            read_text_window_with_guard_hash(&target, &request)?;
+            read_text_window_with_guard_hash(&target, relative_path.as_str(), &request)?;
         let full_view = is_full_text_read_for_write(&request, text_result.has_more);
         let payload = build_text_payload(&relative_path, &request, &text_result, &target, text_format, full_view);
         let content_hash = if full_view {
@@ -178,6 +199,12 @@ fn run_read(
                 next_offset: text_result.next_offset,
                 kind: "text",
                 content_hash,
+                visible_text_hash: hash_visible_text_for_file_guard(
+                    text_result.visible_content.as_str(),
+                ),
+                visible_text: bounded_file_snapshot_visible_text(
+                    text_result.visible_content.as_str(),
+                ),
                 size_bytes: file_size_for_meta(&target),
                 read_bytes: text_result.read_bytes,
                 line_ending: text_format.line_ending,
@@ -191,6 +218,12 @@ fn run_read(
             mtime_ms,
             full_view,
             content_hash,
+            text_result.line_start,
+            text_result.line_end,
+            hash_visible_text_for_file_guard(text_result.visible_content.as_str()),
+            bounded_file_snapshot_visible_text(text_result.visible_content.as_str()),
+            text_format.line_ending,
+            text_format.bom_detected,
         );
         return Ok(ToolCallOutput::from_payload(payload));
     }

@@ -40,6 +40,7 @@ export interface SessionProviderRuntimeState {
   circuit_open_until_ms: number;
   last_error_class?: string;
   last_error_message?: string;
+  last_error_data?: Record<string, unknown>;
   last_failed_at?: string;
   last_succeeded_at?: string;
   ewma_latency_ms?: number;

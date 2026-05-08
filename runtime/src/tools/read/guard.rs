@@ -106,12 +106,7 @@ fn validate_resolved_read_target(target: PathBuf) -> Result<PathBuf, ToolExecuti
             "recovery_hint": "choose an existing regular file path inside the workspace"
         })));
     }
-    let metadata = fs::metadata(&target).map_err(|error| {
-        ToolExecutionError::new(
-            "tool_execution_failed",
-            format!("failed to read file metadata: {error}"),
-        )
-    })?;
+    let metadata = read_resolved_read_target_metadata(&target)?;
     if !metadata.is_file() {
         return Err(ToolExecutionError::new(
             "path_invalid",
@@ -146,6 +141,19 @@ fn validate_resolved_read_target(target: PathBuf) -> Result<PathBuf, ToolExecuti
         }
     }
     Ok(target)
+}
+
+fn read_resolved_read_target_metadata(target: &Path) -> Result<fs::Metadata, ToolExecutionError> {
+    fs::metadata(target).map_err(|error| {
+        file_io_error(
+            format!("failed to read file metadata: {error}"),
+            target,
+            None,
+            "read.path_guard",
+            "read_target_metadata",
+            "confirm the read target still exists and is a readable regular file, then retry",
+        )
+    })
 }
 
 fn resolve_read_target(
@@ -231,31 +239,56 @@ fn has_binary_extension(extension: &str) -> bool {
 }
 
 fn file_has_nul_byte(target: &Path) -> Result<bool, ToolExecutionError> {
-    let mut file = fs::File::open(target)
-        .map_err(|error| ToolExecutionError::new("tool_execution_failed", format!("failed to read file: {error}")))?;
+    let mut file = fs::File::open(target).map_err(|error| {
+        file_io_error(
+            format!("failed to read file: {error}"),
+            target,
+            None,
+            "file_text_guard",
+            "open_for_binary_scan",
+            "verify the file still exists and is readable, then retry",
+        )
+    })?;
     let mut buffer = [0_u8; 8192];
-    let read_bytes = file
-        .read(&mut buffer)
-        .map_err(|error| ToolExecutionError::new("tool_execution_failed", format!("failed to read file: {error}")))?;
+    let read_bytes = file.read(&mut buffer).map_err(|error| {
+        file_io_error(
+            format!("failed to read file: {error}"),
+            target,
+            None,
+            "file_text_guard",
+            "read_for_binary_scan",
+            "verify the file is readable and stable, then retry",
+        )
+    })?;
     Ok(buffer[..read_bytes].contains(&0))
 }
 
-fn ensure_text_read_allowed(target: &Path) -> Result<(), ToolExecutionError> {
+fn ensure_text_read_allowed(
+    target: &Path,
+    relative_path: Option<&str>,
+    source: &str,
+) -> Result<(), ToolExecutionError> {
     let extension = target
         .extension()
         .and_then(|value| value.to_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
     if has_binary_extension(extension.as_str()) {
-        return Err(ToolExecutionError::new(
-            "binary_file_not_supported",
-            format!("binary file extension is not supported: .{extension}"),
+        return Err(binary_file_not_supported_error(
+            target,
+            relative_path,
+            "binary_extension",
+            source,
+            Some(extension.as_str()),
         ));
     }
     if file_has_nul_byte(target)? {
-        return Err(ToolExecutionError::new(
-            "binary_file_not_supported",
-            "binary file content is not supported by read tool",
+        return Err(binary_file_not_supported_error(
+            target,
+            relative_path,
+            "nul_byte_in_existing_file",
+            source,
+            None,
         ));
     }
     Ok(())
@@ -263,13 +296,34 @@ fn ensure_text_read_allowed(target: &Path) -> Result<(), ToolExecutionError> {
 
 fn read_file_mtime_ms(target: &Path) -> Result<u128, ToolExecutionError> {
     let metadata = fs::metadata(target).map_err(|error| {
-        ToolExecutionError::new("tool_execution_failed", format!("failed to read file metadata: {error}"))
+        file_io_error(
+            format!("failed to read file metadata: {error}"),
+            target,
+            None,
+            "file_snapshot_guard",
+            "read_metadata_for_mtime",
+            "confirm the target still exists and is readable, then retry",
+        )
     })?;
     let modified = metadata.modified().map_err(|error| {
-        ToolExecutionError::new("tool_execution_failed", format!("failed to read file mtime: {error}"))
+        file_io_error(
+            format!("failed to read file mtime: {error}"),
+            target,
+            None,
+            "file_snapshot_guard",
+            "read_modified_time",
+            "confirm the filesystem exposes modification time for this regular file",
+        )
     })?;
     let duration = modified.duration_since(UNIX_EPOCH).map_err(|error| {
-        ToolExecutionError::new("tool_execution_failed", format!("failed to normalize file mtime: {error}"))
+        file_io_error(
+            format!("failed to normalize file mtime: {error}"),
+            target,
+            None,
+            "file_snapshot_guard",
+            "normalize_modified_time",
+            "touch or rewrite the file to restore a valid modification timestamp, then reread",
+        )
     })?;
     Ok(duration.as_millis())
 }

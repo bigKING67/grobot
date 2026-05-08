@@ -124,7 +124,12 @@ const TOOL_RECOVERY_CATALOG: &[ToolRecoveryCatalogRow] = &[
         true,
     ),
     ToolRecoveryCatalogRow::new(
-        &["write_read_required", "edit_read_required", "write_partial_read_not_allowed"],
+        &[
+            "write_read_required",
+            "edit_read_required",
+            "write_partial_read_not_allowed",
+            "edit_read_scope_insufficient",
+        ],
         "*",
         "local_fix",
         "read_target_before_mutation",
@@ -242,7 +247,15 @@ const TOOL_RECOVERY_CATALOG: &[ToolRecoveryCatalogRow] = &[
         true,
     ),
     ToolRecoveryCatalogRow::new(
-        &["bash_not_allowed", "bash_security_denied", "mcp_policy_denied"],
+        &[
+            "bash_not_allowed",
+            "bash_security_denied",
+            "bash_permission_required",
+            "bash_policy_forbidden",
+            "bash_path_outside_workspace",
+            "bash_dangerous_path",
+            "mcp_policy_denied",
+        ],
         "*",
         "ask_user",
         "request_approval_or_use_safer_tool",

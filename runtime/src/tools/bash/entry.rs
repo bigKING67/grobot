@@ -5,23 +5,72 @@ fn run_bash(
     let request = parse_bash_request(args)?;
     let policy = load_bash_runtime_policy(context);
     validate_bash_command_security(&request.command)?;
-    let allow_decision = evaluate_bash_allowlist(&request.command, &context.bash_allowlist);
+    let policy_evaluation = evaluate_bash_policy(context, &request)?;
 
-    if !allow_decision.allowed {
-        let denied_segment = allow_decision
-            .denied_segment
-            .as_deref()
-            .map(|value| sanitize_bash_audit_value(value, policy.audit_segment_chars, policy.audit_redact_secrets))
+    if policy_evaluation.decision == BashPolicyDecisionKind::Forbidden {
+        let denied = policy_evaluation
+            .segments
+            .iter()
+            .find(|segment| segment.decision == BashPolicyDecisionKind::Forbidden);
+        let denied_segment = denied
+            .map(|value| {
+                sanitize_bash_audit_value(
+                    value.segment.as_str(),
+                    policy.audit_segment_chars,
+                    policy.audit_redact_secrets,
+                )
+            })
             .unwrap_or_else(|| "<empty>".to_string());
+        let reason = denied
+            .map(|value| value.reason.as_str())
+            .unwrap_or("policy_forbidden");
+        let error_class = if reason.starts_with("dangerous_removal_path")
+            || reason.starts_with("nested_shell:dangerous_removal_path")
+        {
+            "bash_dangerous_path"
+        } else if reason == "path_outside_workspace" {
+            "bash_path_outside_workspace"
+        } else {
+            "bash_policy_forbidden"
+        };
         return Err(ToolExecutionError::new(
-            "bash_not_allowed",
-            format!("command segment not allowed by allowlist: {denied_segment}"),
+            error_class,
+            format!("bash command forbidden by policy: {denied_segment}; reason={reason}"),
         )
         .with_data(json!({
-            "diagnostic_kind": "bash_not_allowed",
+            "diagnostic_kind": error_class,
+            "decision": policy_evaluation.decision.as_str(),
             "denied_segment": denied_segment,
-            "allowlist_rule_count": context.bash_allowlist.len(),
-            "recovery_hint": "use an allowlisted command segment or request approval/configuration"
+            "reason": reason,
+            "segments": bash_policy_segments_json(&policy_evaluation, &policy),
+            "recovery_hint": "use a read-only workspace-contained command or request a safer tool path"
+        })));
+    }
+
+    if policy_evaluation.decision == BashPolicyDecisionKind::PromptRequired {
+        let prompt_segment = policy_evaluation
+            .segments
+            .iter()
+            .find(|segment| segment.decision == BashPolicyDecisionKind::PromptRequired);
+        let command_preview = sanitize_bash_audit_value(
+            request.command.as_str(),
+            policy.audit_preview_chars,
+            policy.audit_redact_secrets,
+        );
+        let reason = prompt_segment
+            .map(|value| value.reason.as_str())
+            .unwrap_or("permission_required");
+        return Err(ToolExecutionError::new(
+            "bash_permission_required",
+            format!("bash command requires permission before execution: {command_preview}; reason={reason}"),
+        )
+        .with_data(json!({
+            "diagnostic_kind": "bash_permission_required",
+            "decision": policy_evaluation.decision.as_str(),
+            "command_preview": command_preview,
+            "reason": reason,
+            "segments": bash_policy_segments_json(&policy_evaluation, &policy),
+            "recovery_hint": "ask the user for approval or choose a read-only built-in tool path"
         })));
     }
 
@@ -69,20 +118,6 @@ fn run_bash(
             "recovery_hint": "retry with a smaller command scope, increase timeout within policy, or inspect persisted output"
         })));
     }
-    let audit_matches: Vec<Value> = allow_decision
-        .matches
-        .iter()
-        .map(|item| {
-            json!({
-                "segment": sanitize_bash_audit_value(
-                    item.segment.as_str(),
-                    policy.audit_segment_chars,
-                    policy.audit_redact_secrets
-                ),
-                "matched_rule": item.matched_rule,
-            })
-        })
-        .collect();
     let audit = json!({
         "policy": "bash_v2_strict",
         "command_preview": sanitize_bash_audit_value(
@@ -91,7 +126,8 @@ fn run_bash(
             policy.audit_redact_secrets
         ),
         "allowlist_rule_count": context.bash_allowlist.len(),
-        "allowlist_matches": audit_matches,
+        "decision": policy_evaluation.decision.as_str(),
+        "segments": bash_policy_segments_json(&policy_evaluation, &policy),
         "redaction_enabled": policy.audit_redact_secrets,
     });
 

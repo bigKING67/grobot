@@ -3,6 +3,7 @@
 include!("types.rs");
 include!("state.rs");
 include!("text.rs");
+include!("quotes.rs");
 include!("args.rs");
 include!("matcher.rs");
 include!("diagnostics.rs");

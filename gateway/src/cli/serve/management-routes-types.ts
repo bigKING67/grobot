@@ -97,6 +97,7 @@ export interface ManagementRoutesContext {
   reloadRuntimeState: () => Promise<void>;
   applyMcpReset: (targetServer?: string) => Record<string, unknown>;
   setInterruptFlag: (sessionId: string, ttlSecs: number) => void;
+  forceEndTurnGate: (sessionId: string) => void;
   writeJson: (response: ServerResponse, statusCode: number, payload: Record<string, unknown>) => void;
   parseBearerToken: (headers: IncomingMessage["headers"]) => string | undefined;
   parseQueryParams: (rawUrl: string) => QueryParams;

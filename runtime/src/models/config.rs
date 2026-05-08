@@ -22,6 +22,7 @@ fn model_config_missing_error(key: &str) -> ModelExecutionError {
         "required_config": required_config,
         "recovery_hint": "provide model_config or the matching runtime env, then run grobot status --probe --json before retrying",
         "source": "model_config",
+        "stage": "required_config_resolve",
         "env_key": key,
     }))
 }
@@ -66,9 +67,15 @@ fn read_timeout_ms() -> Result<u64, ModelExecutionError> {
         return Ok(DEFAULT_RUNTIME_TIMEOUT_MS);
     }
     let parsed = trimmed.parse::<u64>().map_err(|_| {
-        ModelExecutionError::new(
-            "config_invalid",
-            format!("invalid timeout ms in {ENV_RUNTIME_TIMEOUT_MS}: {trimmed}"),
+        model_error_with_fields(
+            model_diagnostic_error(
+                "config_invalid",
+                format!("invalid timeout ms in {ENV_RUNTIME_TIMEOUT_MS}: {trimmed}"),
+                "model_config",
+                "runtime_timeout_parse",
+                "set GROBOT_RUNTIME_HTTP_TIMEOUT_MS to an integer number of milliseconds",
+            ),
+            &[("env_key", json!(ENV_RUNTIME_TIMEOUT_MS)), ("raw_value", json!(trimmed))],
         )
     })?;
     let clamped = parsed.clamp(MIN_RUNTIME_TIMEOUT_MS, MAX_RUNTIME_TIMEOUT_MS);
@@ -307,9 +314,10 @@ fn fetch_model_catalog(
         .timeout(Duration::from_millis(timeout_ms))
         .build()
         .map_err(|error| {
-            ModelExecutionError::new(
-                "client_init_failed",
+            model_client_init_error(
                 format!("failed to init runtime http client for model catalog: {error}"),
+                "model.catalog",
+                "catalog_client_init",
             )
         })?;
     let response = client
@@ -318,33 +326,40 @@ fn fetch_model_catalog(
         .header("Content-Type", "application/json")
         .send()
         .map_err(|error| {
-            let class = if error.is_timeout() {
-                "upstream_timeout"
-            } else if error.is_connect() {
-                "upstream_connect_failed"
-            } else {
-                "upstream_request_failed"
-            };
-            ModelExecutionError::new(class, format!("model catalog request failed: {error}"))
+            model_request_error(
+                &error,
+                format!("model catalog request failed: {error}"),
+                "model.catalog",
+                "catalog_request",
+                "retry later or verify provider network connectivity and /models availability",
+            )
         })?;
     let status = response.status();
     let body_text = response.text().map_err(|error| {
-        ModelExecutionError::new(
-            "upstream_response_read_failed",
-            format!("failed to read model catalog response: {error}"),
+        model_error_with_fields(
+            model_response_read_error(
+                format!("failed to read model catalog response: {error}"),
+                "model.catalog",
+                "catalog_response_read",
+            ),
+            &[("http_status", json!(status.as_u16()))],
         )
     })?;
     if !status.is_success() {
         let detail = body_text.chars().take(240).collect::<String>();
-        return Err(ModelExecutionError::new(
-            "upstream_http_error",
+        return Err(model_http_error(
             format!("model catalog upstream status={} body={detail}", status.as_u16()),
+            status,
+            detail.as_str(),
+            "model.catalog",
+            "catalog_http_status",
         ));
     }
     let payload: Value = serde_json::from_str(&body_text).map_err(|error| {
-        ModelExecutionError::new(
-            "upstream_invalid_json",
+        model_invalid_json_error(
             format!("invalid model catalog response json: {error}"),
+            "model.catalog",
+            "catalog_parse_json",
         )
     })?;
     Ok(parse_model_ids_from_catalog(&payload))
@@ -426,9 +441,18 @@ fn resolve_model_with_auto(
     }
     let model_ids = load_model_catalog_with_cache(base_url, api_key, timeout_ms)?;
     let selected = pick_auto_model(&model_ids, provider_kind).ok_or_else(|| {
-        ModelExecutionError::new(
-            "config_invalid",
-            "model=auto but upstream /models returned no selectable model",
+        model_error_with_fields(
+            model_diagnostic_error(
+                "config_invalid",
+                "model=auto but upstream /models returned no selectable model",
+                "model.catalog",
+                "auto_model_select",
+                "set an explicit model or verify the provider /models response includes selectable model ids",
+            ),
+            &[
+                ("provider", json!(provider_kind_label(provider_kind))),
+                ("model_count", json!(model_ids.len())),
+            ],
         )
     })?;
     Ok(selected)
@@ -442,9 +466,15 @@ fn load_runtime_model_config(
         input_config.and_then(|config| config.base_url.as_deref()),
     )?);
     if !(base_url.starts_with("http://") || base_url.starts_with("https://")) {
-        return Err(ModelExecutionError::new(
-            "config_invalid",
-            format!("{ENV_BASE_URL} must start with http:// or https://"),
+        return Err(model_error_with_fields(
+            model_diagnostic_error(
+                "config_invalid",
+                format!("{ENV_BASE_URL} must start with http:// or https://"),
+                "model_config",
+                "base_url_validate_scheme",
+                "configure model_config.base_url with an http:// or https:// provider endpoint",
+            ),
+            &[("required_config", json!("model_config.base_url"))],
         ));
     }
     let api_key = read_required_env_or_override(

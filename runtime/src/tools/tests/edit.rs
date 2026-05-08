@@ -15,6 +15,28 @@
         )
         .expect_err("edit without read should fail");
         assert_eq!(error.error_class, "edit_read_required");
+        let data = error.data.as_ref().expect("edit read-required error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("edit_read_required"));
+        assert_eq!(data["path"].as_str(), Some("sample.txt"));
+        assert_eq!(
+            data["required_read_scope"].as_str(),
+            Some("full_or_visible_range")
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_reports_structured_target_metadata_errors() {
+        let workspace = make_temp_workspace("edit-v2-target-metadata-error");
+        let missing = workspace.join("missing.txt");
+        let error = read_edit_target_metadata(&missing, "missing.txt")
+            .expect_err("missing edit target metadata should fail");
+        assert_eq!(error.error_class, "tool_execution_failed");
+        let data = error.data.as_ref().expect("edit metadata IO error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("file_io_error"));
+        assert_eq!(data["path"].as_str(), Some("missing.txt"));
+        assert_eq!(data["source"].as_str(), Some("edit"));
+        assert_eq!(data["stage"].as_str(), Some("read_target_metadata"));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -49,6 +71,26 @@
         )
         .expect_err("stale edit should fail");
         assert_eq!(error.error_class, "edit_stale_target");
+        let data = error.data.as_ref().expect("edit stale error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("edit_stale_target"));
+        assert_eq!(data["path"].as_str(), Some("sample.txt"));
+        assert_eq!(data["reason"].as_str(), Some("content_hash_mismatch"));
+        assert_eq!(data["snapshot_full_view"].as_bool(), Some(true));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_reports_structured_content_read_errors_after_snapshot() {
+        let workspace = make_temp_workspace("edit-v2-content-read-error");
+        let missing = workspace.join("missing.txt");
+        let error = read_edit_target_content(&missing, "missing.txt")
+            .expect_err("missing edit target content should fail");
+        assert_eq!(error.error_class, "tool_execution_failed");
+        let data = error.data.as_ref().expect("edit content IO error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("file_io_error"));
+        assert_eq!(data["path"].as_str(), Some("missing.txt"));
+        assert_eq!(data["source"].as_str(), Some("edit"));
+        assert_eq!(data["stage"].as_str(), Some("read_target_content"));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -92,8 +134,48 @@
     }
 
     #[test]
-    fn edit_v2_partial_read_snapshot_still_uses_mtime_guard() {
-        let workspace = make_temp_workspace("edit-v2-partial-read-mtime-guard");
+    fn edit_v2_partial_visible_read_allows_scoped_edit_after_mtime_drift() {
+        let workspace = make_temp_workspace("edit-v2-partial-visible-scope");
+        let target = workspace.join("sample.txt");
+        fs::write(&target, "line1\nline2\nline3\n").expect("write sample file");
+        let input = make_read_edit_input(&workspace);
+        let executor = LocalToolExecutor;
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt",
+                "offset": 2,
+                "limit": 1
+            }),
+        )
+        .expect("partial read should succeed");
+
+        std::thread::sleep(Duration::from_millis(3));
+        fs::write(&target, "line1\nline2\nline3\n").expect("rewrite same content to bump mtime");
+
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "edit",
+            json!({
+                "path": "sample.txt",
+                "edits": [{"old_text": "line2\n", "new_text": "LINE2\n"}]
+            }),
+        )
+        .expect("edit should succeed when match stays inside the visible read scope");
+        assert_eq!(payload["replacements"].as_u64(), Some(1));
+        assert_eq!(
+            fs::read_to_string(&target).expect("read edited file"),
+            "line1\nLINE2\nline3\n"
+        );
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_partial_read_rejects_invisible_target_lines() {
+        let workspace = make_temp_workspace("edit-v2-partial-invisible-scope");
         let target = workspace.join("sample.txt");
         fs::write(&target, "line1\nline2\nline3\n").expect("write sample file");
         let input = make_read_edit_input(&workspace);
@@ -110,20 +192,25 @@
         )
         .expect("partial read should succeed");
 
-        std::thread::sleep(Duration::from_millis(3));
-        fs::write(&target, "line1\nline2\nline3\n").expect("rewrite same content to bump mtime");
-
         let error = execute_tool_payload(
             &executor,
             &input,
             "edit",
             json!({
                 "path": "sample.txt",
-                "edits": [{"old_text": "line2\n", "new_text": "LINE2\n"}]
+                "edits": [{"old_text": "line3\n", "new_text": "LINE3\n"}]
             }),
         )
-        .expect_err("edit should fail for partial-read snapshot mtime drift");
-        assert_eq!(error.error_class, "edit_stale_target");
+        .expect_err("edit outside prior read scope should fail");
+        assert_eq!(error.error_class, "edit_read_scope_insufficient");
+        let data = error.data.as_ref().expect("scope error data");
+        assert_eq!(
+            data["diagnostic_kind"].as_str(),
+            Some("edit_read_scope_insufficient")
+        );
+        assert_eq!(data["snapshot_line_start"].as_u64(), Some(1));
+        assert_eq!(data["snapshot_line_end"].as_u64(), Some(1));
+        assert_eq!(data["match_start_line"].as_u64(), Some(3));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -200,6 +287,11 @@
         )
         .expect_err("overlap should fail");
         assert_eq!(error.error_class, "edit_overlap");
+        let data = error.data.as_ref().expect("edit overlap error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("edit_overlap"));
+        assert_eq!(data["path"].as_str(), Some("sample.txt"));
+        assert_eq!(data["previous_edit_index"].as_u64(), Some(0));
+        assert_eq!(data["current_edit_index"].as_u64(), Some(1));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
 
@@ -235,7 +327,47 @@
         assert_eq!(payload["fuzzy_fallback_used"].as_bool(), Some(true));
         assert_eq!(
             fs::read_to_string(&target).expect("read edited file"),
-            "console.log(\"world\");\n"
+            "console.log(“world”);\n"
+        );
+        let diff = payload["diff"].as_str().unwrap_or_default();
+        assert!(diff.contains("-console.log(“hello”);"));
+        assert!(diff.contains("+console.log(“world”);"));
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_preserves_curly_single_quote_style_without_changing_apostrophes() {
+        let workspace = make_temp_workspace("edit-v2-fuzzy-single-quotes");
+        let target = workspace.join("sample.txt");
+        fs::write(&target, "label = ‘don’t stop’\n").expect("write sample file");
+        let input = make_read_edit_input(&workspace);
+        let executor = LocalToolExecutor;
+
+        execute_tool_payload(
+            &executor,
+            &input,
+            "read",
+            json!({
+                "path": "sample.txt"
+            }),
+        )
+        .expect("read should succeed");
+
+        let payload = execute_tool_payload(
+            &executor,
+            &input,
+            "edit",
+            json!({
+                "path": "sample.txt",
+                "edits": [{"old_text": "label = 'don't stop'\n", "new_text": "label = 'don't wait'\n"}]
+            }),
+        )
+        .expect("single-quote fuzzy edit should succeed");
+
+        assert_eq!(payload["fuzzy_fallback_used"].as_bool(), Some(true));
+        assert_eq!(
+            fs::read_to_string(&target).expect("read edited file"),
+            "label = ‘don’t wait’\n"
         );
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
@@ -344,6 +476,17 @@
         .expect_err("legacy arguments should fail");
         assert_eq!(error.error_class, "invalid_tool_arguments");
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
+    fn edit_v2_atomic_write_reports_structured_invalid_parent() {
+        let error = atomic_write_text_file(Path::new(""), b"content\n")
+            .expect_err("empty target path should have no parent directory");
+        assert_eq!(error.error_class, "tool_execution_failed");
+        let data = error.data.as_ref().expect("atomic edit error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("file_io_error"));
+        assert_eq!(data["source"].as_str(), Some("edit"));
+        assert_eq!(data["stage"].as_str(), Some("resolve_parent"));
     }
 
     #[test]
@@ -540,5 +683,10 @@
         )
         .expect_err("noop replacement should fail");
         assert_eq!(error.error_class, "edit_no_changes");
+        let data = error.data.as_ref().expect("edit noop error data");
+        assert_eq!(data["diagnostic_kind"].as_str(), Some("edit_no_changes"));
+        assert_eq!(data["path"].as_str(), Some("sample.txt"));
+        assert_eq!(data["blocks_requested"].as_u64(), Some(1));
+        assert_eq!(data["replacements"].as_u64(), Some(1));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }

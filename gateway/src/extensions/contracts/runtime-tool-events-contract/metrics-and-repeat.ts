@@ -1,6 +1,7 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RuntimeEvent } from "../../../models/types";
+import { recordRuntimeToolMetricsForEvents } from "../../../cli/start/turn/diagnostics";
 import { RuntimeRpcError, extractRuntimeErrorEvents } from "../../../tools/runtime/runtime-error";
 import {
   buildRuntimeToolRecoveryFeedback,
@@ -102,6 +103,54 @@ export function runRuntimeToolMetricsAndRepeatContracts(input: {
     );
   } finally {
     rmSync(turnFailedRuntimeEnvWorkDir, { recursive: true, force: true });
+  }
+
+  const turnFailedDiagnosticWorkDir = tmpWorkDir("grobot-runtime-turn-failed-diagnostic");
+  try {
+    const stderrLines: string[] = [];
+    recordRuntimeToolMetricsForEvents({
+      workDir: turnFailedDiagnosticWorkDir,
+      source: "runtime_failure",
+      writeStderr: (message) => {
+        stderrLines.push(message);
+      },
+      events: [
+        event("turn_failed", {
+          error_class: "config_invalid",
+          error_message: "model=auto returned no available models for provider=kimi",
+          error_data: {
+            diagnostic_kind: "config_invalid",
+            source: "model.catalog",
+            stage: "auto_model_select",
+            provider: "kimi",
+            model_count: 0,
+            recovery_hint: "set an explicit model or fix provider catalog access",
+          },
+        }),
+      ],
+    });
+    const turnFailedDiagnosticMetrics = readRuntimeToolSurfaceMetrics(turnFailedDiagnosticWorkDir);
+    expectEqual(
+      turnFailedDiagnosticMetrics.callsTotal,
+      0,
+      "turn_failed diagnostic recovery still does not count a tool call",
+    );
+    expectEqual(
+      turnFailedDiagnosticMetrics.latestRecovery?.errorClass,
+      "config_invalid",
+      "turn_failed diagnostic recovery is persisted by CLI diagnostic bridge",
+    );
+    expectEqual(
+      turnFailedDiagnosticMetrics.latestRecovery?.recommendedNextAction,
+      "ask_user_for_config_or_switch_provider",
+      "turn_failed diagnostic recovery keeps config action",
+    );
+    expect(
+      stderrLines.some((line) => line.includes("[tool-recovery] stage=ask_user reason=config_invalid")),
+      "turn_failed diagnostic recovery emits tool-recovery stderr line",
+    );
+  } finally {
+    rmSync(turnFailedDiagnosticWorkDir, { recursive: true, force: true });
   }
 
   const workDir = input.contractPath("metrics-state");

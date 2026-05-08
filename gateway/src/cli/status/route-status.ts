@@ -13,6 +13,7 @@ interface ObservedProviderRuntimeState {
   circuitOpen: boolean;
   lastErrorClass?: string;
   lastErrorMessage?: string;
+  lastErrorData?: Record<string, unknown>;
   lastFailedAt?: string;
   lastSucceededAt?: string;
   ewmaLatencyMs?: number;
@@ -82,6 +83,7 @@ export function readRouteObservedRuntimeSummary(input: {
       circuitOpen: state.circuit_open_until_ms > nowMs,
       lastErrorClass: state.last_error_class,
       lastErrorMessage: state.last_error_message,
+      lastErrorData: state.last_error_data,
       lastFailedAt: state.last_failed_at,
       lastSucceededAt: state.last_succeeded_at,
       ewmaLatencyMs: state.ewma_latency_ms,
@@ -241,6 +243,7 @@ export function serializeRouteDecisionSummary(summary: RouteDecisionSummary): Re
         circuit_open: state.circuitOpen,
         last_error_class: state.lastErrorClass ?? null,
         last_error_message: state.lastErrorMessage ?? null,
+        last_error_data: state.lastErrorData ?? null,
         last_failed_at: state.lastFailedAt ?? null,
         last_succeeded_at: state.lastSucceededAt ?? null,
         ewma_latency_ms: state.ewmaLatencyMs ?? null,
@@ -256,10 +259,29 @@ export function serializeRouteDecisionSummary(summary: RouteDecisionSummary): Re
 }
 
 export function formatRouteStatusLines(summary: RouteDecisionSummary): string[] {
+  const providerErrorLines = summary.observed.providerRuntimeStates
+    .filter((state) => state.lastErrorClass || state.lastErrorData)
+    .map((state) => {
+      const errorData = state.lastErrorData ?? {};
+      const httpStatus = typeof errorData.http_status === "number"
+        ? ` http_status=${String(errorData.http_status)}`
+        : "";
+      const retryable = typeof errorData.retryable === "boolean"
+        ? ` retryable=${String(errorData.retryable)}`
+        : "";
+      const attempt = typeof errorData.attempt === "number" || typeof errorData.max_attempts === "number"
+        ? ` attempts=${String(errorData.attempt ?? "<none>")}/${String(errorData.max_attempts ?? "<none>")}`
+        : "";
+      const diagnosticKind = typeof errorData.diagnostic_kind === "string"
+        ? ` diagnostic=${errorData.diagnostic_kind}`
+        : "";
+      return `${state.providerName}:${state.lastErrorClass ?? "<none>"}${diagnosticKind}${httpStatus}${attempt}${retryable}`;
+    });
   return [
     `route_decision: strategy=${summary.strategy} primary=${summary.primaryProvider ?? "<none>"} configured=${summary.configuredPrimaryProvider ?? "<none>"} requested=${summary.requestedProvider ?? "<none>"} reason=${summary.reason} source=${summary.source ?? "<none>"}`,
     `route_ordered_providers: ${summary.orderedProviders.length > 0 ? summary.orderedProviders.join(" -> ") : "<none>"}`,
     `route_observed: selected=${summary.observed.selectedProvider ?? "<none>"} sticky=${summary.observed.stickyProvider ?? "<none>"} reason=${summary.observed.reason} session_id=${summary.observed.activeSessionId ?? "<none>"}`,
+    `route_provider_errors: ${providerErrorLines.length > 0 ? providerErrorLines.join(" | ") : "<none>"}`,
     `route_failover: circuit_failures=${summary.failover.circuitFailures} circuit_cooldown_secs=${summary.failover.circuitCooldownSecs} sticky_mode=${summary.failover.stickyMode}`,
   ];
 }

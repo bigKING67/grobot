@@ -54,9 +54,13 @@ fn parse_kimi_stream_completion_payload(body_text: &str) -> Result<Value, ModelE
             break;
         }
         let chunk: Value = serde_json::from_str(data).map_err(|error| {
-            ModelExecutionError::new(
-                "upstream_invalid_json",
-                format!("invalid kimi stream chunk json: {error}"),
+            model_error_with_fields(
+                model_invalid_json_error(
+                    format!("invalid kimi stream chunk json: {error}"),
+                    "model.kimi_stream",
+                    "stream_chunk_parse_json",
+                ),
+                &[("provider", json!("kimi"))],
             )
         })?;
         parsed_any_chunk = true;
@@ -163,15 +167,23 @@ fn parse_kimi_stream_completion_payload(body_text: &str) -> Result<Value, ModelE
     }
 
     if !parsed_any_chunk {
-        return Err(ModelExecutionError::new(
-            "upstream_invalid_response",
-            "kimi stream response contains no data chunks",
+        return Err(model_error_with_fields(
+            model_invalid_response_error(
+                "kimi stream response contains no data chunks",
+                "model.kimi_stream",
+                "stream_no_data_chunks",
+            ),
+            &[("provider", json!("kimi"))],
         ));
     }
     if choices.is_empty() {
-        return Err(ModelExecutionError::new(
-            "upstream_invalid_response",
-            "kimi stream response has no choices",
+        return Err(model_error_with_fields(
+            model_invalid_response_error(
+                "kimi stream response has no choices",
+                "model.kimi_stream",
+                "stream_no_choices",
+            ),
+            &[("provider", json!("kimi"))],
         ));
     }
 
@@ -254,8 +266,12 @@ fn parse_model_response_payload(
     if provider_kind == ProviderKind::Kimi {
         return parse_kimi_stream_completion_payload(body_text);
     }
-    Err(ModelExecutionError::new(
-        "upstream_invalid_json",
-        "invalid model response json",
+    Err(model_error_with_fields(
+        model_invalid_json_error(
+            "invalid model response json",
+            "model.response",
+            "response_parse_json",
+        ),
+        &[("provider", json!(provider_kind_label(provider_kind)))],
     ))
 }

@@ -3,6 +3,10 @@ import { buildSessionKey } from "../../models/session-key";
 import { hasFlag, OptionValue, readOptionString } from "../cli-args";
 import { CLI_PRODUCT_ENGINE } from "../product-identity";
 import {
+  GLOBAL_TURN_GATE,
+  serializeTurnGateSnapshot,
+} from "../../orchestration/orchestrator/turn-gate";
+import {
   readProviderPoolFromToml,
   readProviderSnapshotFromToml,
 } from "../provider-probe";
@@ -108,6 +112,7 @@ import {
 
 export async function runStatus(options: Record<string, OptionValue>): Promise<number> {
   const outputJson = hasFlag(options, "json");
+  const turnGate = serializeTurnGateSnapshot(GLOBAL_TURN_GATE.snapshot());
   const homeDir = resolveHomeDir(options);
   const projectRoot = resolveProjectRoot(options, homeDir);
   const workDir = resolveWorkDir(options, projectRoot, homeDir);
@@ -579,6 +584,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
         graphQualitySignals: contextGraphQualitySignals,
       }),
       runtime_health: serializeRuntimeHealthStatus(runtimeHealth, runtimeBinaryPath),
+      turn_gate: turnGate,
       cache_stats_location: resolveRuntimeCacheStatsLocation(runtimeHealth),
       probe: serializeStatusProviderProbe(providerProbe.probeResult),
     };
@@ -630,6 +636,13 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
             ],
           },
           ...(runtimeHealthRow ? [runtimeHealthRow] : []),
+          {
+            title: `Turn gate ${turnGate.active_sessions > 0 ? "active" : "idle"}`,
+            detailLines: [
+              `active ${String(turnGate.active_sessions)} · tracked ${String(turnGate.tracked_sessions)}`,
+              `rejected ${String(turnGate.rejected_reentrant_total)} · stale cleanup ${String(turnGate.stale_cleanup_total)}`,
+            ],
+          },
           ...(probeRow ? [probeRow] : []),
         ],
       }],
@@ -664,6 +677,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   }
   process.stdout.write(
     `execution: gateway=${executionPlane.gatewayImpl}(${executionPlane.gatewayImplSource}) runtime=${executionPlane.runtimeImpl}(${executionPlane.runtimeImplSource}) shadow=${executionPlane.shadowMode ? "on" : "off"}(${executionPlane.shadowModeSource})\n`,
+  );
+  process.stdout.write(
+    `turn_gate: active_sessions=${String(turnGate.active_sessions)} rejected_reentrant_total=${String(turnGate.rejected_reentrant_total)} stale_cleanup_total=${String(turnGate.stale_cleanup_total)} tracked_sessions=${String(turnGate.tracked_sessions)}\n`,
   );
   for (const line of formatRuntimeToolStatusLines({
     workDir,

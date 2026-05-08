@@ -24,9 +24,10 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
             .timeout(Duration::from_millis(config.timeout_ms))
             .build()
             .map_err(|error| {
-                ModelExecutionError::new(
-                    "client_init_failed",
+                model_client_init_error(
                     format!("failed to init runtime http client: {error}"),
+                    "model.executor",
+                    "chat_client_init",
                 )
             })?;
 
@@ -186,26 +187,42 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                             .map(|tool_call| tool_call.name.trim().to_string())
                             .filter(|value| !value.is_empty())
                             .unwrap_or_else(|| "unknown_tool".to_string());
-                        return Err(ModelExecutionError::new(
-                            "tool_call_not_supported",
-                            format!("runtime v1 does not support tool calls yet: {tool_name}"),
+                        return Err(model_error_with_fields(
+                            model_diagnostic_error(
+                                "tool_call_not_supported",
+                                format!("runtime v1 does not support tool calls yet: {tool_name}"),
+                                "model.executor",
+                                "tool_call_context_validate",
+                                "enable local tool_context or route only provider-native Kimi tools before retrying",
+                            ),
+                            &[("tool_name", json!(tool_name))],
                         )
                         .with_telemetry_events(telemetry_events));
                     }
                 }
                 if tool_rounds >= max_tool_rounds {
-                    return Err(ModelExecutionError::new(
-                        "tool_round_limit_exceeded",
-                        format!(
-                            "model exceeded tool round limit: rounds={tool_rounds} limit={max_tool_rounds}"
+                    return Err(model_error_with_fields(
+                        model_diagnostic_error(
+                            "tool_round_limit_exceeded",
+                            format!(
+                                "model exceeded tool round limit: rounds={tool_rounds} limit={max_tool_rounds}"
+                            ),
+                            "model.executor",
+                            "tool_round_limit_check",
+                            "inspect repeated tool recovery loops or increase max_tool_rounds for this task",
                         ),
+                        &[
+                            ("tool_rounds", json!(tool_rounds)),
+                            ("max_tool_rounds", json!(max_tool_rounds)),
+                        ],
                     )
                     .with_telemetry_events(telemetry_events));
                 }
                 let assistant_message = extract_first_assistant_message(&payload).ok_or_else(|| {
-                    ModelExecutionError::new(
-                        "upstream_invalid_response",
+                    model_invalid_response_error(
                         "missing choices[0].message in tool call response",
+                        "model.executor",
+                        "tool_call_message_parse",
                     )
                 })?;
                 messages.push(assistant_message);
@@ -342,10 +359,28 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                                         error.data.as_ref(),
                                     ),
                                 );
-                                let mut model_error = ModelExecutionError::new(
-                                    &error.error_class,
-                                    error.message.clone(),
-                                );
+                                let mut model_error = if error.data.is_some() {
+                                    ModelExecutionError::new(
+                                        &error.error_class,
+                                        error.message.clone(),
+                                    )
+                                } else {
+                                    model_error_with_fields(
+                                        model_diagnostic_error(
+                                            &error.error_class,
+                                            error.message.clone(),
+                                            "model.executor",
+                                            "tool_execution_failure",
+                                            "inspect the tool error class/message and retry after correcting the tool input or workspace state",
+                                        ),
+                                        &[
+                                            ("tool_name", json!(tool_call.name.clone())),
+                                            ("tool_round", json!(current_tool_round)),
+                                            ("batch_index", json!(batch_index)),
+                                            ("tool_error_class", json!(error.error_class.clone())),
+                                        ],
+                                    )
+                                };
                                 if let Some(data) = error.data.clone() {
                                     model_error = model_error.with_data(data);
                                 }
@@ -477,9 +512,10 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
                     ),
                 );
             }
-            return Err(ModelExecutionError::new(
-                "upstream_invalid_response",
+            return Err(model_invalid_response_error(
                 "missing choices[0].message.content in model response",
+                "model.executor",
+                "assistant_content_parse",
             )
             .with_telemetry_events(telemetry_events));
         }

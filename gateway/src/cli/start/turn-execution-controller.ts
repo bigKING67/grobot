@@ -1,4 +1,5 @@
 import type { RuntimeAttachment, RuntimeEvent } from "../../models/types";
+import { GLOBAL_TURN_GATE, type TurnGate } from "../../orchestration/orchestrator/turn-gate";
 import type { RunStartRewindStore } from "./rewind-store";
 import type { RunStartRuntimeState } from "./runtime-state";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./turn";
@@ -21,6 +22,7 @@ export interface CreateTurnExecutionControllerInput {
   rewindStore: RunStartRewindStore;
   wire: RunStartWire;
   runtimeInterrupts: RuntimeInterruptController;
+  turnGate?: TurnGate;
   refreshContextWindowFromModelCatalog(reason: string): void;
   runMemoryMaintenance(reason: "post_turn"): Promise<void>;
   writeStartupDiagnostics(message: string): void;
@@ -46,6 +48,7 @@ export function createTurnExecutionController(
   input: CreateTurnExecutionControllerInput,
 ): TurnExecutionController {
   let turnQueue: Promise<unknown> = Promise.resolve();
+  const turnGate = input.turnGate ?? GLOBAL_TURN_GATE;
 
   const runTurnWithController = async (
     userInput: string,
@@ -109,6 +112,9 @@ export function createTurnExecutionController(
       await input.runMemoryMaintenance("post_turn");
       return code;
     } finally {
+      if (controller.signal.aborted) {
+        turnGate.forceEnd(input.runtimeState.getSessionKey());
+      }
       if (input.runtimeInterrupts.getActiveController() === controller) {
         input.runtimeInterrupts.setActiveController(undefined);
       }

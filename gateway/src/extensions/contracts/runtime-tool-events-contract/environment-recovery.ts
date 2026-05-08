@@ -15,8 +15,11 @@ import {
   formatRuntimeEnvironmentRecoveryPlan,
   serializeRuntimeEnvironmentRecoveryPlan,
 } from "../../../tools/runtime/runtime-environment-recovery";
-import { buildRuntimeToolRecoveryFeedback } from "../../../tools/runtime/tool-events";
+import {
+  buildRuntimeToolRecoveryFeedback,
+} from "../../../tools/runtime/tool-events";
 import { expect, expectEqual } from "./helpers";
+import { runRuntimeToolProviderRecoveryContracts } from "./provider-recovery";
 
 export function runRuntimeToolEnvironmentRecoveryContracts(input: {
   contractPath: (name: string) => string;
@@ -247,6 +250,19 @@ export function runRuntimeToolEnvironmentRecoveryContracts(input: {
       requiredConfig: "model_config.api_key",
     },
     {
+      errorClass: "config_invalid",
+      errorMessage: "model=auto returned no available models",
+      errorData: {
+        source: "model.catalog",
+        stage: "auto_model_select",
+        recovery_hint: "set an explicit model or fix provider catalog access",
+      },
+      errorCode: "CONFIG_INVALID",
+      action: "fix_config_or_switch_provider_and_check_status",
+      commands: ["grobot status --json", "grobot status --probe --json"],
+      requiredConfig: null,
+    },
+    {
       errorClass: "tool_context_missing",
       errorMessage: "runtime tool context is required",
       errorData: {},
@@ -399,6 +415,11 @@ export function runRuntimeToolEnvironmentRecoveryContracts(input: {
     runtimeEnvironmentFeedback.promptBlock.includes("status/probe confirms the configuration is usable"),
     "runtime environment feedback uses config-specific execution rule",
   );
+
+  runRuntimeToolProviderRecoveryContracts({
+    contractPath,
+    structuredRecoveryObservedAt,
+  });
 
   const semanticStructuredFeedback = buildRuntimeToolRecoveryFeedback({
     metrics: {

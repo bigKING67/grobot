@@ -1,5 +1,6 @@
 import { type MemoryOperations } from "../services/memory-lifecycle";
 import { setInterruptFlag } from "../services/interrupt-store";
+import { GLOBAL_TURN_GATE } from "../../orchestration/orchestrator/turn-gate";
 import { maskRedisUrl } from "../services/memory-store-config";
 import { readMaskedFile } from "../services/redaction";
 import { type ExperiencePoolRuntime } from "../services/experience-pool-runtime";
@@ -81,6 +82,9 @@ export function createRunServeRouteContext(
     applyMcpReset: input.applyMcpReset,
     setInterruptFlag: (sessionId, ttlSecs) => {
       setInterruptFlag(input.interruptStorePath, sessionId, ttlSecs);
+    },
+    forceEndTurnGate: (sessionId) => {
+      GLOBAL_TURN_GATE.forceEnd(sessionId);
     },
     writeJson,
     parseBearerToken,

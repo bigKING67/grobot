@@ -56,6 +56,7 @@ import {
 import { createRuntimeInterruptController } from "./runtime-interrupt-controller";
 import { createTurnExecutionController } from "./turn-execution-controller";
 import { runStartupSessionActions } from "./startup/session-actions";
+import { GLOBAL_TURN_GATE } from "../../orchestration/orchestrator/turn-gate";
 
 export async function runStart(
   options: Record<string, OptionValue>,
@@ -401,6 +402,7 @@ export async function runStart(
     rewindStore,
     wire,
     runtimeInterrupts,
+    turnGate: GLOBAL_TURN_GATE,
     refreshContextWindowFromModelCatalog,
     runMemoryMaintenance,
     writeStartupDiagnostics,
