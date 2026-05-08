@@ -10,6 +10,7 @@ import { normalizeConfigPathForMatch, toAbsolutePath } from "./path";
 import {
   fileReadable,
   parseTomlBoolean,
+  parseTomlInteger,
   parseTomlNumber,
   parseTomlString,
   parseTomlStringArray,
@@ -61,11 +62,14 @@ function parseProjectsFromToml(configTomlPath: string): MutableProject[] | undef
         continue;
       }
       const key = kvMatch[1];
-      const value = parseTomlString(kvMatch[2]);
-      if (!value || !currentProject) {
+      if (!currentProject) {
         continue;
       }
       if (section === "projects") {
+        const value = parseTomlString(kvMatch[2]);
+        if (!value) {
+          continue;
+        }
         if (key === "name") {
           currentProject.name = value;
         } else if (key === "work_dir") {
@@ -74,13 +78,17 @@ function parseProjectsFromToml(configTomlPath: string): MutableProject[] | undef
         continue;
       }
       if (section === "projects.agent") {
+        const value = parseTomlString(kvMatch[2]);
+        if (!value) {
+          continue;
+        }
         if (key === "provider") {
           currentProject.selectedProvider = value;
         }
         continue;
       }
       if (section === "projects.agent.providers" && currentProvider) {
-        assignProviderTomlValue(currentProvider, key, value, kvMatch[2]);
+        assignProviderTomlValue(currentProvider, key, kvMatch[2]);
       }
     }
   } catch {
@@ -92,7 +100,6 @@ function parseProjectsFromToml(configTomlPath: string): MutableProject[] | undef
 function assignProviderTomlValue(
   currentProvider: MutableProvider,
   key: string,
-  value: string,
   rawValue: string,
 ): void {
   const recordError = (field: string, detail: string): void => {
@@ -115,26 +122,62 @@ function assignProviderTomlValue(
     }
     apply(parsed);
   };
+  const assignInteger = (field: string, apply: (value: number) => void): void => {
+    const parsed = parseTomlInteger(rawValue);
+    if (typeof parsed !== "number") {
+      recordError(field, `${field.replace(/_/g, "-")} must be an integer`);
+      return;
+    }
+    apply(parsed);
+  };
+  const assignString = (field: string, apply: (value: string) => void): void => {
+    const parsed = parseTomlString(rawValue);
+    if (typeof parsed !== "string" || parsed.length === 0) {
+      recordError(field, `${field.replace(/_/g, "-")} must be a string`);
+      return;
+    }
+    apply(parsed);
+  };
   if (key === "name") {
-    currentProvider.name = value;
+    assignString(key, (parsed) => {
+      currentProvider.name = parsed;
+    });
   } else if (key === "base_url") {
-    currentProvider.baseUrl = value;
+    assignString(key, (parsed) => {
+      currentProvider.baseUrl = parsed;
+    });
   } else if (key === "api_key") {
-    currentProvider.apiKey = value;
+    assignString(key, (parsed) => {
+      currentProvider.apiKey = parsed;
+    });
   } else if (key === "model") {
-    currentProvider.model = value;
+    assignString(key, (parsed) => {
+      currentProvider.model = parsed;
+    });
   } else if (key === "provider_kind") {
-    currentProvider.providerKind = value;
+    assignString(key, (parsed) => {
+      currentProvider.providerKind = parsed;
+    });
   } else if (key === "kimi_web_search_mode") {
-    currentProvider.kimiWebSearchMode = value;
+    assignString(key, (parsed) => {
+      currentProvider.kimiWebSearchMode = parsed;
+    });
   } else if (key === "kimi_disable_thinking_on_builtin_web_search") {
     assignBoolean(key, (parsed) => {
       currentProvider.kimiDisableThinkingOnBuiltinWebSearch = parsed;
     });
   } else if (key === "kimi_official_tools_allowlist") {
-    currentProvider.kimiOfficialToolsAllowlist = parseTomlStringArray(rawValue);
+    const parsed = parseTomlStringArray(rawValue);
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      recordError(
+        key,
+        "kimi-official-tools-allowlist must be a non-empty array of strings",
+      );
+      return;
+    }
+    currentProvider.kimiOfficialToolsAllowlist = parsed;
   } else if (key === "kimi_max_tokens") {
-    assignNumber(key, (parsed) => {
+    assignInteger(key, (parsed) => {
       currentProvider.kimiMaxTokens = parsed;
     });
   } else if (key === "kimi_stream") {
@@ -162,15 +205,19 @@ function assignProviderTomlValue(
       currentProvider.promptCacheEnabled = parsed;
     });
   } else if (key === "prompt_cache_strategy" || key === "kimi_prompt_cache_strategy") {
-    currentProvider.promptCacheStrategy = value;
+    assignString(key, (parsed) => {
+      currentProvider.promptCacheStrategy = parsed;
+    });
   } else if (key === "prompt_cache_user_last_n" || key === "kimi_prompt_cache_user_last_n") {
-    assignNumber(key, (parsed) => {
+    assignInteger(key, (parsed) => {
       currentProvider.promptCacheUserLastN = parsed;
     });
   } else if (key === "prompt_cache_capability" || key === "kimi_prompt_cache_capability") {
-    currentProvider.promptCacheCapability = value;
+    assignString(key, (parsed) => {
+      currentProvider.promptCacheCapability = parsed;
+    });
   } else if (key === "priority") {
-    assignNumber(key, (parsed) => {
+    assignInteger(key, (parsed) => {
       currentProvider.priority = parsed;
     });
   } else if (key === "weight") {
@@ -182,15 +229,15 @@ function assignProviderTomlValue(
       currentProvider.unitCost = parsed;
     });
   } else if (key === "max_inflight" || key === "max_in_flight") {
-    assignNumber(key, (parsed) => {
+    assignInteger(key, (parsed) => {
       currentProvider.maxInFlight = parsed;
     });
   } else if (key === "requests_per_minute" || key === "rpm") {
-    assignNumber(key, (parsed) => {
+    assignInteger(key, (parsed) => {
       currentProvider.requestsPerMinute = parsed;
     });
   } else if (key === "burst" || key === "bucket_burst") {
-    assignNumber(key, (parsed) => {
+    assignInteger(key, (parsed) => {
       currentProvider.burst = parsed;
     });
   }

@@ -35,25 +35,32 @@ export function stripInlineComment(line: string): string {
 
 export function parseTomlString(value: string): string | undefined {
   const trimmed = value.trim();
-  if (!trimmed) {
+  const match = trimmed.match(/^"([^"]*)"$/);
+  if (!match || typeof match[1] !== "string") {
     return undefined;
   }
-  if (trimmed.startsWith("\"")) {
-    const match = trimmed.match(/^"([^"]*)"/);
-    if (match && typeof match[1] === "string") {
-      return match[1].trim();
-    }
-  }
-  return trimmed;
+  return match[1].trim();
 }
 
 export function parseTomlNumber(value: string): number | undefined {
   const normalized = value.trim();
-  if (!normalized) {
+  if (!/^-?\d+(\.\d+)?$/.test(normalized)) {
     return undefined;
   }
   const parsed = Number.parseFloat(normalized);
   if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  return parsed;
+}
+
+export function parseTomlInteger(value: string): number | undefined {
+  const normalized = value.trim();
+  if (!/^-?\d+$/.test(normalized)) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(normalized, 10);
+  if (!Number.isSafeInteger(parsed)) {
     return undefined;
   }
   return parsed;
@@ -70,10 +77,10 @@ export function parseTomlBoolean(value: string): boolean | undefined {
   return undefined;
 }
 
-export function parseTomlStringArray(value: string): string[] {
+export function parseTomlStringArray(value: string): string[] | undefined {
   const trimmed = value.trim();
   if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) {
-    return [];
+    return undefined;
   }
   const content = trimmed.slice(1, -1).trim();
   if (!content) {
@@ -82,14 +89,10 @@ export function parseTomlStringArray(value: string): string[] {
   const items: string[] = [];
   for (const token of content.split(",")) {
     const parsed = parseTomlString(token);
-    if (!parsed) {
-      continue;
+    if (typeof parsed !== "string" || parsed.length === 0) {
+      return undefined;
     }
-    const normalized = parsed.trim();
-    if (!normalized) {
-      continue;
-    }
-    items.push(normalized);
+    items.push(parsed);
   }
   return items;
 }

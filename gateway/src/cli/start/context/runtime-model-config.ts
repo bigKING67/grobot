@@ -19,6 +19,7 @@ import {
   parseTomlString,
   stripInlineComment,
 } from "./toml";
+import { resolveProviderCandidateControls } from "./runtime-provider-controls";
 
 interface RuntimeProviderPoolProvider {
   name: string;
@@ -155,6 +156,7 @@ function normalizeProviderKind(
   rawKind: string | undefined,
   providerName?: string,
   baseUrl?: string,
+  context?: RuntimeProviderConfigContext,
 ): "openai_compatible" | "kimi" {
   const normalizedKind = rawKind?.trim().toLowerCase();
   if (normalizedKind === "kimi") {
@@ -166,6 +168,16 @@ function normalizeProviderKind(
   ) {
     return "openai_compatible";
   }
+  if (normalizedKind !== undefined && normalizedKind.length > 0) {
+    if (context) {
+      throwProviderConfigError(
+        "provider-kind",
+        "provider-kind must be kimi, openai_compatible, or openai-compatible",
+        context,
+      );
+    }
+    return "openai_compatible";
+  }
   const normalizedProviderName = providerName?.trim().toLowerCase() ?? "";
   if (normalizedProviderName === "kimi") {
     return "kimi";
@@ -175,16 +187,6 @@ function normalizeProviderKind(
     return "kimi";
   }
   return "openai_compatible";
-}
-
-function normalizeKimiAllowlist(raw: string[] | undefined): string[] {
-  const fromConfig = Array.isArray(raw)
-    ? raw.map((item) => item.trim()).filter((item) => item.length > 0)
-    : [];
-  if (fromConfig.length > 0) {
-    return fromConfig;
-  }
-  return [...DEFAULT_KIMI_OFFICIAL_TOOLS_ALLOWLIST];
 }
 
 function normalizeKimiWebSearchMode(
@@ -275,6 +277,35 @@ function normalizeKimiTopP(
     );
   }
   return raw;
+}
+
+function normalizeKimiAllowlist(
+  raw: string[] | undefined,
+  context: RuntimeProviderConfigContext,
+): string[] {
+  if (raw === undefined) {
+    return [...DEFAULT_KIMI_OFFICIAL_TOOLS_ALLOWLIST];
+  }
+  const values = raw.map((item) => item.trim());
+  if (values.length === 0 || values.some((item) => item.length === 0)) {
+    throwProviderConfigError(
+      "kimi-official-tools-allowlist",
+      "kimi-official-tools-allowlist must be a non-empty array of strings",
+      context,
+    );
+  }
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (seen.has(value)) {
+      throwProviderConfigError(
+        "kimi-official-tools-allowlist",
+        "kimi-official-tools-allowlist values must be unique",
+        context,
+      );
+    }
+    seen.add(value);
+  }
+  return values;
 }
 
 function normalizePromptCacheStrategy(
@@ -386,6 +417,7 @@ function buildRuntimeKimiOptions(input: {
       provider?.kimiDisableThinkingOnBuiltinWebSearch ?? true,
     officialToolsAllowlist: normalizeKimiAllowlist(
       provider?.kimiOfficialToolsAllowlist,
+      input.context,
     ),
     promptCache: resolvePromptCacheOptions({
       enabled: provider?.promptCacheEnabled,
@@ -630,16 +662,29 @@ export function resolveRuntimeModelConfig(
         apiKey: providerApiKey,
         model: providerModel,
       };
-      const providerKind = normalizeProviderKind(
-        provider.providerKind,
-        provider.name,
-        providerBaseUrl,
-      );
-      candidateModelConfig.providerKind = providerKind;
       const providerConfigContext = {
         providerName: provider.name.trim(),
         source: fallbackPool.source,
       };
+      assertProviderConfigParseErrors({
+        provider,
+        context: providerConfigContext,
+      });
+      const providerKind = normalizeProviderKind(
+        provider.providerKind,
+        provider.name,
+        providerBaseUrl,
+        providerConfigContext,
+      );
+      candidateModelConfig.providerKind = providerKind;
+      const providerControls = resolveProviderCandidateControls({
+        provider,
+        providerMaxInFlightDefault,
+        providerRequestsPerMinuteDefault,
+        providerBurstDefault,
+        context: providerConfigContext,
+        throwConfigError: throwProviderConfigError,
+      });
       candidateModelConfig.timeoutMs =
         typeof timeoutMs === "number"
           ? timeoutMs
@@ -656,22 +701,7 @@ export function resolveRuntimeModelConfig(
         name: provider.name.trim(),
         modelConfig: candidateModelConfig,
         source: fallbackPool.source,
-        priority:
-          typeof provider.priority === "number" ? provider.priority : undefined,
-        weight: typeof provider.weight === "number" ? provider.weight : undefined,
-        unitCost:
-          typeof provider.unitCost === "number" ? provider.unitCost : undefined,
-        maxInFlight:
-          normalizePositiveInt(provider.maxInFlight) ??
-          providerMaxInFlightDefault,
-        requestsPerMinute:
-          normalizePositiveInt(provider.requestsPerMinute) ??
-          providerRequestsPerMinuteDefault,
-        burst:
-          normalizePositiveInt(provider.burst) ??
-          providerBurstDefault ??
-          normalizePositiveInt(provider.requestsPerMinute) ??
-          providerRequestsPerMinuteDefault,
+        ...providerControls,
       });
     }
   }

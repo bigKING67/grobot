@@ -111,7 +111,13 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     aliases) may use provider defaults only when omitted; malformed,
     unsupported, or out-of-range explicit values must exit `2` with stable
     `invalid_<field>` errors before runtime turn execution. Numeric values must
-    not be silently clamped.
+    not be silently clamped. Provider TOML parsing must be strict: quoted
+    strings may not accept trailing tokens, numeric fields may not accept
+    numeric prefixes such as `1024abc`, `kimi_official_tools_allowlist` must be
+    a non-empty array of strings when specified, and provider routing controls
+    such as `provider_kind`, `priority`, `weight`, `unit_cost`, `max_inflight`,
+    `requests_per_minute`, and `burst` must reject malformed, zero, or negative
+    explicit values instead of being ignored or normalized away.
 16. Context-engine config controls must fail closed on malformed explicit
     env/project TOML values. `GROBOT_CONTEXT_ENGINE_*` env values and
     `[context_engine]` project TOML knobs may use defaults only when omitted;

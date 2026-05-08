@@ -126,6 +126,34 @@ export function runStartInvalidRuntimeModelControlsRejectFlow(context) {
     "prompt-cache-enabled-type",
     ["prompt_cache_enabled = maybe"],
   );
+  const invalidQuotedTrailingResult = makeCase(
+    "quoted-trailing",
+    ['prompt_cache_strategy = "user_last_n" trailing'],
+  );
+  const invalidIntegerTrailingResult = makeCase(
+    "integer-trailing",
+    ["kimi_max_tokens = 1024abc"],
+  );
+  const invalidKimiAllowlistMixedResult = makeCase(
+    "kimi-allowlist-mixed",
+    ['kimi_official_tools_allowlist = ["web-search", 3]'],
+  );
+  const invalidKimiAllowlistEmptyResult = makeCase(
+    "kimi-allowlist-empty",
+    ["kimi_official_tools_allowlist = []"],
+  );
+  const invalidProviderPriorityResult = makeCase(
+    "provider-priority",
+    ["priority = 0"],
+  );
+  const invalidProviderWeightResult = makeCase(
+    "provider-weight",
+    ["weight = 0"],
+  );
+  const invalidProviderKindResult = makeCase(
+    "provider-kind",
+    ['provider_kind = "moon"'],
+  );
   const invalidSearchRoutingResult = makeSearchRoutingCase(
     "search-routing",
     ['kimi = "sideways"'],
@@ -164,6 +192,20 @@ export function runStartInvalidRuntimeModelControlsRejectFlow(context) {
     invalidPromptCacheCapabilityResult.stderr,
     invalidPromptCacheEnabledTypeResult.stdout,
     invalidPromptCacheEnabledTypeResult.stderr,
+    invalidQuotedTrailingResult.stdout,
+    invalidQuotedTrailingResult.stderr,
+    invalidIntegerTrailingResult.stdout,
+    invalidIntegerTrailingResult.stderr,
+    invalidKimiAllowlistMixedResult.stdout,
+    invalidKimiAllowlistMixedResult.stderr,
+    invalidKimiAllowlistEmptyResult.stdout,
+    invalidKimiAllowlistEmptyResult.stderr,
+    invalidProviderPriorityResult.stdout,
+    invalidProviderPriorityResult.stderr,
+    invalidProviderWeightResult.stdout,
+    invalidProviderWeightResult.stderr,
+    invalidProviderKindResult.stdout,
+    invalidProviderKindResult.stderr,
     invalidSearchRoutingResult.stdout,
     invalidSearchRoutingResult.stderr,
     malformedSearchRoutingResult.stdout,
@@ -206,6 +248,34 @@ export function runStartInvalidRuntimeModelControlsRejectFlow(context) {
     invalid_prompt_cache_enabled_type_has_stable_error:
       invalidPromptCacheEnabledTypeResult.stderr.includes("error: invalid_prompt_cache_enabled:")
       && invalidPromptCacheEnabledTypeResult.stderr.includes("prompt-cache-enabled must be boolean"),
+    invalid_quoted_trailing_exit_code: invalidQuotedTrailingResult.exit_code,
+    invalid_quoted_trailing_has_stable_error:
+      invalidQuotedTrailingResult.stderr.includes("error: invalid_prompt_cache_strategy:")
+      && invalidQuotedTrailingResult.stderr.includes("prompt-cache-strategy must be a string"),
+    invalid_integer_trailing_exit_code: invalidIntegerTrailingResult.exit_code,
+    invalid_integer_trailing_has_stable_error:
+      invalidIntegerTrailingResult.stderr.includes("error: invalid_kimi_max_tokens:")
+      && invalidIntegerTrailingResult.stderr.includes("kimi-max-tokens must be an integer"),
+    invalid_kimi_allowlist_mixed_exit_code: invalidKimiAllowlistMixedResult.exit_code,
+    invalid_kimi_allowlist_mixed_has_stable_error:
+      invalidKimiAllowlistMixedResult.stderr.includes("error: invalid_kimi_official_tools_allowlist:")
+      && invalidKimiAllowlistMixedResult.stderr.includes("kimi-official-tools-allowlist must be a non-empty array of strings"),
+    invalid_kimi_allowlist_empty_exit_code: invalidKimiAllowlistEmptyResult.exit_code,
+    invalid_kimi_allowlist_empty_has_stable_error:
+      invalidKimiAllowlistEmptyResult.stderr.includes("error: invalid_kimi_official_tools_allowlist:")
+      && invalidKimiAllowlistEmptyResult.stderr.includes("kimi-official-tools-allowlist must be a non-empty array of strings"),
+    invalid_provider_priority_exit_code: invalidProviderPriorityResult.exit_code,
+    invalid_provider_priority_has_stable_error:
+      invalidProviderPriorityResult.stderr.includes("error: invalid_provider_priority:")
+      && invalidProviderPriorityResult.stderr.includes("provider-priority must be a positive integer"),
+    invalid_provider_weight_exit_code: invalidProviderWeightResult.exit_code,
+    invalid_provider_weight_has_stable_error:
+      invalidProviderWeightResult.stderr.includes("error: invalid_provider_weight:")
+      && invalidProviderWeightResult.stderr.includes("provider-weight must be a positive number"),
+    invalid_provider_kind_exit_code: invalidProviderKindResult.exit_code,
+    invalid_provider_kind_has_stable_error:
+      invalidProviderKindResult.stderr.includes("error: invalid_provider_kind:")
+      && invalidProviderKindResult.stderr.includes("provider-kind must be kimi, openai_compatible, or openai-compatible"),
     invalid_search_routing_exit_code: invalidSearchRoutingResult.exit_code,
     invalid_search_routing_has_stable_error:
       invalidSearchRoutingResult.stderr.includes("error: invalid_search_routing_kimi:")
