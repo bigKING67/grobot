@@ -36,6 +36,7 @@ import {
   resolveContextEngineConfig,
   resolveContextStorageDomain,
   resolvePromptTargetTokenLimit,
+  isContextEngineConfigInputError,
 } from "../../tools/context";
 import { readPersistentGraphIndexStatus } from "../../tools/context/graph/persistent-index";
 import {
@@ -318,10 +319,19 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     modelFromCli,
     modelFromEnv,
   });
-  const contextEngineConfig = resolveContextEngineConfig({
-    projectTomlPath,
-    runtimeModelConfig: contextEngineRuntimeModelConfig,
-  });
+  let contextEngineConfig;
+  try {
+    contextEngineConfig = resolveContextEngineConfig({
+      projectTomlPath,
+      runtimeModelConfig: contextEngineRuntimeModelConfig,
+    });
+  } catch (error) {
+    if (isContextEngineConfigInputError(error)) {
+      writeStatusInputError(error, outputJson);
+      return 2;
+    }
+    throw error;
+  }
   const contextEngineTokenBudget = resolvePromptTargetTokenLimit(contextEngineConfig);
   const contextEngineEffectiveWindowTokens = contextEngineTokenBudget.effectiveWindowTokens;
   const memoryOrchestratorBasePolicy = defaultMemoryOrchestratorPolicy();

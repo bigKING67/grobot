@@ -112,6 +112,15 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     unsupported, or out-of-range explicit values must exit `2` with stable
     `invalid_<field>` errors before runtime turn execution. Numeric values must
     not be silently clamped.
+16. Context-engine config controls must fail closed on malformed explicit
+    env/project TOML values. `GROBOT_CONTEXT_ENGINE_*` env values and
+    `[context_engine]` project TOML knobs may use defaults only when omitted;
+    malformed booleans, unsupported profiles/stages, non-numeric or
+    non-integer numeric controls, zero/negative values, out-of-range
+    ratios/limits, invalid threshold ordering, and effective context windows
+    below the minimum must exit `2` with stable `invalid_<field>` errors before
+    start/status continues. Explicit auto-compact limits must not exceed the
+    derived effective window. Numeric values must not be silently clamped.
 
 ---
 

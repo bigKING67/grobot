@@ -1,15 +1,11 @@
 import {
-  DEFAULT_PROMPT_QUALITY_GUARD_ADAPTIVE_MODE_ALLOWLIST,
-  DEFAULT_PROMPT_QUALITY_GUARD_MAX_FLOOR_STAGE,
-} from "./defaults";
-import {
   type ContextCompressionProfile,
   type ContextPromptQualityGuardAdaptiveMode,
   type PromptCompactionStage,
 } from "../../types";
 
-export function parseEnvBoolean(raw: string | undefined): boolean | undefined {
-  if (!raw) {
+export function parseBooleanToken(raw: string | undefined): boolean | undefined {
+  if (raw === undefined) {
     return undefined;
   }
   const normalized = raw.trim().toLowerCase();
@@ -22,19 +18,23 @@ export function parseEnvBoolean(raw: string | undefined): boolean | undefined {
   return undefined;
 }
 
-export function parseEnvNumber(raw: string | undefined): number | undefined {
-  if (!raw) {
+export function parseNumberToken(raw: string | undefined): number | undefined {
+  if (raw === undefined) {
     return undefined;
   }
-  const parsed = Number.parseFloat(raw.trim());
+  const normalized = raw.trim();
+  if (!/^[-+]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?$/.test(normalized)) {
+    return undefined;
+  }
+  const parsed = Number(normalized);
   if (!Number.isFinite(parsed)) {
     return undefined;
   }
   return parsed;
 }
 
-export function parseEnvStringList(raw: string | undefined): string[] | undefined {
-  if (!raw) {
+export function parseStringListToken(raw: string | undefined): string[] | undefined {
+  if (raw === undefined) {
     return undefined;
   }
   const values = raw
@@ -44,45 +44,25 @@ export function parseEnvStringList(raw: string | undefined): string[] | undefine
   return values.length > 0 ? values : [];
 }
 
-export function clampRatio(value: number, fallback: number): number {
-  if (!Number.isFinite(value)) {
-    return fallback;
-  }
-  return Math.min(0.995, Math.max(0.5, value));
-}
-
-export function clampUnitRatio(value: number, fallback: number): number {
-  if (!Number.isFinite(value)) {
-    return fallback;
-  }
-  return Math.min(1, Math.max(0, value));
-}
-
-export function clampPositiveInt(value: number, fallback: number): number {
-  if (!Number.isFinite(value)) {
-    return fallback;
-  }
-  const normalized = Math.floor(value);
-  if (normalized <= 0) {
-    return fallback;
-  }
-  return normalized;
-}
-
-export function normalizeProfile(raw: string | undefined): ContextCompressionProfile {
+export function parseContextCompressionProfile(
+  raw: string | undefined,
+): ContextCompressionProfile | undefined {
   const normalized = raw?.trim().toLowerCase();
+  if (normalized === "balanced") {
+    return "balanced";
+  }
   if (normalized === "aggressive") {
     return "aggressive";
   }
   if (normalized === "conservative") {
     return "conservative";
   }
-  return "balanced";
+  return undefined;
 }
 
-export function normalizePromptQualityGuardMaxFloorStage(
+export function parsePromptQualityGuardMaxFloorStage(
   raw: string | undefined,
-): PromptCompactionStage {
+): PromptCompactionStage | undefined {
   const normalized = raw?.trim().toLowerCase();
   if (normalized === "proactive") {
     return "proactive";
@@ -93,7 +73,7 @@ export function normalizePromptQualityGuardMaxFloorStage(
   if (normalized === "minimal") {
     return "minimal";
   }
-  return DEFAULT_PROMPT_QUALITY_GUARD_MAX_FLOOR_STAGE;
+  return undefined;
 }
 
 export function normalizePromptQualityGuardAdaptiveMode(
@@ -107,23 +87,4 @@ export function normalizePromptQualityGuardAdaptiveMode(
     return "relax";
   }
   return undefined;
-}
-
-export function normalizePromptQualityGuardAdaptiveModeAllowlist(
-  raw: string[] | undefined,
-): ContextPromptQualityGuardAdaptiveMode[] {
-  if (!Array.isArray(raw)) {
-    return [...DEFAULT_PROMPT_QUALITY_GUARD_ADAPTIVE_MODE_ALLOWLIST];
-  }
-  const unique = new Set<ContextPromptQualityGuardAdaptiveMode>();
-  for (const value of raw) {
-    const normalized = normalizePromptQualityGuardAdaptiveMode(value);
-    if (normalized) {
-      unique.add(normalized);
-    }
-  }
-  if (unique.size === 0) {
-    return [...DEFAULT_PROMPT_QUALITY_GUARD_ADAPTIVE_MODE_ALLOWLIST];
-  }
-  return Array.from(unique.values());
 }

@@ -1,4 +1,8 @@
-export { resolveContextEngineConfig } from "./policy/context-engine-config";
+export {
+  ContextEngineConfigInputError,
+  isContextEngineConfigInputError,
+  resolveContextEngineConfig,
+} from "./policy/context-engine-config";
 export {
   resolveContextStorageBoundary,
   resolveContextStorageDomain,

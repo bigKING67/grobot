@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import {
-  normalizeProfile,
-  normalizePromptQualityGuardAdaptiveModeAllowlist,
-  normalizePromptQualityGuardMaxFloorStage,
+  parseBooleanToken,
+  parseContextCompressionProfile,
+  parsePromptQualityGuardMaxFloorStage,
+  normalizePromptQualityGuardAdaptiveMode,
 } from "./normalize";
 import type { TomlOverrides } from "./types";
 
@@ -51,19 +52,20 @@ function parseTomlStringArray(raw: string): string[] | undefined {
   const values: string[] = [];
   for (const segment of content.split(",")) {
     const value = parseTomlString(segment);
-    if (typeof value === "string") {
-      values.push(value);
+    if (typeof value !== "string") {
+      return undefined;
     }
+    values.push(value);
   }
   return values;
 }
 
-function parseTomlNumber(raw: string): number | undefined {
+export function parseTomlNumber(raw: string): number | undefined {
   const trimmed = raw.trim();
-  if (!/^[-+]?\d+(\.\d+)?$/.test(trimmed)) {
+  if (!/^[-+]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?$/.test(trimmed)) {
     return undefined;
   }
-  const parsed = Number.parseFloat(trimmed);
+  const parsed = Number(trimmed);
   if (!Number.isFinite(parsed)) {
     return undefined;
   }
@@ -71,14 +73,106 @@ function parseTomlNumber(raw: string): number | undefined {
 }
 
 function parseTomlBoolean(raw: string): boolean | undefined {
-  const normalized = raw.trim().toLowerCase();
-  if (normalized === "true") {
-    return true;
+  const normalized = raw.trim();
+  if (normalized !== "true" && normalized !== "false") {
+    return undefined;
   }
-  if (normalized === "false") {
-    return false;
+  return parseBooleanToken(normalized);
+}
+
+function pushTomlError(
+  overrides: TomlOverrides,
+  field: string,
+  detail: string,
+): void {
+  if (!overrides.errors) {
+    overrides.errors = [];
   }
-  return undefined;
+  overrides.errors.push({ field, detail });
+}
+
+function readTomlBoolean(
+  overrides: TomlOverrides,
+  field: string,
+  valueRaw: string,
+): boolean | undefined {
+  const parsed = parseTomlBoolean(valueRaw);
+  if (typeof parsed !== "boolean") {
+    pushTomlError(overrides, field, `${field} must be boolean`);
+  }
+  return parsed;
+}
+
+function readTomlNumber(
+  overrides: TomlOverrides,
+  field: string,
+  valueRaw: string,
+): number | undefined {
+  const parsed = parseTomlNumber(valueRaw);
+  if (typeof parsed !== "number") {
+    pushTomlError(overrides, field, `${field} must be a number`);
+  }
+  return parsed;
+}
+
+function readTomlProfile(
+  overrides: TomlOverrides,
+  field: string,
+  valueRaw: string,
+) {
+  const raw = parseTomlString(valueRaw);
+  const parsed = parseContextCompressionProfile(raw);
+  if (!parsed) {
+    pushTomlError(
+      overrides,
+      field,
+      `${field} must be balanced, aggressive, or conservative`,
+    );
+  }
+  return parsed;
+}
+
+function readTomlPromptQualityGuardMaxFloorStage(
+  overrides: TomlOverrides,
+  field: string,
+  valueRaw: string,
+) {
+  const raw = parseTomlString(valueRaw);
+  const parsed = parsePromptQualityGuardMaxFloorStage(raw);
+  if (!parsed) {
+    pushTomlError(
+      overrides,
+      field,
+      `${field} must be proactive, forced, or minimal`,
+    );
+  }
+  return parsed;
+}
+
+function readTomlAdaptiveModeAllowlist(
+  overrides: TomlOverrides,
+  field: string,
+  valueRaw: string,
+) {
+  const rawValues = parseTomlStringArray(valueRaw);
+  if (!Array.isArray(rawValues)) {
+    pushTomlError(overrides, field, `${field} must be an array of strings`);
+    return undefined;
+  }
+  const unique = new Set<"harden" | "relax">();
+  for (const rawValue of rawValues) {
+    const normalized = normalizePromptQualityGuardAdaptiveMode(rawValue);
+    if (!normalized) {
+      pushTomlError(overrides, field, `${field} must include only harden or relax`);
+      return undefined;
+    }
+    unique.add(normalized);
+  }
+  if (unique.size === 0) {
+    pushTomlError(overrides, field, `${field} must include harden, relax, or both`);
+    return undefined;
+  }
+  return Array.from(unique.values());
 }
 
 export function readTomlOverrides(projectTomlPath?: string): TomlOverrides {
@@ -121,139 +215,187 @@ function applyContextEngineTomlKey(
   key: string,
   valueRaw: string,
 ): void {
+  if (!overrides.sourceKeys) {
+    overrides.sourceKeys = new Set<string>();
+  }
   switch (key) {
     case "enabled":
-      overrides.enabled = parseTomlBoolean(valueRaw);
+      overrides.sourceKeys.add("enabled");
+      overrides.enabled = readTomlBoolean(overrides, "context-engine-enabled", valueRaw);
       break;
     case "profile":
-      overrides.profile = normalizeProfile(parseTomlString(valueRaw));
+      overrides.sourceKeys.add("profile");
+      overrides.profile = readTomlProfile(overrides, "context-engine-profile", valueRaw);
       break;
     case "context_window_tokens":
-      overrides.contextWindowTokens = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("contextWindowTokens");
+      overrides.contextWindowTokens = readTomlNumber(overrides, "context-engine-window", valueRaw);
       break;
     case "reserved_output_tokens":
-      overrides.reservedOutputTokens = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("reservedOutputTokens");
+      overrides.reservedOutputTokens = readTomlNumber(overrides, "context-engine-reserved-output-tokens", valueRaw);
       break;
     case "safety_margin_tokens":
-      overrides.safetyMarginTokens = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("safetyMarginTokens");
+      overrides.safetyMarginTokens = readTomlNumber(overrides, "context-engine-safety-margin-tokens", valueRaw);
       break;
     case "auto_compact_token_limit":
-      overrides.autoCompactTokenLimit = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("autoCompactTokenLimit");
+      overrides.autoCompactTokenLimit = readTomlNumber(overrides, "context-engine-auto-compact-token-limit", valueRaw);
       break;
     case "proactive_ratio":
-      overrides.proactiveRatio = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("proactiveRatio");
+      overrides.proactiveRatio = readTomlNumber(overrides, "context-engine-proactive-ratio", valueRaw);
       break;
     case "forced_ratio":
-      overrides.forcedRatio = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("forcedRatio");
+      overrides.forcedRatio = readTomlNumber(overrides, "context-engine-forced-ratio", valueRaw);
       break;
     case "hard_ratio":
-      overrides.hardRatio = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("hardRatio");
+      overrides.hardRatio = readTomlNumber(overrides, "context-engine-hard-ratio", valueRaw);
       break;
     case "reactive_max_retries":
-      overrides.reactiveMaxRetries = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("reactiveMaxRetries");
+      overrides.reactiveMaxRetries = readTomlNumber(overrides, "context-engine-reactive-max-retries", valueRaw);
       break;
     case "ptl_max_retries":
-      overrides.ptlMaxRetries = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("ptlMaxRetries");
+      overrides.ptlMaxRetries = readTomlNumber(overrides, "context-engine-ptl-max-retries", valueRaw);
       break;
     case "circuit_breaker_failures":
-      overrides.circuitBreakerFailures = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("circuitBreakerFailures");
+      overrides.circuitBreakerFailures = readTomlNumber(overrides, "context-engine-circuit-breaker-failures", valueRaw);
       break;
     case "reactive_on_prompt_too_long":
-      overrides.reactiveOnPromptTooLong = parseTomlBoolean(valueRaw);
+      overrides.sourceKeys.add("reactiveOnPromptTooLong");
+      overrides.reactiveOnPromptTooLong = readTomlBoolean(overrides, "context-engine-reactive-on-ptl", valueRaw);
       break;
     case "lineage_enabled":
-      overrides.lineageEnabled = parseTomlBoolean(valueRaw);
+      overrides.sourceKeys.add("lineageEnabled");
+      overrides.lineageEnabled = readTomlBoolean(overrides, "context-engine-lineage-enabled", valueRaw);
       break;
     case "lineage_max_rows":
-      overrides.lineageMaxRows = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("lineageMaxRows");
+      overrides.lineageMaxRows = readTomlNumber(overrides, "context-engine-lineage-max-rows", valueRaw);
       break;
     case "lineage_max_commits":
-      overrides.lineageMaxCommits = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("lineageMaxCommits");
+      overrides.lineageMaxCommits = readTomlNumber(overrides, "context-engine-lineage-max-commits", valueRaw);
       break;
     case "lineage_cache_ttl_ms":
-      overrides.lineageCacheTtlMs = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("lineageCacheTtlMs");
+      overrides.lineageCacheTtlMs = readTomlNumber(overrides, "context-engine-lineage-cache-ttl-ms", valueRaw);
       break;
     case "workspace_signals_enabled":
-      overrides.workspaceSignalsEnabled = parseTomlBoolean(valueRaw);
+      overrides.sourceKeys.add("workspaceSignalsEnabled");
+      overrides.workspaceSignalsEnabled = readTomlBoolean(overrides, "context-engine-workspace-signals-enabled", valueRaw);
       break;
     case "workspace_signals_max_rows":
-      overrides.workspaceSignalsMaxRows = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("workspaceSignalsMaxRows");
+      overrides.workspaceSignalsMaxRows = readTomlNumber(overrides, "context-engine-workspace-signals-max-rows", valueRaw);
       break;
     case "workspace_signals_include_untracked":
-      overrides.workspaceSignalsIncludeUntracked = parseTomlBoolean(valueRaw);
+      overrides.sourceKeys.add("workspaceSignalsIncludeUntracked");
+      overrides.workspaceSignalsIncludeUntracked = readTomlBoolean(overrides, "context-engine-workspace-signals-include-untracked", valueRaw);
       break;
     case "workspace_signals_cache_ttl_ms":
-      overrides.workspaceSignalsCacheTtlMs = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("workspaceSignalsCacheTtlMs");
+      overrides.workspaceSignalsCacheTtlMs = readTomlNumber(overrides, "context-engine-workspace-signals-cache-ttl-ms", valueRaw);
       break;
     case "semantic_prefetch_enabled":
-      overrides.semanticPrefetchEnabled = parseTomlBoolean(valueRaw);
+      overrides.sourceKeys.add("semanticPrefetchEnabled");
+      overrides.semanticPrefetchEnabled = readTomlBoolean(overrides, "context-engine-semantic-prefetch-enabled", valueRaw);
       break;
     case "semantic_prefetch_timeout_ms":
-      overrides.semanticPrefetchTimeoutMs = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("semanticPrefetchTimeoutMs");
+      overrides.semanticPrefetchTimeoutMs = readTomlNumber(overrides, "context-engine-semantic-prefetch-timeout-ms", valueRaw);
       break;
     case "semantic_prefetch_max_evidence":
-      overrides.semanticPrefetchMaxEvidence = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("semanticPrefetchMaxEvidence");
+      overrides.semanticPrefetchMaxEvidence = readTomlNumber(overrides, "context-engine-semantic-prefetch-max-evidence", valueRaw);
       break;
     case "dependency_graph_enabled":
-      overrides.dependencyGraphEnabled = parseTomlBoolean(valueRaw);
+      overrides.sourceKeys.add("dependencyGraphEnabled");
+      overrides.dependencyGraphEnabled = readTomlBoolean(overrides, "context-engine-dependency-graph-enabled", valueRaw);
       break;
     case "dependency_graph_max_rows":
-      overrides.dependencyGraphMaxRows = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("dependencyGraphMaxRows");
+      overrides.dependencyGraphMaxRows = readTomlNumber(overrides, "context-engine-dependency-graph-max-rows", valueRaw);
       break;
     case "symbol_graph_enabled":
-      overrides.symbolGraphEnabled = parseTomlBoolean(valueRaw);
+      overrides.sourceKeys.add("symbolGraphEnabled");
+      overrides.symbolGraphEnabled = readTomlBoolean(overrides, "context-engine-symbol-graph-enabled", valueRaw);
       break;
     case "symbol_graph_max_rows":
-      overrides.symbolGraphMaxRows = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("symbolGraphMaxRows");
+      overrides.symbolGraphMaxRows = readTomlNumber(overrides, "context-engine-symbol-graph-max-rows", valueRaw);
       break;
     case "prompt_quality_low_quality_threshold":
-      overrides.promptQualityLowQualityThreshold = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("promptQualityLowQualityThreshold");
+      overrides.promptQualityLowQualityThreshold = readTomlNumber(overrides, "context-engine-prompt-quality-low-quality-threshold", valueRaw);
       break;
     case "prompt_quality_degrade_overall_threshold":
-      overrides.promptQualityDegradeOverallThreshold = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("promptQualityDegradeOverallThreshold");
+      overrides.promptQualityDegradeOverallThreshold = readTomlNumber(overrides, "context-engine-prompt-quality-degrade-overall-threshold", valueRaw);
       break;
     case "prompt_quality_degrade_low_quality_rate_threshold":
-      overrides.promptQualityDegradeLowQualityRateThreshold = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("promptQualityDegradeLowQualityRateThreshold");
+      overrides.promptQualityDegradeLowQualityRateThreshold = readTomlNumber(overrides, "context-engine-prompt-quality-degrade-low-quality-rate-threshold", valueRaw);
       break;
     case "prompt_quality_degrade_min_entries":
-      overrides.promptQualityDegradeMinEntries = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("promptQualityDegradeMinEntries");
+      overrides.promptQualityDegradeMinEntries = readTomlNumber(overrides, "context-engine-prompt-quality-degrade-min-entries", valueRaw);
       break;
     case "prompt_quality_guard_enabled":
-      overrides.promptQualityGuardEnabled = parseTomlBoolean(valueRaw);
+      overrides.sourceKeys.add("promptQualityGuardEnabled");
+      overrides.promptQualityGuardEnabled = readTomlBoolean(overrides, "context-engine-prompt-quality-guard-enabled", valueRaw);
       break;
     case "prompt_quality_guard_adaptive_enabled":
-      overrides.promptQualityGuardAdaptiveEnabled = parseTomlBoolean(valueRaw);
+      overrides.sourceKeys.add("promptQualityGuardAdaptiveEnabled");
+      overrides.promptQualityGuardAdaptiveEnabled = readTomlBoolean(overrides, "context-engine-prompt-quality-guard-adaptive-enabled", valueRaw);
       break;
     case "prompt_quality_guard_adaptive_mode_allowlist": {
-      const rawValues = parseTomlStringArray(valueRaw);
-      if (Array.isArray(rawValues)) {
-        overrides.promptQualityGuardAdaptiveModeAllowlist =
-          normalizePromptQualityGuardAdaptiveModeAllowlist(rawValues);
-      }
+      overrides.sourceKeys.add("promptQualityGuardAdaptiveModeAllowlist");
+      overrides.promptQualityGuardAdaptiveModeAllowlist =
+        readTomlAdaptiveModeAllowlist(
+          overrides,
+          "context-engine-prompt-quality-guard-adaptive-mode-allowlist",
+          valueRaw,
+        );
       break;
     }
     case "prompt_quality_guard_promote_streak":
-      overrides.promptQualityGuardPromoteStreak = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("promptQualityGuardPromoteStreak");
+      overrides.promptQualityGuardPromoteStreak = readTomlNumber(overrides, "context-engine-prompt-quality-guard-promote-streak", valueRaw);
       break;
     case "prompt_quality_guard_severe_promote_streak":
-      overrides.promptQualityGuardSeverePromoteStreak = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("promptQualityGuardSeverePromoteStreak");
+      overrides.promptQualityGuardSeverePromoteStreak = readTomlNumber(overrides, "context-engine-prompt-quality-guard-severe-promote-streak", valueRaw);
       break;
     case "prompt_quality_guard_release_streak":
-      overrides.promptQualityGuardReleaseStreak = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("promptQualityGuardReleaseStreak");
+      overrides.promptQualityGuardReleaseStreak = readTomlNumber(overrides, "context-engine-prompt-quality-guard-release-streak", valueRaw);
       break;
     case "prompt_quality_guard_hold_turns":
-      overrides.promptQualityGuardHoldTurns = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("promptQualityGuardHoldTurns");
+      overrides.promptQualityGuardHoldTurns = readTomlNumber(overrides, "context-engine-prompt-quality-guard-hold-turns", valueRaw);
       break;
     case "prompt_quality_guard_max_floor_stage":
-      overrides.promptQualityGuardMaxFloorStage = normalizePromptQualityGuardMaxFloorStage(
-        parseTomlString(valueRaw),
+      overrides.sourceKeys.add("promptQualityGuardMaxFloorStage");
+      overrides.promptQualityGuardMaxFloorStage = readTomlPromptQualityGuardMaxFloorStage(
+        overrides,
+        "context-engine-prompt-quality-guard-max-floor-stage",
+        valueRaw,
       );
       break;
     case "prompt_quality_guard_severe_overall_threshold":
-      overrides.promptQualityGuardSevereOverallThreshold = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("promptQualityGuardSevereOverallThreshold");
+      overrides.promptQualityGuardSevereOverallThreshold = readTomlNumber(overrides, "context-engine-prompt-quality-guard-severe-overall-threshold", valueRaw);
       break;
     case "prompt_quality_guard_severe_low_quality_rate_threshold":
-      overrides.promptQualityGuardSevereLowQualityRateThreshold = parseTomlNumber(valueRaw);
+      overrides.sourceKeys.add("promptQualityGuardSevereLowQualityRateThreshold");
+      overrides.promptQualityGuardSevereLowQualityRateThreshold = readTomlNumber(overrides, "context-engine-prompt-quality-guard-severe-low-quality-rate-threshold", valueRaw);
       break;
     default:
       break;

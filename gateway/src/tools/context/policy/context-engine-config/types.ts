@@ -5,6 +5,7 @@ import {
 } from "../../types";
 
 export interface TomlOverrides {
+  errors?: ContextEngineConfigFieldError[];
   enabled?: boolean;
   profile?: ContextCompressionProfile;
   contextWindowTokens?: number;
@@ -47,4 +48,28 @@ export interface TomlOverrides {
   promptQualityGuardMaxFloorStage?: PromptCompactionStage;
   promptQualityGuardSevereOverallThreshold?: number;
   promptQualityGuardSevereLowQualityRateThreshold?: number;
+  sourceKeys?: Set<string>;
+}
+
+export interface ContextEngineConfigFieldError {
+  field: string;
+  detail: string;
+}
+
+export class ContextEngineConfigInputError extends Error {
+  readonly code: string;
+  readonly field: string;
+
+  constructor(field: string, detail: string) {
+    super(detail);
+    this.name = "ContextEngineConfigInputError";
+    this.code = `invalid_${field.replace(/-/g, "_")}`;
+    this.field = field;
+  }
+}
+
+export function isContextEngineConfigInputError(
+  error: unknown,
+): error is ContextEngineConfigInputError {
+  return error instanceof ContextEngineConfigInputError;
 }

@@ -64,6 +64,7 @@ import { isExperienceControlInputError } from "../services/experience-controls";
 import { isStartSessionOptionInputError } from "./session/input-errors";
 import { isRuntimeToolControlInputError } from "./context/runtime-tool-controls";
 import { isRuntimeModelConfigInputError } from "./context/runtime-model-config";
+import { isContextEngineConfigInputError } from "../../tools/context";
 
 export async function runStart(
   options: Record<string, OptionValue>,
@@ -98,6 +99,10 @@ export async function runStart(
       return 2;
     }
     if (isRuntimeModelConfigInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    if (isContextEngineConfigInputError(error)) {
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }
