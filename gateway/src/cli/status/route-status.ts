@@ -257,6 +257,36 @@ export function resolveRouteDecisionSummary(input: {
   };
 }
 
+export function resolveRouteDecisionRuntimeSnapshot(input: {
+  projectStateRoot: string;
+  sessionNamespaceKey: string;
+  providerOverride?: string;
+  providerEnv?: string;
+  providerPoolSnapshot?: {
+    source: string;
+    providerName?: string;
+    providers: Array<{ name: string }>;
+  };
+  hasDirectRuntimeOverride: boolean;
+  circuitFailures: number;
+  circuitCooldownSecs: number;
+}): RouteDecisionSummary {
+  const observedRuntime = readRouteObservedRuntimeSummary({
+    projectStateRoot: input.projectStateRoot,
+    sessionNamespaceKey: input.sessionNamespaceKey,
+    orderedProviders: input.providerPoolSnapshot?.providers.map((provider) => provider.name) ?? [],
+  });
+  return resolveRouteDecisionSummary({
+    providerOverride: input.providerOverride,
+    providerEnv: input.providerEnv,
+    providerPoolSnapshot: input.providerPoolSnapshot,
+    observedRuntime,
+    hasDirectRuntimeOverride: input.hasDirectRuntimeOverride,
+    circuitFailures: input.circuitFailures,
+    circuitCooldownSecs: input.circuitCooldownSecs,
+  });
+}
+
 export function serializeRouteDecisionSummary(summary: RouteDecisionSummary): Record<string, unknown> {
   return {
     strategy: summary.strategy,

@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { buildFailoverConfig } from "./start-smoke-contract/config-fixtures.mjs";
+import { startMockModelServer } from "./_shared/mock-model-server.mjs";
 
 function parseArgs(argv) {
   const command = argv[0] ?? "";
@@ -84,6 +86,69 @@ async function waitStatusReady(baseUrl, timeoutMs = 6_000) {
     await sleep(100);
   }
   return null;
+}
+
+async function runRepoCommand(repoRoot, argv, env = {}, timeoutMs = 120_000) {
+  const child = spawn(argv[0], argv.slice(1), {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      ...env,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stdout = "";
+  let stderr = "";
+  child.stdout?.setEncoding("utf8");
+  child.stderr?.setEncoding("utf8");
+  child.stdout?.on("data", (chunk) => {
+    stdout += String(chunk);
+  });
+  child.stderr?.on("data", (chunk) => {
+    stderr += String(chunk);
+  });
+  return await new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+    }, timeoutMs);
+    child.once("exit", (code, signal) => {
+      clearTimeout(timer);
+      resolve({
+        exit_code: code ?? 1,
+        signal_code: signal ?? null,
+        stdout,
+        stderr,
+      });
+    });
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      resolve({
+        exit_code: 1,
+        signal_code: null,
+        stdout,
+        stderr: `${stderr}${String(error)}`,
+      });
+    });
+  });
+}
+
+function asRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value
+    : {};
+}
+
+function providerRuntimeStatesFromManagementStatus(statusEndpoint) {
+  const body = asRecord(statusEndpoint?.body);
+  const routeDecision = asRecord(body.route_decision);
+  const observed = asRecord(routeDecision.observed);
+  return Array.isArray(observed.provider_runtime_states)
+    ? observed.provider_runtime_states
+    : [];
+}
+
+function findProviderState(states, providerName) {
+  return asRecord(states.find((state) => asRecord(state).provider_name === providerName));
 }
 
 async function terminateProcess(proc) {
@@ -492,6 +557,131 @@ async function runReloadMemoryStoreFromProjectToml(options) {
   }
 }
 
+async function runProviderFailureRouteStatusManagementApi(options) {
+  const repoRoot = requireOption(options, "repo-root");
+  const workDir = requireOption(options, "work-dir");
+  const bind = requireOption(options, "bind");
+  const baseUrl = `http://${bind}`;
+  const sessionSubject = "provider-failure-status-user";
+  mkdirSync(workDir, { recursive: true });
+  const successModel = await startMockModelServer();
+  const configPath = `${workDir}/provider-failover-config.toml`;
+  writeFileSync(
+    configPath,
+    buildFailoverConfig(workDir, {
+      successBaseUrl: successModel.baseUrl,
+    }),
+    "utf8",
+  );
+  const baseArgs = [
+    "--project",
+    "grobot",
+    "--project-root",
+    workDir,
+    "--work-dir",
+    workDir,
+    "--config",
+    configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-subject",
+    sessionSubject,
+  ];
+  const startResult = await runRepoCommand(
+    repoRoot,
+    [
+      "./grobot",
+      "start",
+      ...baseArgs,
+      "--no-shadow-mode",
+      "--provider",
+      "failing",
+      "--no-handoff-auto-on-exit",
+      "--message",
+      "provider failure management status should expose route diagnostics",
+    ],
+    {
+      GROBOT_RUNTIME_HTTP_TIMEOUT_MS: "1200",
+    },
+  );
+  const proc = spawn(
+    "./grobot",
+    [
+      "serve",
+      ...baseArgs,
+      "--bind",
+      bind,
+    ],
+    {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+      },
+      stdio: "ignore",
+    },
+  );
+
+  try {
+    const statusResult = await waitStatusReady(baseUrl, 8_000);
+    if (statusResult === null) {
+      return {
+        ready: false,
+        start_exit_code: startResult.exit_code,
+        exit_code: proc.exitCode,
+        signal_code: proc.signalCode,
+      };
+    }
+    const body = asRecord(statusResult.body);
+    const routeDecision = asRecord(body.route_decision);
+    const routeObserved = asRecord(routeDecision.observed);
+    const states = providerRuntimeStatesFromManagementStatus(statusResult);
+    const failingState = findProviderState(states, "failing");
+    const successState = findProviderState(states, "success");
+    const failingErrorData = asRecord(failingState.last_error_data);
+    const failingErrorHealth = asRecord(failingState.last_error_health);
+    const successErrorHealth = asRecord(successState.last_error_health);
+    return {
+      ready: true,
+      start_exit_code: startResult.exit_code,
+      status_endpoint: statusResult,
+      management_has_route_decision: Object.keys(routeDecision).length > 0,
+      management_route_source_type: typeof routeDecision.source,
+      management_status_provider_state_count: states.length,
+      management_status_has_failing_state: Object.keys(failingState).length > 0,
+      management_status_has_success_state: Object.keys(successState).length > 0,
+      management_status_selected_provider: routeObserved.selected_provider ?? null,
+      management_status_selected_reason: routeObserved.reason ?? null,
+      management_success_last_error_class: successState.last_error_class ?? null,
+      management_success_last_error_health_penalty:
+        Number.isFinite(Number(successErrorHealth.score_penalty))
+          ? Number(successErrorHealth.score_penalty)
+          : null,
+      management_success_last_succeeded_at_type: typeof successState.last_succeeded_at,
+      management_failing_last_error_class: failingState.last_error_class ?? null,
+      management_failing_last_error_diagnostic: failingErrorData.diagnostic_kind ?? null,
+      management_failing_last_error_source: failingErrorData.source ?? null,
+      management_failing_last_error_stage: failingErrorData.stage ?? null,
+      management_failing_last_error_retryable: failingErrorData.retryable ?? null,
+      management_failing_last_error_health_penalty:
+        Number.isFinite(Number(failingErrorHealth.score_penalty))
+          ? Number(failingErrorHealth.score_penalty)
+          : null,
+      management_failing_last_error_health_reason: failingErrorHealth.reason ?? null,
+      management_failing_last_error_health_sticky_bypass:
+        failingErrorHealth.sticky_bypass_reason ?? null,
+      management_failing_redacts_body_preview:
+        !Object.prototype.hasOwnProperty.call(failingErrorData, "body_preview"),
+      management_failing_redacts_response_headers:
+        !Object.prototype.hasOwnProperty.call(failingErrorData, "response_headers"),
+    };
+  } finally {
+    await terminateProcess(proc);
+    await successModel.close();
+  }
+}
+
 async function runCli(argv) {
   const { command, options } = parseArgs(argv);
   switch (command) {
@@ -522,6 +712,11 @@ async function runCli(argv) {
     }
     case "reload-memory-store-from-project-toml": {
       const payload = await runReloadMemoryStoreFromProjectToml(options);
+      process.stdout.write(`${JSON.stringify(payload)}\n`);
+      return 0;
+    }
+    case "provider-failure-route-status-management-api": {
+      const payload = await runProviderFailureRouteStatusManagementApi(options);
       process.stdout.write(`${JSON.stringify(payload)}\n`);
       return 0;
     }

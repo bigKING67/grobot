@@ -134,6 +134,7 @@ export async function createRunServeWire(input: CreateRunServeWireInput): Promis
     interruptStorePath: context.interruptStorePath,
     memoryRecordsBySession,
     runtimeState,
+    routeDecisionInput: context.routeDecisionInput,
     memoryOperations,
     experiencePoolRuntime,
     persistMemoryStore,

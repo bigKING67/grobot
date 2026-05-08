@@ -4,6 +4,7 @@ import { requireManagementToken } from "./management-routes-auth";
 import { type ManagementRoutesContext } from "./management-routes-types";
 import { type ExperienceRecordState } from "../../tools/state/experience-pool/types";
 import { CLI_PRODUCT_ENGINE } from "../product-identity";
+import { serializeRouteDecisionSummary } from "../status/route-status";
 
 export type { ManagementRoutesContext } from "./management-routes-types";
 
@@ -33,7 +34,9 @@ export async function dispatchManagementRoutes(
   const path = rawUrl.split("?")[0] ?? "/";
 
   if (method === "GET" && path === "/api/v1/status") {
+    const query = context.parseQueryParams(rawUrl);
     const executionPlane = context.getExecutionPlane();
+    const routeDecision = context.getRouteDecision(query);
     const configReadPolicy = context.getConfigReadPolicy();
     const memoryStoreRuntime = context.getMemoryStoreRuntime();
     const experiencePoolState = context.getExperiencePoolState();
@@ -43,6 +46,7 @@ export async function dispatchManagementRoutes(
       project: context.projectName,
       work_dir: context.workDir,
       reload_count: context.getReloadCount(),
+      route_decision: serializeRouteDecisionSummary(routeDecision),
       execution_plane: {
         gateway_impl: executionPlane.gatewayImpl,
         runtime_impl: executionPlane.runtimeImpl,

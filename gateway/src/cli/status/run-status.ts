@@ -84,8 +84,7 @@ import {
 } from "./provider-probe-status";
 import {
   formatRouteStatusLines,
-  readRouteObservedRuntimeSummary,
-  resolveRouteDecisionSummary,
+  resolveRouteDecisionRuntimeSnapshot,
   serializeRouteDecisionSummary,
 } from "./route-status";
 import {
@@ -233,12 +232,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     scope: parseScope(sessionScopeRaw),
     subject: sessionSubject,
   });
-  const observedRuntime = readRouteObservedRuntimeSummary({
+  const routeDecision = resolveRouteDecisionRuntimeSnapshot({
     projectStateRoot,
     sessionNamespaceKey: sessionPreview,
-    orderedProviders: projectProviderPoolSnapshot?.providers.map((provider) => provider.name) ?? [],
-  });
-  const routeDecision = resolveRouteDecisionSummary({
     providerOverride: providerOverrideFromCli,
     providerEnv: providerOverrideFromEnv,
     providerPoolSnapshot: projectProviderPoolSnapshot
@@ -250,7 +246,6 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
           })),
         }
       : undefined,
-    observedRuntime,
     hasDirectRuntimeOverride,
     circuitFailures,
     circuitCooldownSecs,

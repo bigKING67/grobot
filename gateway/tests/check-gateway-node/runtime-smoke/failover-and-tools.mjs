@@ -260,6 +260,53 @@ export async function runRuntimeFailoverAndToolSmoke() {
     await providerFailureCleanAlternateModel.close();
   }
 
+  const managementProviderFailurePort = await reserveFreePort();
+  const managementProviderFailureWorkDir = makeTempDir("serve-provider-failure-status-work");
+  const managementProviderFailureResult = runContract(
+    "serve-smoke-contract.mjs",
+    "provider-failure-route-status-management-api",
+    [
+      "--repo-root",
+      repoRoot,
+      "--work-dir",
+      managementProviderFailureWorkDir,
+      "--bind",
+      `127.0.0.1:${managementProviderFailurePort}`,
+    ],
+    { timeoutMs: 240_000 },
+  );
+  const managementProviderFailurePayload = parseJsonOutput(
+    "serve-smoke-contract provider-failure-route-status-management-api",
+    managementProviderFailureResult.stdout,
+  );
+  assert.equal(managementProviderFailurePayload.ready, true);
+  assert.equal(managementProviderFailurePayload.start_exit_code, 0);
+  assert.equal(managementProviderFailurePayload.status_endpoint?.status, 200);
+  assert.equal(managementProviderFailurePayload.management_has_route_decision, true);
+  assert.equal(managementProviderFailurePayload.management_route_source_type, "string");
+  assert.equal(Number(managementProviderFailurePayload.management_status_provider_state_count) >= 2, true);
+  assert.equal(managementProviderFailurePayload.management_status_has_failing_state, true);
+  assert.equal(managementProviderFailurePayload.management_status_has_success_state, true);
+  assert.equal(managementProviderFailurePayload.management_status_selected_provider, "success");
+  assert.equal(managementProviderFailurePayload.management_status_selected_reason, "session_sticky_provider");
+  assert.equal(managementProviderFailurePayload.management_success_last_error_class, null);
+  assert.equal(managementProviderFailurePayload.management_success_last_error_health_penalty, 0);
+  assert.equal(managementProviderFailurePayload.management_success_last_succeeded_at_type, "string");
+  assert.equal(managementProviderFailurePayload.management_failing_last_error_class, "upstream_connect_failed");
+  assert.equal(managementProviderFailurePayload.management_failing_last_error_diagnostic, "upstream_connect_failed");
+  assert.equal(managementProviderFailurePayload.management_failing_last_error_source, "model.transport");
+  assert.equal(managementProviderFailurePayload.management_failing_last_error_stage, "chat_request");
+  assert.equal(managementProviderFailurePayload.management_failing_last_error_retryable, false);
+  assert.equal(managementProviderFailurePayload.management_failing_last_error_health_penalty, 800);
+  assert.equal(managementProviderFailurePayload.management_failing_last_error_health_reason, "last_error_nonretryable");
+  assert.equal(
+    managementProviderFailurePayload.management_failing_last_error_health_sticky_bypass,
+    "last_error_nonretryable",
+  );
+  assert.equal(managementProviderFailurePayload.management_failing_redacts_body_preview, true);
+  assert.equal(managementProviderFailurePayload.management_failing_redacts_response_headers, true);
+  logStep("serve-smoke-contract provider-failure-route-status-management-api");
+
   const toolCallFailureResult = runContract(
     "runtime-smoke-contract.mjs",
     "tool-call-fail-fast",

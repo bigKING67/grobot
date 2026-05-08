@@ -12,6 +12,7 @@ import {
   type ExperienceRecordState,
   type ExperienceSearchMatch,
 } from "../../tools/state/experience-pool/types";
+import { type RouteDecisionSummary } from "../status/route-status";
 
 export interface ExecutionPlaneState {
   gatewayImpl: string;
@@ -49,6 +50,7 @@ export interface ManagementRoutesContext {
   memoryStoreKey: string;
   getReloadCount: () => number;
   getExecutionPlane: () => ExecutionPlaneState;
+  getRouteDecision: (query: QueryParams) => RouteDecisionSummary;
   getConfigTomlPath: () => string | undefined;
   getConfigReadPolicy: () => ConfigReadPolicyState;
   getMemoryStoreRuntime: () => MemoryStoreRuntime;

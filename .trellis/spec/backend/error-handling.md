@@ -99,6 +99,14 @@ Implementation points:
      selected when it is otherwise the better route;
    - config/auth blockers rank behind clean providers;
    - trace fields include machine-readable penalty reason.
+7. `gateway/src/cli/serve/management-routes.ts` must expose the same safe
+   `route_decision` contract on `GET /api/v1/status`. The management API must
+   reuse the status route snapshot helpers instead of reimplementing provider
+   scoring, and must preserve the same unsafe-field exclusion for
+   `body_preview` and `response_headers`. Query parameters may select a session
+   namespace (`platform`, `tenant`, `session-scope` / `scope`,
+   `session-subject` / `subject`), but the returned provider health fields must
+   remain the same shape as `grobot status --json`.
 
 Memory and experience feedback must preserve the same safe structured signal
 without storing unsafe provider previews:

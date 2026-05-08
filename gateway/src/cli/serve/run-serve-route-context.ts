@@ -19,6 +19,10 @@ import {
   writeJson,
 } from "./http-utils";
 import { type ManagementRoutesContext } from "./management-routes";
+import {
+  resolveRunServeRouteDecision,
+  type RunServeRouteDecisionInput,
+} from "./run-serve-context";
 import { type RunServeRuntimeState } from "./run-serve-runtime-state";
 
 interface CreateRunServeRouteContextInput {
@@ -31,6 +35,7 @@ interface CreateRunServeRouteContextInput {
   interruptStorePath: string;
   memoryRecordsBySession: Map<string, Record<string, unknown>[]>;
   runtimeState: RunServeRuntimeState;
+  routeDecisionInput: RunServeRouteDecisionInput;
   memoryOperations: MemoryOperations;
   experiencePoolRuntime: ExperiencePoolRuntime;
   persistMemoryStore(): Promise<void>;
@@ -49,6 +54,35 @@ export function createRunServeRouteContext(
     memoryStoreKey: input.memoryStoreKey,
     getReloadCount: input.runtimeState.getReloadCount,
     getExecutionPlane: input.runtimeState.getExecutionPlane,
+    getRouteDecision: (query) =>
+      resolveRunServeRouteDecision(
+        {
+          ...input.routeDecisionInput,
+          configTomlPath: input.runtimeState.getConfigTomlPath(),
+        },
+        {
+          platform: queryParamStr(
+            query,
+            "platform",
+            input.routeDecisionInput.session.platform ?? "",
+          ),
+          tenant: queryParamStr(
+            query,
+            "tenant",
+            input.routeDecisionInput.session.tenant,
+          ),
+          scope: queryParamStr(
+            query,
+            "session-scope",
+            queryParamStr(query, "scope", input.routeDecisionInput.session.scope ?? ""),
+          ),
+          subject: queryParamStr(
+            query,
+            "session-subject",
+            queryParamStr(query, "subject", input.routeDecisionInput.session.subject),
+          ),
+        },
+      ),
     getConfigTomlPath: input.runtimeState.getConfigTomlPath,
     getConfigReadPolicy: input.runtimeState.getConfigReadPolicy,
     getMemoryStoreRuntime: () => {
