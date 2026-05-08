@@ -21,6 +21,7 @@ import {
   normalizeAttemptHistory,
   parseAttemptRecord,
   parseOptionalAttemptStage,
+  parseProviderFailureDiagnostics,
 } from "./attempts";
 import {
   deriveFailureStage,
@@ -93,6 +94,9 @@ function parseEvidenceRows(raw: unknown): ExperienceEvidence[] {
           sourceType: source,
           capturedAt: typeof row.capturedAt === "string" ? row.capturedAt : nowIso(),
         }),
+      providerFailureDiagnostics: parseProviderFailureDiagnostics(
+        row.providerFailureDiagnostics ?? row.provider_failure_diagnostics,
+      ),
     });
   }
   return evidence;
@@ -173,6 +177,9 @@ export function parseRecord(raw: unknown): ExperienceRecord | undefined {
     || undefined;
   const lastFailureStage = parseOptionalAttemptStage(record.lastFailureStage)
     ?? deriveFailureStage(inferredLastFailureClass ?? "", failureSignals[0] ?? "");
+  const lastProviderFailureDiagnostics = parseProviderFailureDiagnostics(
+    record.lastProviderFailureDiagnostics ?? record.last_provider_failure_diagnostics,
+  );
   const recoverySuccessCount = typeof record.recoverySuccessCount === "number"
     ? parseFiniteInt(record.recoverySuccessCount, 0)
     : computeRecoverySuccessCount(attemptHistory);
@@ -205,6 +212,7 @@ export function parseRecord(raw: unknown): ExperienceRecord | undefined {
     lastOutcome: record.lastOutcome === "failure" ? "failure" : "success",
     lastFailureClass: inferredLastFailureClass,
     lastFailureStage,
+    lastProviderFailureDiagnostics,
     lastSuccessStrategy: typeof record.lastSuccessStrategy === "string"
       ? compactWhitespace(record.lastSuccessStrategy).slice(0, 220)
       : sop[0],
@@ -250,11 +258,18 @@ export function cloneRecord(record: ExperienceRecord): ExperienceRecord {
     sop: [...record.sop],
     failureSignals: [...record.failureSignals],
     reuseGuardrails: [...record.reuseGuardrails],
-    attemptHistory: record.attemptHistory.map((attempt) => ({ ...attempt })),
+    attemptHistory: record.attemptHistory.map((attempt) => ({
+      ...attempt,
+      providerFailureDiagnostics: attempt.providerFailureDiagnostics ? { ...attempt.providerFailureDiagnostics } : undefined,
+    })),
+    lastProviderFailureDiagnostics: record.lastProviderFailureDiagnostics
+      ? { ...record.lastProviderFailureDiagnostics }
+      : undefined,
     conflictSignals: [...record.conflictSignals],
     evidence: record.evidence.map((item) => ({
       ...item,
       evidenceRef: item.evidenceRef ? { ...item.evidenceRef } : undefined,
+      providerFailureDiagnostics: item.providerFailureDiagnostics ? { ...item.providerFailureDiagnostics } : undefined,
     })),
   };
 }

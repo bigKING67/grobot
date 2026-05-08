@@ -1,5 +1,6 @@
 import { mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
+import { createExperiencePoolRuntime } from "../../cli/services/experience-pool-runtime";
 import { FileBackedExperiencePoolStore } from "../../tools/state/experience-pool/store";
 
 const tempRoot = resolve(
@@ -44,6 +45,18 @@ try {
     errorClass: "upstream_timeout",
     errorMessage: "provider timeout while refreshing auth token",
     toolContext: "provider=provider-a",
+    providerFailureDiagnostics: {
+      providerName: "provider-a",
+      diagnosticKind: "upstream_http_error",
+      source: "model.transport",
+      stage: "chat_http_status",
+      providerKind: "kimi",
+      model: "kimi-k2.5",
+      httpStatus: 503,
+      attempt: 3,
+      maxAttempts: 3,
+      retryable: false,
+    },
   });
 
   const afterFailure = store.getRecordById(created.record.id);
@@ -95,9 +108,27 @@ try {
     limit: 3,
     includeStates: ["active", "quarantined"],
   });
+  const diagnosticSearch = store.search({
+    tenant: "tenant-a",
+    team: "default",
+    user: "alice",
+    query: "upstream_http_error 503 retryable false provider-a",
+    limit: 3,
+    includeStates: ["active", "quarantined"],
+  });
 
   const reloaded = new FileBackedExperiencePoolStore(poolPath);
   const roundtrip = reloaded.getRecordById(created.record.id);
+  const failureAttempt = afterFailure?.attemptHistory.find((item) => item.outcome === "failure");
+  const runtime = createExperiencePoolRuntime({
+    poolPath,
+    publishMode: "auto",
+    recallLimit: 3,
+  });
+  const recallPrompt = runtime.buildRecallPrompt({
+    sessionKey: "feishu:tenant-a:dm:alice",
+    userText: "再次遇到 upstream_http_error 503 provider-a",
+  }).prompt;
 
   const payload = {
     created_record: created.created === true,
@@ -109,7 +140,22 @@ try {
     attempt_history_has_both_outcomes:
       (afterRecovery?.attemptHistory.some((item) => item.outcome === "success") ?? false)
       && (afterRecovery?.attemptHistory.some((item) => item.outcome === "failure") ?? false),
+    provider_failure_diagnostics_persisted_on_record:
+      afterFailure?.lastProviderFailureDiagnostics?.diagnosticKind === "upstream_http_error"
+      && afterFailure.lastProviderFailureDiagnostics.httpStatus === 503
+      && afterFailure.lastProviderFailureDiagnostics.retryable === false,
+    provider_failure_diagnostics_persisted_on_attempt:
+      failureAttempt?.providerFailureDiagnostics?.diagnosticKind === "upstream_http_error"
+      && failureAttempt.providerFailureDiagnostics.httpStatus === 503,
+    provider_failure_diagnostics_persisted_on_evidence:
+      afterFailure?.evidence.some((item) =>
+        item.source === "turn_failure"
+        && item.providerFailureDiagnostics?.diagnosticKind === "upstream_http_error"
+      ) ?? false,
     search_prefers_task_overlap: search[0]?.record.id === created.record.id,
+    search_matches_provider_failure_diagnostic:
+      diagnosticSearch[0]?.record.id === created.record.id
+      && (diagnosticSearch[0]?.matchedTaskSignals ?? []).some((item) => item.includes("provider_failure")),
     search_emits_task_or_scenario_signals:
       ((search[0]?.matchedTaskSignals?.length ?? 0) > 0)
       || ((search[0]?.matchedScenarioTags?.length ?? 0) > 0),
@@ -118,6 +164,13 @@ try {
     roundtrip_task_metadata_persisted:
       Boolean(roundtrip?.taskType && roundtrip.taskType.length > 0)
       && (roundtrip?.scenarioTags.length ?? 0) > 0,
+    roundtrip_provider_failure_diagnostics_persisted:
+      roundtrip?.lastProviderFailureDiagnostics?.diagnosticKind === "upstream_http_error"
+      && roundtrip.lastProviderFailureDiagnostics.httpStatus === 503,
+    recall_prompt_surfaces_provider_failure_diagnostics:
+      recallPrompt.includes("last_provider_failure:")
+      && recallPrompt.includes("diagnostic_kind=upstream_http_error")
+      && recallPrompt.includes("http_status=503"),
   };
 
   process.stdout.write(`${JSON.stringify(payload)}\n`);

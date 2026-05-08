@@ -1,4 +1,5 @@
 import { type RuntimeEvent } from "../../../models/types";
+import type { ExperienceProviderFailureDiagnostics } from "../../../tools/state/experience-pool/types";
 import {
   recordRuntimeToolSurfaceMetrics,
   summarizeRuntimeToolEvents,
@@ -197,33 +198,81 @@ export function buildProviderFailureToolContext(input: {
   providerName: string;
   errorData?: Record<string, unknown> | undefined;
 }): string {
+  const diagnostics = buildProviderFailureDiagnostics(input);
   const parts = [`provider=${input.providerName}`];
-  const errorData = input.errorData;
-  if (!errorData) {
+  if (!diagnostics) {
     return parts.join(" ");
   }
-  for (const key of [
-    "diagnostic_kind",
-    "source",
-    "stage",
-    "provider_kind",
-    "model",
-    "upstream_error_kind",
-  ]) {
-    const value = payloadString(errorData, key);
+  for (const [key, value] of [
+    ["diagnostic_kind", diagnostics.diagnosticKind],
+    ["source", diagnostics.source],
+    ["stage", diagnostics.stage],
+    ["provider_kind", diagnostics.providerKind],
+    ["model", diagnostics.model],
+    ["upstream_error_kind", diagnostics.upstreamErrorKind],
+  ] as const) {
     if (value) {
       parts.push(`${key}=${value}`);
     }
   }
-  for (const key of ["http_status", "attempt", "max_attempts"]) {
-    const value = payloadNumber(errorData, key);
+  for (const [key, value] of [
+    ["http_status", diagnostics.httpStatus],
+    ["attempt", diagnostics.attempt],
+    ["max_attempts", diagnostics.maxAttempts],
+  ] as const) {
     if (typeof value === "number") {
       parts.push(`${key}=${String(Math.trunc(value))}`);
     }
   }
-  const retryable = payloadBoolean(errorData, "retryable");
-  if (typeof retryable === "boolean") {
-    parts.push(`retryable=${String(retryable)}`);
+  if (typeof diagnostics.retryable === "boolean") {
+    parts.push(`retryable=${String(diagnostics.retryable)}`);
   }
   return parts.join(" ");
+}
+
+export function buildProviderFailureDiagnostics(input: {
+  providerName: string;
+  errorData?: Record<string, unknown> | undefined;
+}): ExperienceProviderFailureDiagnostics | undefined {
+  const errorData = input.errorData;
+  if (!errorData) {
+    return undefined;
+  }
+  const diagnostics: ExperienceProviderFailureDiagnostics = {};
+  let hasStructuredField = false;
+  const providerName = input.providerName.trim();
+  if (providerName) {
+    diagnostics.providerName = providerName;
+  }
+  for (const [sourceKey, targetKey] of [
+    ["diagnostic_kind", "diagnosticKind"],
+    ["source", "source"],
+    ["stage", "stage"],
+    ["provider_kind", "providerKind"],
+    ["model", "model"],
+    ["upstream_error_kind", "upstreamErrorKind"],
+  ] as const) {
+    const value = payloadString(errorData, sourceKey);
+    if (value) {
+      diagnostics[targetKey] = value;
+      hasStructuredField = true;
+    }
+  }
+  for (const [sourceKey, targetKey] of [
+    ["http_status", "httpStatus"],
+    ["attempt", "attempt"],
+    ["max_attempts", "maxAttempts"],
+  ] as const) {
+    const value = payloadNumber(errorData, sourceKey);
+    if (typeof value === "number") {
+      diagnostics[targetKey] = Math.trunc(value);
+      hasStructuredField = true;
+    }
+  }
+  const retryable = payloadBoolean(errorData, "retryable");
+  if (typeof retryable === "boolean") {
+    diagnostics.retryable = retryable;
+    hasStructuredField = true;
+  }
+  return hasStructuredField ? diagnostics : undefined;
 }

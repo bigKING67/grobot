@@ -45,6 +45,7 @@ import {
 } from "./turn/interrupt";
 import { buildTurnTerminalOutputSegments } from "./turn/output";
 import {
+  buildProviderFailureDiagnostics,
   buildProviderFailureToolContext,
   deriveFailureStageFromError,
   recordRuntimeToolMetricsForEvents,
@@ -578,6 +579,10 @@ export function createRunStartTurnRunner(
           errorMessage: compactMessage,
           failureStage: deriveFailureStageFromError(errorClass, compactMessage, errorData),
           toolContext: buildProviderFailureToolContext({
+            providerName: provider.name,
+            errorData,
+          }),
+          providerFailureDiagnostics: buildProviderFailureDiagnostics({
             providerName: provider.name,
             errorData,
           }),

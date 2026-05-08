@@ -2,6 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RuntimeEvent } from "../../../models/types";
 import {
+  buildProviderFailureDiagnostics,
   buildProviderFailureToolContext,
   deriveFailureStageFromError,
   recordRuntimeToolMetricsForEvents,
@@ -104,6 +105,33 @@ export function runRuntimeToolMetricsAndRepeatContracts(input: {
       && !providerFailureContext.includes("body_preview")
       && !providerFailureContext.includes("response_headers"),
     "provider failure tool context drops unsafe previews",
+  );
+  const providerFailureDiagnostics = buildProviderFailureDiagnostics({
+    providerName: "kimi",
+    errorData: {
+      diagnostic_kind: "upstream_http_error",
+      source: "model.transport",
+      stage: "chat_http_status",
+      http_status: 503,
+      attempt: 3,
+      max_attempts: 3,
+      retryable: false,
+      body_preview: "must_not_leak",
+      response_headers: { "x-request-id": "must_not_leak" },
+    },
+  });
+  expectEqual(
+    providerFailureDiagnostics?.diagnosticKind,
+    "upstream_http_error",
+    "provider failure diagnostics keep structured diagnostic kind",
+  );
+  expectEqual(providerFailureDiagnostics?.httpStatus, 503, "provider failure diagnostics keep http status");
+  expectEqual(providerFailureDiagnostics?.retryable, false, "provider failure diagnostics keep retryability");
+  expect(
+    !JSON.stringify(providerFailureDiagnostics).includes("must_not_leak")
+      && !JSON.stringify(providerFailureDiagnostics).includes("body_preview")
+      && !JSON.stringify(providerFailureDiagnostics).includes("response_headers"),
+    "provider failure diagnostics drops unsafe previews",
   );
   expectEqual(
     deriveFailureStageFromError("config_invalid", "invalid model config", {
@@ -594,6 +622,12 @@ export function runRuntimeToolMetricsAndRepeatContracts(input: {
     provider_failure_context_drops_unsafe_fields:
       !providerFailureContext.includes("body_preview")
       && !providerFailureContext.includes("response_headers"),
+    provider_failure_diagnostics_has_typed_fields:
+      providerFailureDiagnostics?.diagnosticKind === "upstream_http_error"
+      && providerFailureDiagnostics.httpStatus === 503,
+    provider_failure_diagnostics_drops_unsafe_fields:
+      !JSON.stringify(providerFailureDiagnostics).includes("body_preview")
+      && !JSON.stringify(providerFailureDiagnostics).includes("response_headers"),
     nonrecoverable_requires_user_intervention: nonRecoverableFeedback.requiresUserIntervention,
     repeated_recovery_escalation: true,
     recovery_action_catalog_size: input.knownRecoveryActions.length,

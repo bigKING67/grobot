@@ -23,6 +23,7 @@ import {
 import {
   appendAttempt,
   computeConsecutiveFailureCount,
+  parseProviderFailureDiagnostics,
 } from "./attempts";
 import {
   buildFailureSignal,
@@ -310,6 +311,7 @@ export class FileBackedExperiencePoolStore {
       lastOutcome: "success",
       lastFailureClass: undefined,
       lastFailureStage: undefined,
+      lastProviderFailureDiagnostics: undefined,
       lastSuccessStrategy: successStrategy,
       state: "active",
       createdAt: now,
@@ -363,6 +365,7 @@ export class FileBackedExperiencePoolStore {
 
     const now = nowIso();
     const failureStage = deriveFailureStage(input.errorClass, input.errorMessage, input.failureStage);
+    const providerFailureDiagnostics = parseProviderFailureDiagnostics(input.providerFailureDiagnostics);
     const failureSignal = buildFailureSignal({
       stage: failureStage,
       errorClass: input.errorClass,
@@ -377,6 +380,7 @@ export class FileBackedExperiencePoolStore {
       errorClass: compactWhitespace(input.errorClass).slice(0, 120) || "unknown_error",
       errorMessage: compactWhitespace(input.errorMessage).slice(0, 220),
       toolContext: input.toolContext ? compactWhitespace(input.toolContext).slice(0, 160) : undefined,
+      providerFailureDiagnostics,
     };
     found.failureCount += 1;
     found.lastOutcome = "failure";
@@ -384,6 +388,7 @@ export class FileBackedExperiencePoolStore {
     found.updatedAt = now;
     found.lastFailureClass = failureAttempt.errorClass;
     found.lastFailureStage = failureStage;
+    found.lastProviderFailureDiagnostics = providerFailureDiagnostics;
     found.scenarioTags = uniqueTrimmed(
       [...found.scenarioTags, ...deriveScenarioTags(`${input.userText} ${input.errorClass} ${input.errorMessage}`)],
       MAX_SCENARIO_TAGS,
@@ -414,6 +419,7 @@ export class FileBackedExperiencePoolStore {
           sourceType: "turn_failure",
           capturedAt: now,
         },
+        providerFailureDiagnostics,
       },
       ...found.evidence,
     ].slice(0, MAX_EVIDENCE);

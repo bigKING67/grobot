@@ -1,6 +1,7 @@
 import {
   type ExperienceRecord,
   type ExperienceSearchMatch,
+  type ExperienceProviderFailureDiagnostics,
 } from "../types";
 import {
   deriveScenarioTags,
@@ -45,14 +46,20 @@ export function scoreRecordForQuery(
   profile: ExperienceQueryProfile,
 ): ExperienceSearchMatch {
   const signatureText = `${record.signature} ${record.summary}`.toLowerCase();
+  const diagnosticsText = providerFailureDiagnosticsText(record.lastProviderFailureDiagnostics).toLowerCase();
   const keywordSet = new Set<string>(record.keywords.map((token) => token.toLowerCase()));
   const queryTokens = profile.tokens.map((token) => token.toLowerCase());
   const matchedTokens: string[] = [];
+  const matchedDiagnosticTokens: string[] = [];
   let lexicalOverlap = 0;
   for (const token of queryTokens) {
     if (keywordSet.has(token) || signatureText.includes(token)) {
       lexicalOverlap += 1;
       matchedTokens.push(token);
+      continue;
+    }
+    if (diagnosticsText.includes(token)) {
+      matchedDiagnosticTokens.push(token);
     }
   }
 
@@ -70,6 +77,7 @@ export function scoreRecordForQuery(
   const matchedScenarioTags = record.scenarioTags.filter((tag) => queryScenarioSet.has(tag.toLowerCase()));
 
   const lexicalScore = lexicalOverlap * 16;
+  const diagnosticsScore = matchedDiagnosticTokens.length * 10;
   const taskScore = taskTokenOverlap * 22;
   const taskTypeScore = matchedTaskSignals.some((item) => item.startsWith("task_type:")) ? 14 : 0;
   const scenarioScore = matchedScenarioTags.length * 18;
@@ -89,6 +97,7 @@ export function scoreRecordForQuery(
   const statePenalty = record.state === "active" ? 0 : record.state === "quarantined" ? 20 : 80;
 
   const score = lexicalScore
+    + diagnosticsScore
     + taskScore
     + taskTypeScore
     + scenarioScore
@@ -105,8 +114,30 @@ export function scoreRecordForQuery(
   return {
     record,
     score: Number(score.toFixed(4)),
-    matchedTokens: uniqueTrimmed(matchedTokens, 8),
-    matchedTaskSignals: uniqueTrimmed(matchedTaskSignals, 6),
+    matchedTokens: uniqueTrimmed([...matchedTokens, ...matchedDiagnosticTokens], 8),
+    matchedTaskSignals: uniqueTrimmed([
+      ...matchedTaskSignals,
+      ...matchedDiagnosticTokens.map((token) => `provider_failure:${token}`),
+    ], 6),
     matchedScenarioTags: uniqueTrimmed(matchedScenarioTags, 6),
   };
+}
+
+function providerFailureDiagnosticsText(raw: ExperienceProviderFailureDiagnostics | undefined): string {
+  if (!raw) {
+    return "";
+  }
+  return [
+    raw.providerName,
+    raw.diagnosticKind,
+    raw.source,
+    raw.stage,
+    raw.providerKind,
+    raw.model,
+    raw.upstreamErrorKind,
+    typeof raw.httpStatus === "number" ? `http_status_${String(raw.httpStatus)} ${String(raw.httpStatus)}` : "",
+    typeof raw.attempt === "number" ? `attempt_${String(raw.attempt)} ${String(raw.attempt)}` : "",
+    typeof raw.maxAttempts === "number" ? `max_attempts_${String(raw.maxAttempts)} ${String(raw.maxAttempts)}` : "",
+    typeof raw.retryable === "boolean" ? `retryable_${String(raw.retryable)}` : "",
+  ].filter(Boolean).join(" ");
 }

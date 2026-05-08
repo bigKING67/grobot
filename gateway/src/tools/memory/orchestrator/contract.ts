@@ -43,8 +43,23 @@ export interface MemoryOrchestratorExperienceRecord {
   recoverySuccessCount?: number;
   consecutiveFailureCount?: number;
   lastFailureClass?: string;
+  lastProviderFailureDiagnostics?: MemoryOrchestratorProviderFailureDiagnostics;
   lastSuccessStrategy?: string;
   state: "active" | "quarantined" | "disabled";
+}
+
+export interface MemoryOrchestratorProviderFailureDiagnostics {
+  providerName?: string;
+  diagnosticKind?: string;
+  source?: string;
+  stage?: string;
+  providerKind?: string;
+  model?: string;
+  upstreamErrorKind?: string;
+  httpStatus?: number;
+  attempt?: number;
+  maxAttempts?: number;
+  retryable?: boolean;
 }
 
 export interface MemoryOrchestratorExperienceSearchMatch {
@@ -161,6 +176,7 @@ export interface MemoryOrchestratorExperienceAdapter {
     errorMessage: string;
     failureStage?: "planning" | "implementation" | "verification" | "runtime" | "unknown";
     toolContext?: string;
+    providerFailureDiagnostics?: MemoryOrchestratorProviderFailureDiagnostics;
   }): MemoryOrchestratorExperienceFailureResult;
 }
 
@@ -231,6 +247,7 @@ export type MemoryOrchestratorFeedbackInput =
     traceId?: string;
     failureStage?: "planning" | "implementation" | "verification" | "runtime" | "unknown";
     toolContext?: string;
+    providerFailureDiagnostics?: MemoryOrchestratorProviderFailureDiagnostics;
   }
   | {
     type: "verification_failure";

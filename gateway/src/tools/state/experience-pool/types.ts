@@ -23,6 +23,21 @@ export interface ExperienceEvidence {
   errorClass?: string;
   capturedAt: string;
   evidenceRef?: ExperienceEvidenceRef;
+  providerFailureDiagnostics?: ExperienceProviderFailureDiagnostics;
+}
+
+export interface ExperienceProviderFailureDiagnostics {
+  providerName?: string;
+  diagnosticKind?: string;
+  source?: string;
+  stage?: string;
+  providerKind?: string;
+  model?: string;
+  upstreamErrorKind?: string;
+  httpStatus?: number;
+  attempt?: number;
+  maxAttempts?: number;
+  retryable?: boolean;
 }
 
 export interface ExperienceAttemptRecord {
@@ -36,6 +51,7 @@ export interface ExperienceAttemptRecord {
   errorClass?: string;
   errorMessage?: string;
   toolContext?: string;
+  providerFailureDiagnostics?: ExperienceProviderFailureDiagnostics;
 }
 
 export interface ExperienceRecord {
@@ -63,6 +79,7 @@ export interface ExperienceRecord {
   lastOutcome: "success" | "failure";
   lastFailureClass?: string;
   lastFailureStage?: ExperienceAttemptStage;
+  lastProviderFailureDiagnostics?: ExperienceProviderFailureDiagnostics;
   lastSuccessStrategy?: string;
   state: ExperienceRecordState;
   createdAt: string;
@@ -118,6 +135,7 @@ export interface ExperienceFeedbackFailureInput {
   errorMessage: string;
   failureStage?: ExperienceAttemptStage;
   toolContext?: string;
+  providerFailureDiagnostics?: ExperienceProviderFailureDiagnostics;
 }
 
 export interface ExperienceUpsertResult {

@@ -5,6 +5,7 @@ import {
   type ExperienceAttemptOutcome,
   type ExperienceAttemptRecord,
   type ExperienceAttemptStage,
+  type ExperienceProviderFailureDiagnostics,
 } from "../types";
 import { compactWhitespace, nowIso } from "./utils";
 
@@ -38,6 +39,71 @@ function parseAttemptOutcome(raw: unknown): ExperienceAttemptOutcome {
   return raw === "failure" ? "failure" : "success";
 }
 
+function compactDiagnosticsString(value: unknown, maxLength = 120): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = compactWhitespace(value);
+  return normalized ? normalized.slice(0, maxLength) : undefined;
+}
+
+function finiteDiagnosticsInt(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : undefined;
+}
+
+export function parseProviderFailureDiagnostics(raw: unknown): ExperienceProviderFailureDiagnostics | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return undefined;
+  }
+  const record = raw as Record<string, unknown>;
+  const diagnostics: ExperienceProviderFailureDiagnostics = {};
+  const providerName = compactDiagnosticsString(record.providerName ?? record.provider_name ?? record.provider, 80);
+  const diagnosticKind = compactDiagnosticsString(record.diagnosticKind ?? record.diagnostic_kind, 120);
+  const source = compactDiagnosticsString(record.source, 120);
+  const stage = compactDiagnosticsString(record.stage, 120);
+  const providerKind = compactDiagnosticsString(record.providerKind ?? record.provider_kind, 80);
+  const model = compactDiagnosticsString(record.model, 120);
+  const upstreamErrorKind = compactDiagnosticsString(record.upstreamErrorKind ?? record.upstream_error_kind, 120);
+  const httpStatus = finiteDiagnosticsInt(record.httpStatus ?? record.http_status);
+  const attempt = finiteDiagnosticsInt(record.attempt);
+  const maxAttempts = finiteDiagnosticsInt(record.maxAttempts ?? record.max_attempts);
+  const retryable = record.retryable;
+  if (providerName) {
+    diagnostics.providerName = providerName;
+  }
+  if (diagnosticKind) {
+    diagnostics.diagnosticKind = diagnosticKind;
+  }
+  if (source) {
+    diagnostics.source = source;
+  }
+  if (stage) {
+    diagnostics.stage = stage;
+  }
+  if (providerKind) {
+    diagnostics.providerKind = providerKind;
+  }
+  if (model) {
+    diagnostics.model = model;
+  }
+  if (upstreamErrorKind) {
+    diagnostics.upstreamErrorKind = upstreamErrorKind;
+  }
+  if (typeof httpStatus === "number") {
+    diagnostics.httpStatus = httpStatus;
+  }
+  if (typeof attempt === "number") {
+    diagnostics.attempt = attempt;
+  }
+  if (typeof maxAttempts === "number") {
+    diagnostics.maxAttempts = maxAttempts;
+  }
+  if (typeof retryable === "boolean") {
+    diagnostics.retryable = retryable;
+  }
+  return Object.keys(diagnostics).length > 0 ? diagnostics : undefined;
+}
+
 export function parseAttemptRecord(raw: unknown): ExperienceAttemptRecord | undefined {
   if (typeof raw !== "object" || raw === null) {
     return undefined;
@@ -59,6 +125,9 @@ export function parseAttemptRecord(raw: unknown): ExperienceAttemptRecord | unde
     errorClass: typeof record.errorClass === "string" ? compactWhitespace(record.errorClass).slice(0, 120) : undefined,
     errorMessage: typeof record.errorMessage === "string" ? compactWhitespace(record.errorMessage).slice(0, 220) : undefined,
     toolContext: typeof record.toolContext === "string" ? compactWhitespace(record.toolContext).slice(0, 160) : undefined,
+    providerFailureDiagnostics: parseProviderFailureDiagnostics(
+      record.providerFailureDiagnostics ?? record.provider_failure_diagnostics,
+    ),
   };
 }
 
@@ -78,6 +147,7 @@ export function normalizeAttemptHistory(rows: readonly ExperienceAttemptRecord[]
       errorClass: row.errorClass ? compactWhitespace(row.errorClass).slice(0, 120) : undefined,
       errorMessage: row.errorMessage ? compactWhitespace(row.errorMessage).slice(0, 220) : undefined,
       toolContext: row.toolContext ? compactWhitespace(row.toolContext).slice(0, 160) : undefined,
+      providerFailureDiagnostics: parseProviderFailureDiagnostics(row.providerFailureDiagnostics),
     }))
     .filter((row) => Boolean(row.capturedAt))
     .sort((left, right) => right.capturedAt.localeCompare(left.capturedAt))

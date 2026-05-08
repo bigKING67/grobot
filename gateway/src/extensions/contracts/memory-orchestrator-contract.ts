@@ -13,7 +13,12 @@ const defaultPolicy = defaultMemoryOrchestratorPolicy();
 const gaSuccessCalls: Array<{ sessionKey: string; traceId: string }> = [];
 const gaFailureCalls: Array<{ sessionKey: string; errorClass: string }> = [];
 const experienceSuccessCalls: Array<{ sessionKey: string; traceId: string }> = [];
-const experienceFailureCalls: Array<{ sessionKey: string; errorClass: string }> = [];
+const experienceFailureCalls: Array<{
+  sessionKey: string;
+  errorClass: string;
+  diagnosticKind?: string;
+  httpStatus?: number;
+}> = [];
 
 const gaAdapter: MemoryOrchestratorGaAdapter = {
   listMemory: () => [
@@ -120,6 +125,8 @@ const experienceAdapter: MemoryOrchestratorExperienceAdapter = {
     experienceFailureCalls.push({
       sessionKey: input.sessionKey,
       errorClass: input.errorClass,
+      diagnosticKind: input.providerFailureDiagnostics?.diagnosticKind,
+      httpStatus: input.providerFailureDiagnostics?.httpStatus,
     });
     return {
       matched: true,
@@ -271,6 +278,14 @@ const turnFailureFeedback = orchestrator.feedback({
   providerName: "provider-a",
   errorClass: "upstream_timeout",
   errorMessage: "timeout",
+  providerFailureDiagnostics: {
+    providerName: "provider-a",
+    diagnosticKind: "upstream_http_error",
+    source: "model.transport",
+    stage: "chat_http_status",
+    httpStatus: 503,
+    retryable: false,
+  },
 });
 
 const policy = orchestrator.policySnapshot();
@@ -324,6 +339,12 @@ const payload = {
     verificationFailureFeedback.stderrEvents.some((line) => line.includes("[experience] event=failure_feedback")),
   feedback_turn_failure_calls_ga: gaFailureCalls.length === 1,
   feedback_turn_failure_calls_experience: experienceFailureCalls.length === 2,
+  feedback_turn_failure_preserves_provider_diagnostics:
+    experienceFailureCalls.some((call) =>
+      call.errorClass === "upstream_timeout"
+      && call.diagnosticKind === "upstream_http_error"
+      && call.httpStatus === 503
+    ),
   feedback_turn_failure_event:
     turnFailureFeedback.stderrEvents.some((line) => line.includes("[experience] event=failure_feedback")),
 };

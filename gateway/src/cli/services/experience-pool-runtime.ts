@@ -2,6 +2,7 @@ import { FileBackedExperiencePoolStore } from "../../tools/state/experience-pool
 import {
   type ExperienceAttemptStage,
   type ExperienceEvidenceRef,
+  type ExperienceProviderFailureDiagnostics,
   type ExperienceRecord,
   type ExperienceRecordState,
   type ExperienceSearchMatch,
@@ -41,6 +42,7 @@ interface RegisterTurnFailureInput {
   errorMessage: string;
   failureStage?: ExperienceAttemptStage;
   toolContext?: string;
+  providerFailureDiagnostics?: ExperienceProviderFailureDiagnostics;
 }
 
 export interface ExperienceRecallResult {
@@ -216,6 +218,10 @@ function buildRecallPromptFromMatches(matches: readonly ExperienceSearchMatch[])
         `  resilience: recovery=${String(record.recoverySuccessCount)} consecutive_failure=${String(record.consecutiveFailureCount)}`,
       );
     }
+    const providerFailure = formatProviderFailureDiagnostics(record.lastProviderFailureDiagnostics);
+    if (providerFailure) {
+      lines.push(`  last_provider_failure: ${providerFailure}`);
+    }
     if (record.failureSignals.length > 0) {
       lines.push(`  avoid: ${record.failureSignals.slice(0, 3).join(" ; ")}`);
     }
@@ -224,6 +230,35 @@ function buildRecallPromptFromMatches(matches: readonly ExperienceSearchMatch[])
     }
   }
   return lines.join("\n");
+}
+
+function formatProviderFailureDiagnostics(raw: ExperienceProviderFailureDiagnostics | undefined): string | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  const parts: string[] = [];
+  if (raw.providerName) {
+    parts.push(`provider=${raw.providerName}`);
+  }
+  if (raw.diagnosticKind) {
+    parts.push(`diagnostic_kind=${raw.diagnosticKind}`);
+  }
+  if (raw.source) {
+    parts.push(`source=${raw.source}`);
+  }
+  if (raw.stage) {
+    parts.push(`stage=${raw.stage}`);
+  }
+  if (typeof raw.httpStatus === "number") {
+    parts.push(`http_status=${String(raw.httpStatus)}`);
+  }
+  if (typeof raw.attempt === "number" || typeof raw.maxAttempts === "number") {
+    parts.push(`attempts=${String(raw.attempt ?? "<none>")}/${String(raw.maxAttempts ?? "<none>")}`);
+  }
+  if (typeof raw.retryable === "boolean") {
+    parts.push(`retryable=${String(raw.retryable)}`);
+  }
+  return parts.length > 0 ? parts.join(" ") : undefined;
 }
 
 export function createExperiencePoolRuntime(
@@ -335,6 +370,7 @@ export function createExperiencePoolRuntime(
       errorMessage,
       failureStage,
       toolContext,
+      providerFailureDiagnostics,
     }): ExperienceFailureFeedbackResult => {
       const scope = parseSessionScope(sessionKey, teamDefault);
       const result = store.registerFailure({
@@ -347,6 +383,7 @@ export function createExperiencePoolRuntime(
         errorMessage: redactSensitiveText(errorMessage),
         failureStage,
         toolContext: toolContext ? redactSensitiveText(toolContext) : undefined,
+        providerFailureDiagnostics,
       });
       if (!result.matchedRecord) {
         return {

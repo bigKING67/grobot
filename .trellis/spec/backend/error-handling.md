@@ -86,6 +86,29 @@ Implementation points:
    - config/auth blockers rank behind clean providers;
    - trace fields include machine-readable penalty reason.
 
+Memory and experience feedback must preserve the same safe structured signal
+without storing unsafe provider previews:
+
+1. `gateway/src/cli/start/turn/diagnostics.ts` is the gateway boundary for
+   converting runtime provider `error_data` into safe
+   `ExperienceProviderFailureDiagnostics` fields. It may include provider,
+   diagnostic kind, source/stage, provider kind/model, upstream error kind,
+   HTTP status, attempt counts, and retryability.
+2. Experience persistence must store structured diagnostics separately from the
+   legacy `toolContext` string:
+   - `ExperienceAttemptRecord.providerFailureDiagnostics`
+   - `ExperienceRecord.lastProviderFailureDiagnostics`
+   - `ExperienceEvidence.providerFailureDiagnostics` for `turn_failure`
+3. These structured fields must not include `body_preview`,
+   `response_headers`, raw provider request/response bodies, or arbitrary
+   unsafe payload previews.
+4. Experience recall may surface only compact safe diagnostics (for example
+   `diagnostic_kind=upstream_http_error http_status=503 retryable=false`) so the
+   next turn can reason about retry/switch/config actions without leaking raw
+   upstream content.
+5. Contracts that touch memory/experience failure feedback must verify both
+   typed persistence and unsafe-field exclusion.
+
 ---
 
 ## Common Mistakes

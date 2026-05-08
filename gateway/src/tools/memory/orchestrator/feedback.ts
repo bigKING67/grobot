@@ -83,6 +83,7 @@ export function processMemoryFeedback(
     errorMessage: request.errorMessage,
     failureStage: request.failureStage,
     toolContext: request.toolContext,
+    providerFailureDiagnostics: request.providerFailureDiagnostics,
   });
   if (failure.matched) {
     stderrEvents.push(
