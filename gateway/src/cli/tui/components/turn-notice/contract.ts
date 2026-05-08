@@ -2,6 +2,7 @@ export interface RuntimeFailureEntry {
   providerName: string;
   errorClass: string;
   errorMessage: string;
+  errorData?: Record<string, unknown> | undefined;
 }
 
 export interface RuntimeFailureSummaryInput {

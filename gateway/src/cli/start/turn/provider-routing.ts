@@ -33,6 +33,7 @@ export interface ProviderAttemptFailure {
   providerName: string;
   errorClass: string;
   errorMessage: string;
+  errorData?: Record<string, unknown> | undefined;
 }
 
 export interface ProviderFlowState {

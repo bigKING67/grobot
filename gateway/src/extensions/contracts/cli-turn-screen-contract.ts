@@ -26,6 +26,15 @@ const failureSummary = renderRuntimeFailureSummary({
       providerName: "beta",
       errorClass: "runtime_error",
       errorMessage: "server failed",
+      errorData: {
+        diagnostic_kind: "upstream_http_error",
+        http_status: 503,
+        attempt: 3,
+        max_attempts: 3,
+        retryable: false,
+        body_preview: "must_not_leak",
+        response_headers: { "x-request-id": "must_not_leak" },
+      },
     },
   ],
   orderedProviders: [
@@ -83,6 +92,14 @@ const payload = {
     && stripAnsi(failureSummary).includes("⎿  Failed providers alpha · Request timed out, beta · Runtime error"),
   failure_summary_has_last_error_detail:
     stripAnsi(failureSummary).includes("⎿  Last error Server failed"),
+  failure_summary_surfaces_safe_provider_diagnostics:
+    stripAnsi(failureSummary).includes("Provider HTTP 503")
+    && stripAnsi(failureSummary).includes("attempt 3/3")
+    && stripAnsi(failureSummary).includes("not retryable"),
+  failure_summary_drops_unsafe_provider_preview:
+    !stripAnsi(failureSummary).includes("must_not_leak")
+    && !stripAnsi(failureSummary).includes("body_preview")
+    && !stripAnsi(failureSummary).includes("response_headers"),
   failure_summary_uses_reference_detail_glyph:
     stripAnsi(failureSummary).includes("  ⎿  Last error")
     && stripAnsi(failureSummary).includes("  ⎿  Attempt order")

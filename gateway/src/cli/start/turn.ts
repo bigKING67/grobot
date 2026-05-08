@@ -569,6 +569,7 @@ export function createRunStartTurnRunner(
           providerName: provider.name,
           errorClass,
           errorMessage: compactMessage,
+          errorData,
         });
         const feedback = input.memoryOrchestrator.feedback({
           type: "turn_failure",

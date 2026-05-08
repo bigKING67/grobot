@@ -13,8 +13,76 @@ import type {
 const DEFAULT_NOTICE_COLUMNS = 96;
 const MAX_ERROR_DETAIL_LINES = 2;
 
+function payloadString(payload: Record<string, unknown> | undefined, key: string): string {
+  const value = payload?.[key];
+  return typeof value === "string" ? compactNoticeText(value) : "";
+}
+
+function payloadNumber(payload: Record<string, unknown> | undefined, key: string): number | undefined {
+  const value = payload?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : undefined;
+}
+
+function payloadBoolean(payload: Record<string, unknown> | undefined, key: string): boolean | undefined {
+  const value = payload?.[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function humanProviderDiagnosticKind(value: string): string {
+  switch (value) {
+    case "config_missing":
+    case "semantic_config_missing":
+      return "Configuration missing";
+    case "config_invalid":
+    case "semantic_index_config_invalid":
+      return "Invalid configuration";
+    case "upstream_http_error":
+      return "Provider HTTP error";
+    case "upstream_connect_failed":
+      return "Provider connection failed";
+    case "upstream_timeout":
+      return "Provider timeout";
+    case "upstream_invalid_json":
+      return "Provider invalid response";
+    default:
+      return value.replace(/_/g, " ");
+  }
+}
+
+function formatProviderFailureDiagnostics(errorData: Record<string, unknown> | undefined): string {
+  if (!errorData) {
+    return "";
+  }
+  const parts: string[] = [];
+  const diagnosticKind = payloadString(errorData, "diagnostic_kind");
+  const httpStatus = payloadNumber(errorData, "http_status");
+  if (diagnosticKind && diagnosticKind === "upstream_http_error" && typeof httpStatus === "number") {
+    parts.push(`Provider HTTP ${String(httpStatus)}`);
+  } else if (diagnosticKind) {
+    parts.push(humanProviderDiagnosticKind(diagnosticKind));
+  }
+  if (typeof httpStatus === "number" && diagnosticKind !== "upstream_http_error") {
+    parts.push(`HTTP ${String(httpStatus)}`);
+  }
+  const attempt = payloadNumber(errorData, "attempt");
+  const maxAttempts = payloadNumber(errorData, "max_attempts");
+  if (typeof attempt === "number" || typeof maxAttempts === "number") {
+    parts.push(`attempt ${String(attempt ?? "?")}/${String(maxAttempts ?? "?")}`);
+  }
+  const retryable = payloadBoolean(errorData, "retryable");
+  if (typeof retryable === "boolean") {
+    parts.push(retryable ? "retryable" : "not retryable");
+  }
+  return parts.slice(0, 4).join(" · ");
+}
+
 function formatProviderFailure(item: RuntimeFailureSummaryInput["failures"][number]): string {
-  return `${compactNoticeText(item.providerName, "unknown provider")} · ${formatTuiErrorClassLabel(item.errorClass) || "Runtime error"}`;
+  const diagnostic = formatProviderFailureDiagnostics(item.errorData);
+  return [
+    compactNoticeText(item.providerName, "unknown provider"),
+    formatTuiErrorClassLabel(item.errorClass) || "Runtime error",
+    diagnostic,
+  ].filter(Boolean).join(" · ");
 }
 
 function formatRuntimeErrorLine(line: string): string {

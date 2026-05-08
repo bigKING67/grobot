@@ -76,6 +76,9 @@ Implementation points:
    diagnostics via `RouteDecisionTrace.scoreOrder[].lastErrorPenalty`,
    `RouteDecisionTrace.scoreOrder[].lastErrorReason`, and stderr
    `last_error_penalties=...`.
+   Final turn-failure summaries may render compact human labels from the same
+   safe fields (diagnostic kind, HTTP status, attempt counts, retryability) but
+   must not print raw previews or response headers.
 5. `gateway/src/extensions/contracts/provider-routing-contract.ts` must cover
    retry decisions and route ordering together:
    - non-retryable sticky provider is bypassed when a clean alternate is open;
