@@ -278,6 +278,26 @@ export async function runPlanCommandContracts() {
     startPlanFailurePolicyContractPayload.planning_provider_failure_diagnostic_matches,
     true,
   );
+  assert.equal(
+    startPlanFailurePolicyContractPayload.planning_provider_structured_retryable_false,
+    true,
+  );
+  assert.equal(
+    startPlanFailurePolicyContractPayload.planning_provider_structured_http_status,
+    true,
+  );
+  assert.equal(
+    startPlanFailurePolicyContractPayload.planning_provider_structured_attempts_exhausted,
+    true,
+  );
+  assert.equal(
+    startPlanFailurePolicyContractPayload.planning_provider_structured_hint_actionable,
+    true,
+  );
+  assert.equal(
+    startPlanFailurePolicyContractPayload.planning_provider_exhausted_hint_actionable,
+    true,
+  );
   logStep("start-plan-failure-policy-contract");
 
   const bridgePlanFailurePolicyContractResult = runCommand("npx", [

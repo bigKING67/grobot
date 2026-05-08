@@ -1,4 +1,9 @@
 import { type SessionProviderRuntimeState } from "./session-registry";
+import {
+  hasAttemptsExhausted,
+  recordBooleanField,
+  recordFiniteNumberField,
+} from "./turn/provider-health";
 
 export type PlanFailurePhase = "planning" | "applying";
 export type PlanFailureAction = "fail" | "degrade";
@@ -17,12 +22,20 @@ export interface PlanFailureDecision {
   diagnosticCode: PlanFailureDiagnosticCode;
   providerName?: string;
   errorClass?: string;
+  diagnosticKind?: string;
+  httpStatus?: number;
+  retryable?: boolean;
+  attemptsExhausted?: boolean;
   hint?: string;
 }
 
 interface RecentProviderFailure {
   providerName: string;
   errorClass: string;
+  diagnosticKind?: string;
+  httpStatus?: number;
+  retryable?: boolean;
+  attemptsExhausted: boolean;
   failedAtMs: number;
 }
 
@@ -59,13 +72,26 @@ function toIsoTimestampMs(raw: string | undefined): number | undefined {
   return parsed;
 }
 
+function recordStringField(
+  value: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const raw = value?.[key];
+  if (typeof raw !== "string") {
+    return undefined;
+  }
+  const normalized = raw.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
 function resolveRecentProviderFailure(
   providerStates: readonly SessionProviderRuntimeState[],
   minFailedAtMs: number,
 ): RecentProviderFailure | undefined {
   let latest: RecentProviderFailure | undefined;
   for (const state of providerStates) {
-    const errorClass = state.last_error_class?.trim();
+    const diagnosticKind = recordStringField(state.last_error_data, "diagnostic_kind");
+    const errorClass = diagnosticKind ?? state.last_error_class?.trim();
     const failedAtIso = state.last_failed_at?.trim();
     if (!errorClass || !failedAtIso) {
       continue;
@@ -78,6 +104,10 @@ function resolveRecentProviderFailure(
       latest = {
         providerName: state.provider_name,
         errorClass,
+        diagnosticKind,
+        httpStatus: recordFiniteNumberField(state.last_error_data, "http_status"),
+        retryable: recordBooleanField(state.last_error_data, "retryable"),
+        attemptsExhausted: hasAttemptsExhausted(state.last_error_data),
         failedAtMs,
       };
     }
@@ -104,6 +134,28 @@ function resolveSemanticDiagnosticCode(errorClass: string): PlanFailureDiagnosti
   return SEMANTIC_CLASS_DIAGNOSTIC_MAP[errorClass];
 }
 
+function formatProviderFailureHint(failure: RecentProviderFailure): string {
+  const semanticHint = resolveSemanticDiagnosticCode(failure.errorClass)
+    ? formatSemanticDegradeHint(failure.errorClass)
+    : undefined;
+  if (semanticHint) {
+    return semanticHint;
+  }
+  const httpStatus = typeof failure.httpStatus === "number"
+    ? ` Provider returned HTTP ${String(Math.trunc(failure.httpStatus))}.`
+    : "";
+  if (failure.retryable === false) {
+    return `Fix provider config or switch provider/model before retrying.${httpStatus}`;
+  }
+  if (failure.attemptsExhausted) {
+    return `Provider retry budget is exhausted; wait for recovery or switch provider/model.${httpStatus}`;
+  }
+  if (failure.retryable === true) {
+    return `Retry after a short wait, or switch provider/model if this repeats.${httpStatus}`;
+  }
+  return `Inspect provider status, then retry or switch provider/model.${httpStatus}`;
+}
+
 export function resolvePlanFailureDecision(
   input: ResolvePlanFailureDecisionInput,
 ): PlanFailureDecision {
@@ -128,6 +180,10 @@ export function resolvePlanFailureDecision(
         ?? "PLAN_PROVIDER_RUNTIME_FAILURE",
       providerName: recentFailure.providerName,
       errorClass: recentFailure.errorClass,
+      diagnosticKind: recentFailure.diagnosticKind,
+      httpStatus: recentFailure.httpStatus,
+      retryable: recentFailure.retryable,
+      attemptsExhausted: recentFailure.attemptsExhausted,
       hint: formatSemanticDegradeHint(recentFailure.errorClass),
     };
   }
@@ -140,6 +196,11 @@ export function resolvePlanFailureDecision(
         ?? "PLAN_PROVIDER_RUNTIME_FAILURE",
       providerName,
       errorClass,
+      diagnosticKind: recentFailure.diagnosticKind,
+      httpStatus: recentFailure.httpStatus,
+      retryable: recentFailure.retryable,
+      attemptsExhausted: recentFailure.attemptsExhausted,
+      hint: formatProviderFailureHint(recentFailure),
     };
   }
 

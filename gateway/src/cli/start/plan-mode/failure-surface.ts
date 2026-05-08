@@ -129,7 +129,10 @@ function buildCompactPlanFailureSurface(input: {
   const stateLine = isApplying
     ? "The plan is still available. Fix the issue, then reply Implement the plan."
     : 'Plan draft kept and plan mode remains active. Type more details to refine it, or use "/plan open" to edit the draft.';
-  const nextLine = input.failureDecision.reason === "provider_runtime_failure"
+  const decisionHint = input.failureDecision.hint?.trim();
+  const nextLine = decisionHint
+    ? `Next: ${decisionHint}`
+    : input.failureDecision.reason === "provider_runtime_failure"
     ? "Next: fix model provider config or switch to an available model, then retry."
     : "Next: diagnose the runtime failure, then retry the plan step.";
   const detailLines: string[] = [];
