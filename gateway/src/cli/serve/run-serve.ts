@@ -7,6 +7,7 @@ import { runServeServerLifecycle } from "./server-lifecycle";
 import { resolveRunServeContext } from "./run-serve-context";
 import { createRunServeWire } from "./run-serve-wire";
 import { isRouteDecisionNamespaceInputError } from "../status/route-namespace";
+import { isBindConfigInputError } from "./bind-config";
 
 export async function runServe(options: Record<string, OptionValue>): Promise<number> {
   let context: ReturnType<typeof resolveRunServeContext>;
@@ -14,6 +15,10 @@ export async function runServe(options: Record<string, OptionValue>): Promise<nu
     context = resolveRunServeContext(options);
   } catch (error) {
     if (isRouteDecisionNamespaceInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    if (isBindConfigInputError(error)) {
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }

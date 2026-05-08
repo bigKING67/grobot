@@ -78,6 +78,10 @@ function resolveHasDirectRuntimeOverride(options: Record<string, OptionValue>): 
     || Boolean(process.env.GROBOT_MODEL);
 }
 
+function hasOption(options: Record<string, OptionValue>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(options, key);
+}
+
 export function resolveRunServeRouteDecision(
   input: RunServeRouteDecisionInput,
   overrides?: {
@@ -147,7 +151,7 @@ export function resolveRunServeContext(options: Record<string, OptionValue>): Ru
   const projectStateRoot = resolveProjectStateRoot(workDir);
   const projectTomlPath = resolveProjectTomlPath(options, workDir, projectRoot, homeDir);
   const configTomlPath = resolveConfigTomlPath(options, homeDir, { workDir, projectRoot });
-  const bind = parseBind(readOptionString(options, "bind"));
+  const bind = parseBind(readOptionString(options, "bind"), hasOption(options, "bind"));
   const projectName = readOptionString(options, "project") ?? basenameFromPath(workDir);
   const { sessionNamespace } = resolveCliRouteNamespace({
     options,

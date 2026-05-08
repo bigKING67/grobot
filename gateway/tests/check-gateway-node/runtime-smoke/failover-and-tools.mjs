@@ -379,6 +379,10 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(serveInvalidNamespacePayload.invalid_platform_has_stable_error, true);
   assert.equal(serveInvalidNamespacePayload.invalid_scope_exit_code, 2);
   assert.equal(serveInvalidNamespacePayload.invalid_scope_has_stable_error, true);
+  assert.equal(serveInvalidNamespacePayload.invalid_bind_exit_code, 2);
+  assert.equal(serveInvalidNamespacePayload.invalid_bind_has_stable_error, true);
+  assert.equal(serveInvalidNamespacePayload.missing_bind_value_exit_code, 2);
+  assert.equal(serveInvalidNamespacePayload.missing_bind_value_has_stable_error, true);
   assert.equal(serveInvalidNamespacePayload.empty_subject_exit_code, 2);
   assert.equal(serveInvalidNamespacePayload.empty_subject_has_stable_error, true);
   assert.equal(serveInvalidNamespacePayload.hides_top_level_fatal, true);

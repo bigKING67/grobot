@@ -48,6 +48,10 @@ Error handling follows fail-fast plus explicit fallback boundaries:
    `POST /api/v1/sessions/{id}/interrupt` accepts omitted `ttl_secs` as the
    documented default but returns HTTP `400` with `invalid_ttl_secs` for
    non-number, non-finite, zero, or negative values.
+6. Explicit CLI/network binding controls must fail closed on invalid values.
+   `grobot serve --bind` may default to `127.0.0.1:8080` only when omitted;
+   malformed explicit values must print a concise `invalid_bind` stderr error
+   and exit `2` before listening.
 
 ---
 

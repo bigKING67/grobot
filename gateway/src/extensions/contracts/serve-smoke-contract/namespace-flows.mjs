@@ -85,6 +85,15 @@ export async function runServeInvalidNamespaceRejectFlow(options) {
     "--session-scope",
     "room",
   ]);
+  const invalidBindResult = await runRepoCommand(repoRoot, [
+    ...commonArgs,
+    "--bind",
+    "not-a-bind",
+  ]);
+  const missingBindValueResult = await runRepoCommand(repoRoot, [
+    ...commonArgs,
+    "--bind",
+  ]);
   const emptySubjectResult = await runRepoCommand(repoRoot, [
     ...commonArgs,
     "--session-subject",
@@ -97,6 +106,10 @@ export async function runServeInvalidNamespaceRejectFlow(options) {
     invalidPlatformResult.stderr,
     invalidScopeResult.stdout,
     invalidScopeResult.stderr,
+    invalidBindResult.stdout,
+    invalidBindResult.stderr,
+    missingBindValueResult.stdout,
+    missingBindValueResult.stderr,
     emptySubjectResult.stdout,
     emptySubjectResult.stderr,
   ].join("\n");
@@ -113,6 +126,14 @@ export async function runServeInvalidNamespaceRejectFlow(options) {
     invalid_scope_has_stable_error:
       invalidScopeResult.stderr.includes("error: invalid_session_scope:")
       && invalidScopeResult.stderr.includes("session-scope must be one of: dm, group"),
+    invalid_bind_exit_code: invalidBindResult.exit_code,
+    invalid_bind_has_stable_error:
+      invalidBindResult.stderr.includes("error: invalid_bind:")
+      && invalidBindResult.stderr.includes("bind must be host:port"),
+    missing_bind_value_exit_code: missingBindValueResult.exit_code,
+    missing_bind_value_has_stable_error:
+      missingBindValueResult.stderr.includes("error: invalid_bind:")
+      && missingBindValueResult.stderr.includes("bind must be host:port"),
     empty_subject_exit_code: emptySubjectResult.exit_code,
     empty_subject_has_stable_error:
       emptySubjectResult.stderr.includes("error: invalid_session_subject:")
