@@ -1,10 +1,14 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { formatRouteSummary } from "../../cli/status/human-status-format";
 import {
   formatRouteStatusLines,
+  readRouteObservedRuntimeSummary,
   serializeRouteDecisionSummary,
   type RouteDecisionSummary,
 } from "../../cli/status/route-status";
 import { resolveProviderLastErrorHealth } from "../../cli/services/provider-failure-health";
+import { sessionRegistryFilePath } from "../../cli/start/session-registry";
 import { normalizeProviderLastErrorData } from "../../cli/start/session-registry/normalization";
 
 function assertEqual(actual: unknown, expected: unknown, message: string): void {
@@ -20,6 +24,51 @@ function record(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function writeRouteHealthRegistryFixture(input: {
+  projectStateRoot: string;
+  sessionNamespaceKey: string;
+  stickyErrorData: Record<string, unknown> | undefined;
+  backupErrorData?: Record<string, unknown> | undefined;
+}): void {
+  mkdirSync(resolve(input.projectStateRoot, "sessions"), { recursive: true });
+  writeFileSync(
+    sessionRegistryFilePath(input.projectStateRoot, input.sessionNamespaceKey),
+    JSON.stringify({
+      version: 1,
+      namespace_key: input.sessionNamespaceKey,
+      active_id: "main",
+      sessions: [{
+        id: "main",
+        session_key: input.sessionNamespaceKey,
+        created_at: "2026-05-08T00:00:00.000Z",
+        updated_at: "2026-05-08T00:00:00.000Z",
+        preview: "route health fixture",
+        sticky_provider: "sticky",
+        provider_runtime_states: [
+          {
+            provider_name: "sticky",
+            consecutive_failures: 1,
+            circuit_open_until_ms: 0,
+            last_error_class: "upstream_http_error",
+            last_error_data: input.stickyErrorData,
+            last_failed_at: "2026-05-08T00:00:00.000Z",
+          },
+          {
+            provider_name: "backup",
+            consecutive_failures: 0,
+            circuit_open_until_ms: 0,
+            last_error_class: input.backupErrorData ? "upstream_http_error" : undefined,
+            last_error_data: input.backupErrorData,
+            last_failed_at: input.backupErrorData ? "2026-05-08T00:00:00.000Z" : undefined,
+            last_succeeded_at: "2026-05-08T00:00:00.000Z",
+          },
+        ],
+      }],
+    }),
+    "utf8",
+  );
+}
+
 function main(): void {
   const normalizedErrorData = normalizeProviderLastErrorData({
     diagnostic_kind: "upstream_http_error",
@@ -32,6 +81,16 @@ function main(): void {
     retryable: false,
     body_preview: "provider payload that should not be persisted",
     response_headers: "set-cookie=secret",
+  });
+  const normalizedRetryableErrorData = normalizeProviderLastErrorData({
+    diagnostic_kind: "upstream_http_error",
+    source: "model.transport",
+    stage: "chat_http_status",
+    provider: "kimi",
+    http_status: 503,
+    attempt: 1,
+    max_attempts: 3,
+    retryable: true,
   });
   const summary: RouteDecisionSummary = {
     strategy: "sticky+score",
@@ -83,6 +142,34 @@ function main(): void {
   const textLines = formatRouteStatusLines(summary);
   const routeSummary = formatRouteSummary(summary);
   const defaultSummaryText = (routeSummary.detailLines ?? []).join("\n");
+  const projectStateRoot = resolve("/tmp", `route-status-health-${String(process.pid)}-${String(Date.now())}`);
+  const sessionNamespaceKey = "feishu:grobot:dm:route-health";
+  writeRouteHealthRegistryFixture({
+    projectStateRoot,
+    sessionNamespaceKey,
+    stickyErrorData: normalizedErrorData,
+  });
+  const observedHealthRoute = readRouteObservedRuntimeSummary({
+    projectStateRoot,
+    sessionNamespaceKey,
+    orderedProviders: ["sticky", "backup"],
+  });
+  const degradedAlternateStateRoot = resolve(
+    "/tmp",
+    `route-status-health-degraded-${String(process.pid)}-${String(Date.now())}`,
+  );
+  const degradedAlternateSessionKey = "feishu:grobot:dm:route-health-degraded";
+  writeRouteHealthRegistryFixture({
+    projectStateRoot: degradedAlternateStateRoot,
+    sessionNamespaceKey: degradedAlternateSessionKey,
+    stickyErrorData: normalizedErrorData,
+    backupErrorData: normalizedRetryableErrorData,
+  });
+  const observedDegradedAlternateRoute = readRouteObservedRuntimeSummary({
+    projectStateRoot: degradedAlternateStateRoot,
+    sessionNamespaceKey: degradedAlternateSessionKey,
+    orderedProviders: ["sticky", "backup"],
+  });
 
   const payload = {
     normalized_has_http_status: normalizedErrorData?.http_status === 503,
@@ -106,6 +193,12 @@ function main(): void {
       && defaultSummaryText.includes("HTTP 503")
       && defaultSummaryText.includes("retryable false")
       && defaultSummaryText.includes("prefer alternate"),
+    observed_route_health_selects_clean_provider:
+      observedHealthRoute.selectedProvider === "backup"
+      && observedHealthRoute.reason === "session_sticky_last_error_nonretryable_fallback_health_provider",
+    observed_route_health_bypasses_sticky_for_degraded_alternate:
+      observedDegradedAlternateRoute.selectedProvider === "backup"
+      && observedDegradedAlternateRoute.reason === "session_sticky_last_error_nonretryable_fallback_health_provider",
   };
 
   assertEqual(payload.normalized_has_http_status, true, "normalized http status");
@@ -116,6 +209,12 @@ function main(): void {
   assertEqual(payload.serialized_has_last_error_health, true, "serialized last error health");
   assertEqual(payload.legacy_text_has_provider_error_data, true, "legacy text provider diagnostics");
   assertEqual(payload.default_summary_has_provider_error_data, true, "default text provider diagnostics");
+  assertEqual(payload.observed_route_health_selects_clean_provider, true, "observed route health selection");
+  assertEqual(
+    payload.observed_route_health_bypasses_sticky_for_degraded_alternate,
+    true,
+    "observed route health sticky bypass with degraded alternate",
+  );
 
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }

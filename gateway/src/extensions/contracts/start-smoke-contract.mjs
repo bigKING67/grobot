@@ -162,7 +162,10 @@ function runCli(argv) {
       payload = runFailoverTsRust(buildStartSmokeFlowContext(repoRoot));
       break;
     case "provider-failure-route-status-ts-rust":
-      payload = runProviderFailureRouteStatusTsRust(buildStartSmokeFlowContext(repoRoot));
+      payload = runProviderFailureRouteStatusTsRust(
+        buildStartSmokeFlowContext(repoRoot),
+        options.get("success-provider-base-url"),
+      );
       break;
     case "start-recovery-gate-blocks-surface-adaptation":
       payload = runStartRecoveryGateBlocksSurfaceAdaptation(buildStartSmokeFlowContext(repoRoot));

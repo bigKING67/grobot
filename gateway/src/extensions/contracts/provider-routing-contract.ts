@@ -177,6 +177,32 @@ function main(): void {
       ["openai", createDefaultProviderState("openai")],
     ]),
   });
+  const stickyNonretryableDegradedAlternateOrder = resolveProviderOrder({
+    providers: [provider("kimi"), provider("fallback")],
+    stickyProvider: "kimi",
+    sessionKey: "contract-sticky-nonretryable-degraded-alternate",
+    stateMap: new Map([
+      [
+        "kimi",
+        stateWithLastError("kimi", "upstream_connect_failed", {
+          diagnostic_kind: "upstream_connect_failed",
+          retryable: false,
+          attempt: 3,
+          max_attempts: 3,
+        }),
+      ],
+      [
+        "fallback",
+        stateWithLastError("fallback", "upstream_http_error", {
+          diagnostic_kind: "upstream_http_error",
+          http_status: 503,
+          retryable: true,
+          attempt: 1,
+          max_attempts: 3,
+        }),
+      ],
+    ]),
+  });
   const stickyExhaustedOrder = resolveProviderOrder({
     providers: [provider("kimi"), provider("openai")],
     stickyProvider: "kimi",
@@ -250,6 +276,10 @@ function main(): void {
       stickyNonretryableOrder.trace.stickyReason === "last_error_nonretryable",
     sticky_nonretryable_trace_penalty_reason:
       findScoreReason(stickyNonretryableOrder.trace.scoreOrder, "kimi") === "last_error_nonretryable",
+    sticky_nonretryable_bypasses_to_degraded_alternate:
+      stickyNonretryableDegradedAlternateOrder.orderedProviders[0]?.name === "fallback",
+    sticky_nonretryable_degraded_alternate_trace_reason:
+      stickyNonretryableDegradedAlternateOrder.trace.stickyReason === "last_error_nonretryable",
     sticky_attempt_exhausted_bypasses_to_clean:
       stickyExhaustedOrder.orderedProviders[0]?.name === "openai",
     sticky_attempt_exhausted_trace_reason:
@@ -286,6 +316,16 @@ function main(): void {
   assertEqual(payload.sticky_nonretryable_bypasses_to_clean, true, "nonretryable sticky bypass");
   assertEqual(payload.sticky_nonretryable_trace_reason, true, "nonretryable sticky trace reason");
   assertEqual(payload.sticky_nonretryable_trace_penalty_reason, true, "nonretryable score reason");
+  assertEqual(
+    payload.sticky_nonretryable_bypasses_to_degraded_alternate,
+    true,
+    "nonretryable sticky bypass to degraded alternate",
+  );
+  assertEqual(
+    payload.sticky_nonretryable_degraded_alternate_trace_reason,
+    true,
+    "nonretryable sticky degraded alternate trace reason",
+  );
   assertEqual(payload.sticky_attempt_exhausted_bypasses_to_clean, true, "exhausted sticky bypass");
   assertEqual(payload.sticky_attempt_exhausted_trace_reason, true, "exhausted sticky trace reason");
   assertEqual(payload.retryable_transient_keeps_primary_usable, true, "retryable transient remains usable");

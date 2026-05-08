@@ -221,6 +221,45 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(providerFailureStatusPayload.default_text_has_last_provider_error, true);
   logStep("start-smoke-contract provider-failure-route-status-ts-rust");
 
+  const providerFailureCleanAlternateModel = await startMockModelServer();
+  try {
+    const providerFailureCleanAlternateResult = await runContractAsync(
+      "start-smoke-contract.mjs",
+      "provider-failure-route-status-ts-rust",
+      [
+        "--repo-root",
+        repoRoot,
+        "--success-provider-base-url",
+        providerFailureCleanAlternateModel.baseUrl,
+      ],
+      { timeoutMs: 240_000 },
+    );
+    const providerFailureCleanAlternatePayload = parseJsonOutput(
+      "start-smoke-contract provider-failure-route-status-ts-rust clean-alternate",
+      providerFailureCleanAlternateResult.stdout,
+    );
+    assert.equal(providerFailureCleanAlternatePayload.exit_code, 0);
+    assert.equal(providerFailureCleanAlternatePayload.status_exit_code, 0);
+    assert.equal(providerFailureCleanAlternatePayload.status_json_parse_ok, true);
+    assert.equal(providerFailureCleanAlternatePayload.status_has_failing_state, true);
+    assert.equal(providerFailureCleanAlternatePayload.status_has_success_state, true);
+    assert.equal(providerFailureCleanAlternatePayload.status_selected_provider, "success");
+    assert.equal(providerFailureCleanAlternatePayload.status_selected_reason, "session_sticky_provider");
+    assert.equal(providerFailureCleanAlternatePayload.status_success_last_error_class, null);
+    assert.equal(providerFailureCleanAlternatePayload.status_success_last_error_health_penalty, 0);
+    assert.equal(providerFailureCleanAlternatePayload.status_success_last_succeeded_at_type, "string");
+    assert.equal(providerFailureCleanAlternatePayload.status_failing_last_error_health_penalty, 800);
+    assert.equal(providerFailureCleanAlternatePayload.default_text_has_last_provider_error, true);
+    const providerFailureCleanAlternateCalls = providerFailureCleanAlternateModel.getCalls();
+    assert.equal(providerFailureCleanAlternateCalls.length >= 1, true);
+    const providerFailureCleanAlternateLastCall =
+      providerFailureCleanAlternateCalls[providerFailureCleanAlternateCalls.length - 1] ?? {};
+    assert.equal(providerFailureCleanAlternateLastCall.model, "success-model");
+    logStep("start-smoke-contract provider-failure-route-status-ts-rust-clean-alternate");
+  } finally {
+    await providerFailureCleanAlternateModel.close();
+  }
+
   const toolCallFailureResult = runContract(
     "runtime-smoke-contract.mjs",
     "tool-call-fail-fast",

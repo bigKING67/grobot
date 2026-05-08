@@ -89,7 +89,7 @@ function findProviderState(states, providerName) {
   return asRecord(states.find((state) => asRecord(state).provider_name === providerName));
 }
 
-export function runProviderFailureRouteStatusTsRust(context) {
+export function runProviderFailureRouteStatusTsRust(context, successProviderBaseUrl = undefined) {
   const {
     repoRoot,
     createTempDir,
@@ -101,7 +101,9 @@ export function runProviderFailureRouteStatusTsRust(context) {
     sanitizeSessionKey,
   } = context;
   const workDir = createTempDir("grobot-provider-failure-status-work");
-  const config = writeConfig(buildFailoverConfig(workDir));
+  const config = writeConfig(buildFailoverConfig(workDir, {
+    successBaseUrl: successProviderBaseUrl,
+  }));
   const sessionSubject = "provider-failure-status-user";
   const sessionNamespaceKey = `feishu:grobot:dm:${sessionSubject}`;
   const registryPath = `${workDir}/.grobot/sessions/${sanitizeSessionKey(sessionNamespaceKey)}.sessions.json`;
@@ -149,11 +151,14 @@ export function runProviderFailureRouteStatusTsRust(context) {
   });
   const statusDefaultTextResult = runCommand(repoRoot, statusArgs);
   const parsedStatus = parseJsonObjectSafe(statusJsonResult.stdout);
+  const routeDecision = asRecord(parsedStatus?.route_decision);
+  const routeObserved = asRecord(routeDecision.observed);
   const statusStates = providerRuntimeStatesFromStatus(parsedStatus);
   const failingStatusState = findProviderState(statusStates, "failing");
   const successStatusState = findProviderState(statusStates, "success");
   const failingStatusErrorData = asRecord(failingStatusState.last_error_data);
   const failingStatusErrorHealth = asRecord(failingStatusState.last_error_health);
+  const successStatusErrorHealth = asRecord(successStatusState.last_error_health);
   const registryPayload = readJsonFileSafe(registryPath);
   const registryStates = providerRuntimeStatesFromRegistry(registryPayload);
   const failingRegistryState = findProviderState(registryStates, "failing");
@@ -178,6 +183,14 @@ export function runProviderFailureRouteStatusTsRust(context) {
       && !startResult.stderr.includes("runtime rpc error -32001"),
     status_has_failing_state: Object.keys(failingStatusState).length > 0,
     status_has_success_state: Object.keys(successStatusState).length > 0,
+    status_selected_provider: routeObserved.selected_provider ?? null,
+    status_selected_reason: routeObserved.reason ?? null,
+    status_success_last_error_class: successStatusState.last_error_class ?? null,
+    status_success_last_error_health_penalty:
+      Number.isFinite(Number(successStatusErrorHealth.score_penalty))
+        ? Number(successStatusErrorHealth.score_penalty)
+        : null,
+    status_success_last_succeeded_at_type: typeof successStatusState.last_succeeded_at,
     status_failing_last_error_class: failingStatusState.last_error_class ?? null,
     status_failing_last_error_diagnostic: failingStatusErrorData.diagnostic_kind ?? null,
     status_failing_last_error_source: failingStatusErrorData.source ?? null,

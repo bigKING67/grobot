@@ -62,7 +62,10 @@ export function buildSingleProviderConfig(workDir, provider) {
   ].join("\n");
 }
 
-export function buildFailoverConfig(workDir) {
+export function buildFailoverConfig(workDir, options = {}) {
+  const successBaseUrl = typeof options.successBaseUrl === "string" && options.successBaseUrl.trim().length > 0
+    ? options.successBaseUrl.trim()
+    : "http://127.0.0.1:65533/v1";
   return [
     'language = "zh"',
     "",
@@ -86,7 +89,7 @@ export function buildFailoverConfig(workDir) {
     "[[projects.agent.providers]]",
     'name = "success"',
     'api_key = "success-key"',
-    'base_url = "http://127.0.0.1:65533/v1"',
+    `base_url = "${successBaseUrl}"`,
     'model = "success-model"',
     "",
     "[[projects.platforms]]",

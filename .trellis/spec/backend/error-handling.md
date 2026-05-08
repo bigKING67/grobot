@@ -82,13 +82,19 @@ Implementation points:
 5. `gateway/src/cli/status/route-status.ts` must serialize the same normalized
    route health as `provider_runtime_states[].last_error_health` with
    `score_penalty`, `reason`, and `sticky_bypass_reason`, so status consumers do
-   not have to reimplement provider failure scoring from raw
-   `last_error_data`.
+   not have to reimplement provider failure scoring from raw `last_error_data`.
+   Observed route selection must use the same sticky bypass boundary as the
+   runtime router: a sticky provider with a non-retryable or exhausted last
+   error loses its hard sticky preference when any non-circuit alternate is
+   available, then the observed route falls back to health/score ordering. The
+   alternate does not have to be perfectly clean; a degraded-but-lower-risk
+   provider must still be considered.
 6. `gateway/src/extensions/contracts/provider-routing-contract.ts` must cover
    retry decisions and route ordering together:
-   - non-retryable sticky provider is bypassed when a clean alternate is open;
-   - exhausted-attempt sticky provider is bypassed when a clean alternate is
-     open;
+   - non-retryable sticky provider loses hard sticky priority when a non-circuit
+     alternate is open;
+   - exhausted-attempt sticky provider loses hard sticky priority when a
+     non-circuit alternate is open;
    - retryable transient provider keeps only moderate penalty and can remain
      selected when it is otherwise the better route;
    - config/auth blockers rank behind clean providers;

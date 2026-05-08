@@ -99,24 +99,55 @@ export function readRouteObservedRuntimeSummary(input: {
   const stickyProvider = activeRecord.sticky_provider?.trim() || null;
   let selectedProvider: string | null = null;
   let reason = "session_first_open_provider";
+  const openProviderCandidates = input.orderedProviders
+    .map((providerName, index) => {
+      const state = stateMap.get(providerName);
+      if (state && state.circuit_open_until_ms > nowMs) {
+        return undefined;
+      }
+      return {
+        providerName,
+        index,
+        health: resolveProviderLastErrorHealth(state),
+      };
+    })
+    .filter((candidate): candidate is {
+      providerName: string;
+      index: number;
+      health: ReturnType<typeof resolveProviderLastErrorHealth>;
+    } => candidate !== undefined);
+  const bestOpenProvider = [...openProviderCandidates]
+    .sort((left, right) => {
+      if (left.health.scorePenalty !== right.health.scorePenalty) {
+        return left.health.scorePenalty - right.health.scorePenalty;
+      }
+      return left.index - right.index;
+    })[0];
+  const firstOpenProvider = openProviderCandidates[0];
   if (stickyProvider && input.orderedProviders.includes(stickyProvider)) {
     const stickyState = stateMap.get(stickyProvider);
     if (!stickyState || stickyState.circuit_open_until_ms <= nowMs) {
-      selectedProvider = stickyProvider;
-      reason = "session_sticky_provider";
+      const stickyHealth = resolveProviderLastErrorHealth(stickyState);
+      const hasAvailableAlternative = openProviderCandidates.some(
+        (candidate) => candidate.providerName !== stickyProvider
+      );
+      if (stickyHealth.stickyBypassReason && hasAvailableAlternative) {
+        reason = `session_sticky_${stickyHealth.stickyBypassReason}`;
+      } else {
+        selectedProvider = stickyProvider;
+        reason = "session_sticky_provider";
+      }
     } else {
       reason = "session_sticky_circuit_open";
     }
   }
   if (!selectedProvider) {
-    const firstOpenProvider = input.orderedProviders.find((providerName) => {
-      const state = stateMap.get(providerName);
-      return !state || state.circuit_open_until_ms <= nowMs;
-    });
-    if (firstOpenProvider) {
-      selectedProvider = firstOpenProvider;
+    if (bestOpenProvider) {
+      selectedProvider = bestOpenProvider.providerName;
       if (reason !== "session_first_open_provider") {
-        reason = `${reason}_fallback_open_provider`;
+        reason = `${reason}_fallback_health_provider`;
+      } else if (firstOpenProvider && firstOpenProvider.providerName !== bestOpenProvider.providerName) {
+        reason = "session_provider_health_fallback";
       }
     }
   }
