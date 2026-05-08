@@ -18,6 +18,11 @@ function payloadNumber(payload: Record<string, unknown>, key: string): number | 
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function payloadBoolean(payload: Record<string, unknown>, key: string): boolean | undefined {
+  const value = payload[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
 function hashText(raw: string): number {
   let hash = 2166136261;
   for (let index = 0; index < raw.length; index += 1) {
@@ -160,7 +165,18 @@ export function resolveErrorClass(message: string): string {
 export function deriveFailureStageFromError(
   errorClass: string,
   message: string,
+  errorData?: Record<string, unknown> | undefined,
 ): "planning" | "implementation" | "verification" | "runtime" | "unknown" {
+  const diagnosticKind = errorData ? payloadString(errorData, "diagnostic_kind") : "";
+  const source = errorData ? payloadString(errorData, "source") : "";
+  const stage = errorData ? payloadString(errorData, "stage") : "";
+  const structured = `${diagnosticKind} ${source} ${stage}`.toLowerCase();
+  if (/(^|\s)(config_missing|config_invalid|semantic_config_missing|semantic_index_config_invalid)(\s|$)/.test(structured)) {
+    return "planning";
+  }
+  if (/(^|\s)upstream_|model\.transport|chat_|stream|provider/.test(structured)) {
+    return "runtime";
+  }
   const merged = `${errorClass} ${message}`.toLowerCase();
   if (/(verify|verification|assert|contract|schema|lint|typecheck|测试|验证|验收)/.test(merged)) {
     return "verification";
@@ -175,4 +191,39 @@ export function deriveFailureStageFromError(
     return "implementation";
   }
   return "unknown";
+}
+
+export function buildProviderFailureToolContext(input: {
+  providerName: string;
+  errorData?: Record<string, unknown> | undefined;
+}): string {
+  const parts = [`provider=${input.providerName}`];
+  const errorData = input.errorData;
+  if (!errorData) {
+    return parts.join(" ");
+  }
+  for (const key of [
+    "diagnostic_kind",
+    "source",
+    "stage",
+    "provider_kind",
+    "model",
+    "upstream_error_kind",
+  ]) {
+    const value = payloadString(errorData, key);
+    if (value) {
+      parts.push(`${key}=${value}`);
+    }
+  }
+  for (const key of ["http_status", "attempt", "max_attempts"]) {
+    const value = payloadNumber(errorData, key);
+    if (typeof value === "number") {
+      parts.push(`${key}=${String(Math.trunc(value))}`);
+    }
+  }
+  const retryable = payloadBoolean(errorData, "retryable");
+  if (typeof retryable === "boolean") {
+    parts.push(`retryable=${String(retryable)}`);
+  }
+  return parts.join(" ");
 }

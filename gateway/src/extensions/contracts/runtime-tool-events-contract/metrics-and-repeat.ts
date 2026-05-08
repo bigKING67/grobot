@@ -1,7 +1,11 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RuntimeEvent } from "../../../models/types";
-import { recordRuntimeToolMetricsForEvents } from "../../../cli/start/turn/diagnostics";
+import {
+  buildProviderFailureToolContext,
+  deriveFailureStageFromError,
+  recordRuntimeToolMetricsForEvents,
+} from "../../../cli/start/turn/diagnostics";
 import { RuntimeRpcError, extractRuntimeErrorEvents } from "../../../tools/runtime/runtime-error";
 import {
   buildRuntimeToolRecoveryFeedback,
@@ -67,6 +71,57 @@ export function runRuntimeToolMetricsAndRepeatContracts(input: {
       "Do not retry the failing tool automatically",
     ],
     "nonrecoverable feedback",
+  );
+  const providerFailureContext = buildProviderFailureToolContext({
+    providerName: "kimi",
+    errorData: {
+      diagnostic_kind: "upstream_http_error",
+      source: "model.transport",
+      stage: "chat_http_status",
+      provider_kind: "kimi",
+      model: "kimi-k2.5",
+      http_status: 503,
+      attempt: 3,
+      max_attempts: 3,
+      retryable: false,
+      body_preview: "must_not_leak",
+      response_headers: { "x-request-id": "must_not_leak" },
+    },
+  });
+  expect(
+    providerFailureContext.includes("provider=kimi")
+      && providerFailureContext.includes("diagnostic_kind=upstream_http_error")
+      && providerFailureContext.includes("source=model.transport")
+      && providerFailureContext.includes("stage=chat_http_status")
+      && providerFailureContext.includes("http_status=503")
+      && providerFailureContext.includes("attempt=3")
+      && providerFailureContext.includes("max_attempts=3")
+      && providerFailureContext.includes("retryable=false"),
+    "provider failure tool context includes structured safe diagnostics",
+  );
+  expect(
+    !providerFailureContext.includes("must_not_leak")
+      && !providerFailureContext.includes("body_preview")
+      && !providerFailureContext.includes("response_headers"),
+    "provider failure tool context drops unsafe previews",
+  );
+  expectEqual(
+    deriveFailureStageFromError("config_invalid", "invalid model config", {
+      diagnostic_kind: "config_invalid",
+      source: "model_config",
+      stage: "catalog_refresh",
+    }),
+    "planning",
+    "structured config provider failure maps to planning stage",
+  );
+  expectEqual(
+    deriveFailureStageFromError("upstream_http_error", "HTTP 503", {
+      diagnostic_kind: "upstream_http_error",
+      source: "model.transport",
+      stage: "chat_http_status",
+    }),
+    "runtime",
+    "structured upstream provider failure maps to runtime stage",
   );
 
   const turnFailedRuntimeEnvWorkDir = tmpWorkDir("grobot-runtime-turn-failed-env");
@@ -533,6 +588,12 @@ export function runRuntimeToolMetricsAndRepeatContracts(input: {
     feedback_prompt_budget_within_limit: input.oversizedFeedback.promptBlock.length <= RUNTIME_TOOL_RECOVERY_PROMPT_MAX_CHARS,
     feedback_prompt_budget_truncated_details: input.oversizedFeedback.promptBlock.includes("Details truncated: omitted"),
     latest_recovery_recoverable: input.summary.latestRecovery?.recoverable,
+    provider_failure_context_has_structured_fields:
+      providerFailureContext.includes("diagnostic_kind=upstream_http_error")
+      && providerFailureContext.includes("http_status=503"),
+    provider_failure_context_drops_unsafe_fields:
+      !providerFailureContext.includes("body_preview")
+      && !providerFailureContext.includes("response_headers"),
     nonrecoverable_requires_user_intervention: nonRecoverableFeedback.requiresUserIntervention,
     repeated_recovery_escalation: true,
     recovery_action_catalog_size: input.knownRecoveryActions.length,

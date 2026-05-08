@@ -45,6 +45,7 @@ import {
 } from "./turn/interrupt";
 import { buildTurnTerminalOutputSegments } from "./turn/output";
 import {
+  buildProviderFailureToolContext,
   deriveFailureStageFromError,
   recordRuntimeToolMetricsForEvents,
   resolveErrorClass,
@@ -575,8 +576,11 @@ export function createRunStartTurnRunner(
           providerName: provider.name,
           errorClass,
           errorMessage: compactMessage,
-          failureStage: deriveFailureStageFromError(errorClass, compactMessage),
-          toolContext: `provider=${provider.name}`,
+          failureStage: deriveFailureStageFromError(errorClass, compactMessage, errorData),
+          toolContext: buildProviderFailureToolContext({
+            providerName: provider.name,
+            errorData,
+          }),
         });
         writeTurnDiagnosticEvents(feedback.stderrEvents);
         const state =
