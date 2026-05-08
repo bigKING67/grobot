@@ -204,6 +204,12 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(providerFailureStatusPayload.status_failing_last_error_stage, "chat_request");
   assert.equal(providerFailureStatusPayload.status_failing_last_error_retryable, false);
   assert.equal(providerFailureStatusPayload.status_failing_attempts_exhausted, true);
+  assert.equal(providerFailureStatusPayload.status_failing_last_error_health_penalty, 800);
+  assert.equal(providerFailureStatusPayload.status_failing_last_error_health_reason, "last_error_nonretryable");
+  assert.equal(
+    providerFailureStatusPayload.status_failing_last_error_health_sticky_bypass,
+    "last_error_nonretryable",
+  );
   assert.equal(providerFailureStatusPayload.status_failing_redacts_body_preview, true);
   assert.equal(providerFailureStatusPayload.status_failing_redacts_response_headers, true);
   assert.equal(providerFailureStatusPayload.registry_has_failing_last_error_data, true);

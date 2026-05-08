@@ -1,4 +1,5 @@
 import type { InfoPanelRow } from "../tui/components/info-panel/contract";
+import type { ProviderLastErrorHealth } from "../services/provider-failure-health";
 import type { StatusProviderProbeResult } from "./provider-probe-status";
 import type { RouteDecisionSummary } from "./route-status";
 import type { RuntimeHealthStatus } from "./runtime-health-format";
@@ -117,6 +118,21 @@ export function enabledText(value: boolean): string {
   return value ? "on" : "off";
 }
 
+function humanizeProviderRouteHealth(
+  health: ProviderLastErrorHealth | undefined,
+): string {
+  if (!health || health.scorePenalty <= 0) {
+    return "";
+  }
+  if (health.stickyBypassReason === "last_error_nonretryable") {
+    return " · prefer alternate";
+  }
+  if (health.stickyBypassReason === "last_error_exhausted") {
+    return " · exhausted · prefer alternate";
+  }
+  return " · route de-prioritized";
+}
+
 export function formatRouteSummary(row: RouteDecisionSummary): InfoPanelRow {
   const latestProviderError = row.observed.providerRuntimeStates.find(
     (state) => state.lastErrorClass || state.lastErrorData,
@@ -129,7 +145,7 @@ export function formatRouteSummary(row: RouteDecisionSummary): InfoPanelRow {
     ? ` · retryable ${String(latestErrorData.retryable)}`
     : "";
   const latestProviderErrorLine = latestProviderError
-    ? `last provider error ${latestProviderError.providerName}:${humanizeMachineToken(latestProviderError.lastErrorClass ?? "unknown")}${latestHttpStatus}${latestRetryable}`
+    ? `last provider error ${latestProviderError.providerName}:${humanizeMachineToken(latestProviderError.lastErrorClass ?? "unknown")}${latestHttpStatus}${latestRetryable}${humanizeProviderRouteHealth(latestProviderError.lastErrorHealth)}`
     : null;
   return {
     title: `Route ${displayValue(row.primaryProvider, "no available provider")}`,

@@ -5,6 +5,10 @@ import {
   resolveSessionRegistryReadPath,
   type SessionProviderRuntimeState,
 } from "../start/session-registry";
+import {
+  type ProviderLastErrorHealth,
+  resolveProviderLastErrorHealth,
+} from "../services/provider-failure-health";
 
 interface ObservedProviderRuntimeState {
   providerName: string;
@@ -14,6 +18,7 @@ interface ObservedProviderRuntimeState {
   lastErrorClass?: string;
   lastErrorMessage?: string;
   lastErrorData?: Record<string, unknown>;
+  lastErrorHealth: ProviderLastErrorHealth;
   lastFailedAt?: string;
   lastSucceededAt?: string;
   ewmaLatencyMs?: number;
@@ -84,6 +89,7 @@ export function readRouteObservedRuntimeSummary(input: {
       lastErrorClass: state.last_error_class,
       lastErrorMessage: state.last_error_message,
       lastErrorData: state.last_error_data,
+      lastErrorHealth: resolveProviderLastErrorHealth(state),
       lastFailedAt: state.last_failed_at,
       lastSucceededAt: state.last_succeeded_at,
       ewmaLatencyMs: state.ewma_latency_ms,
@@ -244,6 +250,11 @@ export function serializeRouteDecisionSummary(summary: RouteDecisionSummary): Re
         last_error_class: state.lastErrorClass ?? null,
         last_error_message: state.lastErrorMessage ?? null,
         last_error_data: state.lastErrorData ?? null,
+        last_error_health: {
+          score_penalty: state.lastErrorHealth.scorePenalty,
+          reason: state.lastErrorHealth.reason ?? null,
+          sticky_bypass_reason: state.lastErrorHealth.stickyBypassReason ?? null,
+        },
         last_failed_at: state.lastFailedAt ?? null,
         last_succeeded_at: state.lastSucceededAt ?? null,
         ewma_latency_ms: state.ewmaLatencyMs ?? null,
@@ -275,7 +286,10 @@ export function formatRouteStatusLines(summary: RouteDecisionSummary): string[] 
       const diagnosticKind = typeof errorData.diagnostic_kind === "string"
         ? ` diagnostic=${errorData.diagnostic_kind}`
         : "";
-      return `${state.providerName}:${state.lastErrorClass ?? "<none>"}${diagnosticKind}${httpStatus}${attempt}${retryable}`;
+      const health = state.lastErrorHealth.scorePenalty > 0
+        ? ` health=${state.lastErrorHealth.reason ?? "last_error_unknown"} penalty=${String(state.lastErrorHealth.scorePenalty)}`
+        : "";
+      return `${state.providerName}:${state.lastErrorClass ?? "<none>"}${diagnosticKind}${httpStatus}${attempt}${retryable}${health}`;
     });
   return [
     `route_decision: strategy=${summary.strategy} primary=${summary.primaryProvider ?? "<none>"} configured=${summary.configuredPrimaryProvider ?? "<none>"} requested=${summary.requestedProvider ?? "<none>"} reason=${summary.reason} source=${summary.source ?? "<none>"}`,

@@ -3,7 +3,7 @@ import {
   hasAttemptsExhausted,
   recordBooleanField,
   recordFiniteNumberField,
-} from "./turn/provider-health";
+} from "../services/provider-failure-health";
 
 export type PlanFailurePhase = "planning" | "applying";
 export type PlanFailureAction = "fail" | "degrade";

@@ -61,7 +61,7 @@ Implementation points:
 2. `gateway/src/cli/start/session-registry/normalization.ts` persists only safe
    `provider_runtime_states[].last_error_data` summary fields. It must not
    persist `body_preview` or `response_headers`.
-3. `gateway/src/cli/start/turn/provider-health.ts` maps
+3. `gateway/src/cli/services/provider-failure-health.ts` maps
    `SessionProviderRuntimeState.last_error_data` into route health:
    - `retryable=false` -> strong score penalty and sticky bypass when another
      provider is available.
@@ -79,7 +79,12 @@ Implementation points:
    Final turn-failure summaries may render compact human labels from the same
    safe fields (diagnostic kind, HTTP status, attempt counts, retryability) but
    must not print raw previews or response headers.
-5. `gateway/src/extensions/contracts/provider-routing-contract.ts` must cover
+5. `gateway/src/cli/status/route-status.ts` must serialize the same normalized
+   route health as `provider_runtime_states[].last_error_health` with
+   `score_penalty`, `reason`, and `sticky_bypass_reason`, so status consumers do
+   not have to reimplement provider failure scoring from raw
+   `last_error_data`.
+6. `gateway/src/extensions/contracts/provider-routing-contract.ts` must cover
    retry decisions and route ordering together:
    - non-retryable sticky provider is bypassed when a clean alternate is open;
    - exhausted-attempt sticky provider is bypassed when a clean alternate is

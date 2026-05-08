@@ -153,6 +153,7 @@ export function runProviderFailureRouteStatusTsRust(context) {
   const failingStatusState = findProviderState(statusStates, "failing");
   const successStatusState = findProviderState(statusStates, "success");
   const failingStatusErrorData = asRecord(failingStatusState.last_error_data);
+  const failingStatusErrorHealth = asRecord(failingStatusState.last_error_health);
   const registryPayload = readJsonFileSafe(registryPath);
   const registryStates = providerRuntimeStatesFromRegistry(registryPayload);
   const failingRegistryState = findProviderState(registryStates, "failing");
@@ -189,6 +190,14 @@ export function runProviderFailureRouteStatusTsRust(context) {
       Number.isFinite(failingAttempt)
       && Number.isFinite(failingMaxAttempts)
       && failingAttempt >= failingMaxAttempts,
+    status_failing_last_error_health_penalty:
+      Number.isFinite(Number(failingStatusErrorHealth.score_penalty))
+        ? Number(failingStatusErrorHealth.score_penalty)
+        : null,
+    status_failing_last_error_health_reason:
+      failingStatusErrorHealth.reason ?? null,
+    status_failing_last_error_health_sticky_bypass:
+      failingStatusErrorHealth.sticky_bypass_reason ?? null,
     status_failing_redacts_body_preview:
       !Object.prototype.hasOwnProperty.call(failingStatusErrorData, "body_preview"),
     status_failing_redacts_response_headers:
@@ -200,10 +209,13 @@ export function runProviderFailureRouteStatusTsRust(context) {
     legacy_text_has_route_provider_errors:
       statusLegacyTextResult.stdout.includes("route_provider_errors: failing:upstream_connect_failed")
       && statusLegacyTextResult.stdout.includes("diagnostic=upstream_connect_failed")
-      && statusLegacyTextResult.stdout.includes("retryable=false"),
+      && statusLegacyTextResult.stdout.includes("retryable=false")
+      && statusLegacyTextResult.stdout.includes("health=last_error_nonretryable")
+      && statusLegacyTextResult.stdout.includes("penalty=800"),
     default_text_has_last_provider_error:
       statusDefaultTextResult.stdout.includes("last provider error failing:upstream connect failed")
-      && statusDefaultTextResult.stdout.includes("retryable false"),
+      && statusDefaultTextResult.stdout.includes("retryable false")
+      && statusDefaultTextResult.stdout.includes("prefer alternate"),
   };
 }
 

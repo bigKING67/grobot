@@ -12,7 +12,7 @@ import {
   recordBooleanField,
   recordFiniteNumberField,
   resolveProviderLastErrorHealth,
-} from "./provider-health";
+} from "../../services/provider-failure-health";
 
 const EWMA_ALPHA = 0.25;
 const KIMI_SEARCH_TURN_TIMEOUT_MS = 120_000;
