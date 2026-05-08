@@ -507,6 +507,34 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(serveInvalidConfigPayload.ready_not_reached, true);
   logStep("management-config-contract config-controls-reject-flow");
 
+  const gcInputResult = runContract(
+    "gc-contract.mjs",
+    "gc-input-validation",
+    ["--repo-root", repoRoot],
+    { timeoutMs: 240_000 },
+  );
+  const gcInputPayload = parseJsonOutput(
+    "gc-contract gc-input-validation",
+    gcInputResult.stdout,
+  );
+  assert.equal(gcInputPayload.invalid_retention_exit_code, 2);
+  assert.equal(gcInputPayload.invalid_retention_has_stable_error, true);
+  assert.equal(gcInputPayload.zero_retention_exit_code, 2);
+  assert.equal(gcInputPayload.zero_retention_has_json_error, true);
+  assert.equal(gcInputPayload.over_sessions_exit_code, 2);
+  assert.equal(gcInputPayload.over_sessions_has_stable_error, true);
+  assert.equal(gcInputPayload.missing_plans_exit_code, 2);
+  assert.equal(gcInputPayload.missing_plans_has_stable_error, true);
+  assert.equal(gcInputPayload.invalid_scope_exit_code, 2);
+  assert.equal(gcInputPayload.invalid_scope_has_stable_error, true);
+  assert.equal(gcInputPayload.invalid_toml_exit_code, 2);
+  assert.equal(gcInputPayload.invalid_toml_has_stable_error, true);
+  assert.equal(gcInputPayload.valid_default_exit_code, 0);
+  assert.equal(gcInputPayload.valid_default_policy_matches_template, true);
+  assert.equal(gcInputPayload.hides_top_level_fatal, true);
+  assert.equal(gcInputPayload.invalid_inputs_do_not_emit_gc_summary, true);
+  logStep("gc-contract gc-input-validation");
+
   const toolCallFailureResult = runContract(
     "runtime-smoke-contract.mjs",
     "tool-call-fail-fast",

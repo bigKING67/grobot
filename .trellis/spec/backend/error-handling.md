@@ -70,6 +70,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
    omitted; malformed explicit values must return stable `invalid_<field>`
    errors before `grobot start` starts a turn or `grobot serve` begins
    listening.
+10. CLI maintenance controls must fail closed on malformed explicit values.
+    `grobot gc` may use cleanup defaults only when options are omitted;
+    malformed, zero/negative, or out-of-range explicit CLI/config values for
+    retention/session/plan cleanup controls must exit `2` with stable
+    `invalid_<field>` errors instead of silently falling back or clamping.
 
 ---
 

@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
-import { OptionValue, hasFlag, readOptionString } from "../cli-args";
+import { OptionValue, hasFlag } from "../cli-args";
 import {
   resolveConfigTomlPath,
   resolveHomeDir,
@@ -7,6 +7,13 @@ import {
   resolveProjectStateRoot,
   resolveWorkDir,
 } from "../services/runtime-paths";
+import {
+  GcInputError,
+  parseGcPositiveIntOption,
+  parseGcScopeOption,
+  parseGcTomlPositiveInt,
+  writeGcInputError,
+} from "./input-parsing";
 
 type GcScope = "global" | "project" | "all";
 
@@ -55,48 +62,8 @@ const DEFAULT_POLICY: GcPolicy = {
   keepRecentPlansPerSession: 12,
 };
 
-function clampInteger(value: number, fallback: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) {
-    return fallback;
-  }
-  const normalized = Math.floor(value);
-  if (normalized < min) {
-    return min;
-  }
-  if (normalized > max) {
-    return max;
-  }
-  return normalized;
-}
-
-function parseInteger(raw: string | undefined): number | undefined {
-  if (typeof raw !== "string") {
-    return undefined;
-  }
-  const parsed = Number.parseInt(raw.trim(), 10);
-  if (!Number.isFinite(parsed)) {
-    return undefined;
-  }
-  return parsed;
-}
-
-function parseScope(raw: string | undefined): GcScope | undefined {
-  if (!raw) {
-    return undefined;
-  }
-  const normalized = raw.trim().toLowerCase();
-  if (normalized === "global" || normalized === "project" || normalized === "all") {
-    return normalized;
-  }
-  return undefined;
-}
-
-function parseTomlIntegerValue(raw: string): number | undefined {
-  const match = raw.trim().match(/^(-?\d+)$/);
-  if (!match || typeof match[1] !== "string") {
-    return undefined;
-  }
-  return Number.parseInt(match[1], 10);
+function hasOption(options: Record<string, OptionValue>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(options, key);
 }
 
 function readCleanupPolicyFromToml(configTomlPath: string | undefined): Partial<GcPolicy> {
@@ -130,25 +97,31 @@ function readCleanupPolicyFromToml(configTomlPath: string | undefined): Partial<
       continue;
     }
     const key = kvMatch[1];
-    const value = parseTomlIntegerValue(kvMatch[2]);
-    if (typeof value !== "number") {
-      continue;
-    }
     if (key === "retention_days") {
-      next.retentionDays = clampInteger(value, DEFAULT_POLICY.retentionDays, 1, 3650);
+      next.retentionDays = parseGcTomlPositiveInt({
+        value: kvMatch[2],
+        field: "retention-days",
+        min: 1,
+        max: 3650,
+      });
       continue;
     }
     if (key === "keep_recent_sessions") {
-      next.keepRecentSessions = clampInteger(value, DEFAULT_POLICY.keepRecentSessions, 1, 2000);
+      next.keepRecentSessions = parseGcTomlPositiveInt({
+        value: kvMatch[2],
+        field: "keep-recent-sessions",
+        min: 1,
+        max: 2000,
+      });
       continue;
     }
     if (key === "keep_recent_plans_per_session") {
-      next.keepRecentPlansPerSession = clampInteger(
-        value,
-        DEFAULT_POLICY.keepRecentPlansPerSession,
-        1,
-        500,
-      );
+      next.keepRecentPlansPerSession = parseGcTomlPositiveInt({
+        value: kvMatch[2],
+        field: "keep-recent-plans-per-session",
+        min: 1,
+        max: 500,
+      });
     }
   }
   return next;
@@ -156,34 +129,28 @@ function readCleanupPolicyFromToml(configTomlPath: string | undefined): Partial<
 
 function resolvePolicy(options: Record<string, OptionValue>, configTomlPath: string | undefined): GcPolicy {
   const fromToml = readCleanupPolicyFromToml(configTomlPath);
-  const cliRetentionDays = parseInteger(readOptionString(options, "retention-days"));
-  const cliKeepRecentSessions = parseInteger(readOptionString(options, "keep-recent-sessions"));
-  const cliKeepRecentPlans = parseInteger(readOptionString(options, "keep-recent-plans-per-session"));
   return {
-    retentionDays: clampInteger(
-      typeof cliRetentionDays === "number"
-        ? cliRetentionDays
-        : fromToml.retentionDays ?? DEFAULT_POLICY.retentionDays,
-      DEFAULT_POLICY.retentionDays,
-      1,
-      3650,
-    ),
-    keepRecentSessions: clampInteger(
-      typeof cliKeepRecentSessions === "number"
-        ? cliKeepRecentSessions
-        : fromToml.keepRecentSessions ?? DEFAULT_POLICY.keepRecentSessions,
-      DEFAULT_POLICY.keepRecentSessions,
-      1,
-      2000,
-    ),
-    keepRecentPlansPerSession: clampInteger(
-      typeof cliKeepRecentPlans === "number"
-        ? cliKeepRecentPlans
-        : fromToml.keepRecentPlansPerSession ?? DEFAULT_POLICY.keepRecentPlansPerSession,
-      DEFAULT_POLICY.keepRecentPlansPerSession,
-      1,
-      500,
-    ),
+    retentionDays: parseGcPositiveIntOption({
+      options,
+      key: "retention-days",
+      fallback: fromToml.retentionDays ?? DEFAULT_POLICY.retentionDays,
+      min: 1,
+      max: 3650,
+    }),
+    keepRecentSessions: parseGcPositiveIntOption({
+      options,
+      key: "keep-recent-sessions",
+      fallback: fromToml.keepRecentSessions ?? DEFAULT_POLICY.keepRecentSessions,
+      min: 1,
+      max: 2000,
+    }),
+    keepRecentPlansPerSession: parseGcPositiveIntOption({
+      options,
+      key: "keep-recent-plans-per-session",
+      fallback: fromToml.keepRecentPlansPerSession ?? DEFAULT_POLICY.keepRecentPlansPerSession,
+      min: 1,
+      max: 500,
+    }),
   };
 }
 
@@ -483,27 +450,45 @@ function printHuman(summary: GcSummary): void {
 }
 
 export async function runGc(options: Record<string, OptionValue>): Promise<number> {
-  const explicitScope = parseScope(readOptionString(options, "scope"));
-  if (!explicitScope && typeof readOptionString(options, "scope") === "string") {
-    process.stderr.write("error: invalid `--scope`, expected `global`, `project`, or `all`.\n");
-    return 2;
-  }
-  const scope: GcScope = explicitScope ?? "all";
+  const outputJson = hasOption(options, "json");
+  let scope: GcScope = "all";
+  let mode: "dry-run" | "apply" = "dry-run";
+  let homeDir = "";
+  let projectRoot = "";
+  let workDir = "";
+  let projectStateRoot = "";
+  let configTomlPath: string | undefined;
+  let policy: GcPolicy = DEFAULT_POLICY;
+  try {
+    scope = parseGcScopeOption({
+      options,
+      key: "scope",
+      fallback: "all",
+      allowed: ["global", "project", "all"],
+    });
+    const apply = hasFlag(options, "apply");
+    const dryRun = hasFlag(options, "dry-run");
+    if (apply && dryRun) {
+      throw new GcInputError(
+        "mode",
+        "apply and dry-run cannot be used together",
+      );
+    }
+    mode = apply ? "apply" : "dry-run";
 
-  const apply = hasFlag(options, "apply");
-  const dryRun = hasFlag(options, "dry-run");
-  if (apply && dryRun) {
-    process.stderr.write("error: `--apply` and `--dry-run` cannot be used together.\n");
-    return 2;
+    homeDir = resolveHomeDir(options);
+    projectRoot = resolveProjectRoot(options, homeDir);
+    workDir = resolveWorkDir(options, projectRoot, homeDir);
+    projectStateRoot = resolveProjectStateRoot(workDir);
+    configTomlPath = resolveConfigTomlPath(options, homeDir, { workDir, projectRoot });
+    policy = resolvePolicy(options, configTomlPath);
+  } catch (error) {
+    if (error instanceof GcInputError) {
+      writeGcInputError(error, outputJson);
+      return 2;
+    }
+    throw error;
   }
-  const mode: "dry-run" | "apply" = apply ? "apply" : "dry-run";
-
-  const homeDir = resolveHomeDir(options);
-  const projectRoot = resolveProjectRoot(options, homeDir);
-  const workDir = resolveWorkDir(options, projectRoot, homeDir);
-  const projectStateRoot = resolveProjectStateRoot(workDir);
-  const configTomlPath = resolveConfigTomlPath(options, homeDir, { workDir, projectRoot });
-  const policy = resolvePolicy(options, configTomlPath);
   const cutoffMs = Date.now() - policy.retentionDays * 24 * 60 * 60 * 1000;
   const targets: TargetSummary[] = [];
 
@@ -571,7 +556,7 @@ export async function runGc(options: Record<string, OptionValue>): Promise<numbe
     totals: summarize(targets),
   };
 
-  if (hasFlag(options, "json")) {
+  if (outputJson) {
     process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
     return 0;
   }
