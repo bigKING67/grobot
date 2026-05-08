@@ -1,5 +1,4 @@
 import { hasFlag, OptionValue, readOptionString } from "../cli-args";
-import { buildSessionKey } from "../../models/session-key";
 import {
   readProviderPoolFromToml,
 } from "../provider-probe";
@@ -18,8 +17,6 @@ import {
 import { parseBind, type BindConfig } from "./bind-config";
 import { memoryStoreRedisKey } from "./memory-store-runtime";
 import {
-  parsePlatform,
-  parseScope,
   resolveSessionPlatformOption,
   resolveSessionScopeOption,
   resolveSessionSubjectOption,
@@ -28,8 +25,8 @@ import {
   resolveRouteDecisionRuntimeSnapshot,
   type RouteDecisionSummary,
 } from "../status/route-status";
+import { buildRouteDecisionSessionKey } from "../status/route-namespace";
 import { parseRequiredPositiveInt } from "../status/option-parsing";
-import { type Platform, type SessionScope } from "../../models/types";
 
 interface ExecutionPlaneConfigInput {
   gatewayImplArg?: string;
@@ -76,24 +73,6 @@ export interface RunServeRouteDecisionInput {
   };
 }
 
-export class RunServeRouteDecisionInputError extends Error {
-  readonly code: string;
-  readonly field: string;
-
-  constructor(code: string, field: string, detail: string) {
-    super(detail);
-    this.name = "RunServeRouteDecisionInputError";
-    this.code = code;
-    this.field = field;
-  }
-}
-
-export function isRunServeRouteDecisionInputError(
-  error: unknown,
-): error is RunServeRouteDecisionInputError {
-  return error instanceof RunServeRouteDecisionInputError;
-}
-
 function resolveHasDirectRuntimeOverride(options: Record<string, OptionValue>): boolean {
   return Boolean(readOptionString(options, "base-url"))
     || Boolean(process.env.GROBOT_BASE_URL)
@@ -103,72 +82,17 @@ function resolveHasDirectRuntimeOverride(options: Record<string, OptionValue>): 
     || Boolean(process.env.GROBOT_MODEL);
 }
 
-function resolveRouteDecisionPlatform(
-  override: string | undefined,
-  fallback: string | undefined,
-): Platform {
-  if (override === undefined) {
-    return parsePlatform(fallback);
-  }
-  const normalized = override.trim().toLowerCase();
-  if (normalized === "feishu" || normalized === "telegram") {
-    return normalized;
-  }
-  throw new RunServeRouteDecisionInputError(
-    "invalid_session_platform",
-    "platform",
-    "platform must be one of: feishu, telegram",
-  );
-}
-
-function resolveRouteDecisionScope(
-  override: string | undefined,
-  fallback: string | undefined,
-): SessionScope {
-  if (override === undefined) {
-    return parseScope(fallback);
-  }
-  const normalized = override.trim().toLowerCase();
-  if (normalized === "dm" || normalized === "group") {
-    return normalized;
-  }
-  throw new RunServeRouteDecisionInputError(
-    "invalid_session_scope",
-    "session-scope",
-    "session-scope must be one of: dm, group",
-  );
-}
-
-function resolveRouteDecisionSessionSegment(input: {
-  override: string | undefined;
-  fallback: string;
-  field: "tenant" | "session-subject";
-}): string {
-  const value = (input.override ?? input.fallback).trim();
-  if (value.length === 0) {
-    throw new RunServeRouteDecisionInputError(
-      input.field === "tenant" ? "invalid_session_tenant" : "invalid_session_subject",
-      input.field,
-      `${input.field} must be non-empty`,
-    );
-  }
-  if (value.includes(":")) {
-    throw new RunServeRouteDecisionInputError(
-      input.field === "tenant" ? "invalid_session_tenant" : "invalid_session_subject",
-      input.field,
-      `${input.field} must not contain ':'`,
-    );
-  }
-  return value;
-}
-
 export function resolveRunServeRouteDecision(
   input: RunServeRouteDecisionInput,
   overrides?: {
     platform?: string;
+    platformProvided?: boolean;
     tenant?: string;
+    tenantProvided?: boolean;
     scope?: string;
+    scopeProvided?: boolean;
     subject?: string;
+    subjectProvided?: boolean;
   },
 ): RouteDecisionSummary {
   const providerPoolSnapshot = readProviderPoolFromToml(
@@ -178,19 +102,27 @@ export function resolveRunServeRouteDecision(
     input.homeDir,
     input.providerOverrideFromCli,
   );
-  const sessionNamespaceKey = buildSessionKey({
-    platform: resolveRouteDecisionPlatform(overrides?.platform, input.session.platform),
-    tenant: resolveRouteDecisionSessionSegment({
-      override: overrides?.tenant,
+  const sessionNamespaceKey = buildRouteDecisionSessionKey({
+    platform: {
+      value: overrides?.platform,
+      fallback: input.session.platform,
+      provided: overrides?.platformProvided,
+    },
+    tenant: {
+      value: overrides?.tenant,
       fallback: input.session.tenant,
-      field: "tenant",
-    }),
-    scope: resolveRouteDecisionScope(overrides?.scope, input.session.scope),
-    subject: resolveRouteDecisionSessionSegment({
-      override: overrides?.subject,
+      provided: overrides?.tenantProvided,
+    },
+    scope: {
+      value: overrides?.scope,
+      fallback: input.session.scope,
+      provided: overrides?.scopeProvided,
+    },
+    subject: {
+      value: overrides?.subject,
       fallback: input.session.subject,
-      field: "session-subject",
-    }),
+      provided: overrides?.subjectProvided,
+    },
   });
   return resolveRouteDecisionRuntimeSnapshot({
     projectStateRoot: input.projectStateRoot,

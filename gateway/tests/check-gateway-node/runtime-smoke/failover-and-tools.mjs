@@ -190,6 +190,17 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(providerFailureStatusPayload.status_exit_code, 0);
   assert.equal(providerFailureStatusPayload.legacy_text_exit_code, 0);
   assert.equal(providerFailureStatusPayload.default_text_exit_code, 0);
+  assert.equal(providerFailureStatusPayload.invalid_subject_status_exit_code, 2);
+  assert.equal(providerFailureStatusPayload.invalid_subject_status_error, "invalid_session_subject");
+  assert.equal(providerFailureStatusPayload.invalid_subject_status_field, "session-subject");
+  assert.equal(providerFailureStatusPayload.empty_subject_status_exit_code, 2);
+  assert.equal(providerFailureStatusPayload.empty_subject_status_error, "invalid_session_subject");
+  assert.equal(providerFailureStatusPayload.empty_subject_status_field, "session-subject");
+  assert.equal(providerFailureStatusPayload.invalid_scope_status_exit_code, 2);
+  assert.equal(providerFailureStatusPayload.invalid_scope_status_error, "invalid_session_scope");
+  assert.equal(providerFailureStatusPayload.invalid_scope_status_field, "session-scope");
+  assert.equal(providerFailureStatusPayload.invalid_tenant_text_exit_code, 2);
+  assert.equal(providerFailureStatusPayload.invalid_tenant_text_has_stable_error, true);
   assert.equal(providerFailureStatusPayload.status_json_parse_ok, true);
   assert.equal(providerFailureStatusPayload.registry_exists, true);
   assert.equal(Number(providerFailureStatusPayload.status_provider_state_count) >= 2, true);
@@ -298,6 +309,9 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(managementProviderFailurePayload.management_invalid_subject_status, 400);
   assert.equal(managementProviderFailurePayload.management_invalid_subject_error, "invalid_session_subject");
   assert.equal(managementProviderFailurePayload.management_invalid_subject_field, "session-subject");
+  assert.equal(managementProviderFailurePayload.management_empty_subject_status, 400);
+  assert.equal(managementProviderFailurePayload.management_empty_subject_error, "invalid_session_subject");
+  assert.equal(managementProviderFailurePayload.management_empty_subject_field, "session-subject");
   assert.equal(managementProviderFailurePayload.management_invalid_scope_status, 400);
   assert.equal(managementProviderFailurePayload.management_invalid_scope_error, "invalid_session_scope");
   assert.equal(managementProviderFailurePayload.management_post_invalid_status, 200);

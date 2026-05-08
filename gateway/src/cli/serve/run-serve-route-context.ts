@@ -20,10 +20,10 @@ import {
 } from "./http-utils";
 import { type ManagementRoutesContext } from "./management-routes";
 import {
-  isRunServeRouteDecisionInputError,
   resolveRunServeRouteDecision,
   type RunServeRouteDecisionInput,
 } from "./run-serve-context";
+import { isRouteDecisionNamespaceInputError } from "../status/route-namespace";
 import { type RunServeRuntimeState } from "./run-serve-runtime-state";
 
 interface CreateRunServeRouteContextInput {
@@ -43,6 +43,28 @@ interface CreateRunServeRouteContextInput {
   applyMcpReset(targetServer?: string): Record<string, unknown>;
 }
 
+function queryParamFirstRaw(query: Record<string, string[]>, key: string): string | undefined {
+  const values = query[key];
+  if (Array.isArray(values) && values.length > 0) {
+    const value = values[0];
+    return typeof value === "string" ? value : undefined;
+  }
+  return undefined;
+}
+
+function queryParamFirstRawAny(
+  query: Record<string, string[]>,
+  keys: readonly string[],
+): string | undefined {
+  for (const key of keys) {
+    const value = queryParamFirstRaw(query, key);
+    if (value !== undefined) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
 export function createRunServeRouteContext(
   input: CreateRunServeRouteContextInput,
 ): ManagementRoutesContext {
@@ -56,11 +78,10 @@ export function createRunServeRouteContext(
     getReloadCount: input.runtimeState.getReloadCount,
     getExecutionPlane: input.runtimeState.getExecutionPlane,
     getRouteDecision: (query) => {
-      const platform = queryParamStr(query, "platform", "").trim() || undefined;
-      const scope =
-        queryParamStr(query, "session-scope", "").trim()
-        || queryParamStr(query, "scope", "").trim()
-        || undefined;
+      const platform = queryParamFirstRaw(query, "platform");
+      const scope = queryParamFirstRawAny(query, ["session-scope", "scope"]);
+      const tenant = queryParamFirstRaw(query, "tenant");
+      const subject = queryParamFirstRawAny(query, ["session-subject", "subject"]);
       try {
         return {
           ok: true,
@@ -71,22 +92,20 @@ export function createRunServeRouteContext(
             },
             {
               platform,
-              tenant: queryParamStr(
-                query,
-                "tenant",
-                input.routeDecisionInput.session.tenant,
-              ),
+              platformProvided: Object.prototype.hasOwnProperty.call(query, "platform"),
+              tenant,
+              tenantProvided: Object.prototype.hasOwnProperty.call(query, "tenant"),
               scope,
-              subject: queryParamStr(
-                query,
-                "session-subject",
-                queryParamStr(query, "subject", input.routeDecisionInput.session.subject),
-              ),
+              scopeProvided: Object.prototype.hasOwnProperty.call(query, "session-scope")
+                || Object.prototype.hasOwnProperty.call(query, "scope"),
+              subject,
+              subjectProvided: Object.prototype.hasOwnProperty.call(query, "session-subject")
+                || Object.prototype.hasOwnProperty.call(query, "subject"),
             },
           ),
         };
       } catch (error) {
-        if (isRunServeRouteDecisionInputError(error)) {
+        if (isRouteDecisionNamespaceInputError(error)) {
           return {
             ok: false,
             error: error.code,

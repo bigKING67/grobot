@@ -99,18 +99,25 @@ Implementation points:
      selected when it is otherwise the better route;
    - config/auth blockers rank behind clean providers;
    - trace fields include machine-readable penalty reason.
-7. `gateway/src/cli/serve/management-routes.ts` must expose the same safe
-   `route_decision` contract on `GET /api/v1/status`. The management API must
-   reuse the status route snapshot helpers instead of reimplementing provider
-   scoring, and must preserve the same unsafe-field exclusion for
-   `body_preview` and `response_headers`. Query parameters may select a session
-   namespace (`platform`, `tenant`, `session-scope` / `scope`,
-   `session-subject` / `subject`), but invalid namespace values must fail as
-   stable JSON `400` envelopes (`invalid_session_platform`,
+7. `gateway/src/cli/status/run-status.ts` and
+   `gateway/src/cli/serve/management-routes.ts` must expose the same safe
+   `route_decision` contract. Namespace parsing must be centralized in
+   `gateway/src/cli/status/route-namespace.ts`, then both `grobot status
+   --json` and management `GET /api/v1/status` must reuse the status route
+   snapshot helpers instead of reimplementing provider scoring. Both surfaces
+   must preserve the same unsafe-field exclusion for `body_preview` and
+   `response_headers`.
+   Query parameters may select a management session namespace (`platform`,
+   `tenant`, `session-scope` / `scope`, `session-subject` / `subject`), and CLI
+   options may select a status namespace (`--platform`, `--tenant`,
+   `--session-scope` / `--scope`, `--session-subject` / `--subject`). Invalid
+   namespace values must fail as stable envelopes (`invalid_session_platform`,
    `invalid_session_scope`, `invalid_session_tenant`,
-   `invalid_session_subject`) instead of throwing through the HTTP server.
-   Valid alias query forms must return provider health fields in the same shape
-   as `grobot status --json`.
+   `invalid_session_subject`) instead of throwing through the HTTP server or
+   top-level CLI fatal handler. Management uses JSON HTTP `400`; `grobot status
+   --json` uses `status:"error"` with exit code `2`; text status prints a
+   concise stderr error and exits `2`. Valid alias query forms must return
+   provider health fields in the same shape as `grobot status --json`.
 
 Memory and experience feedback must preserve the same safe structured signal
 without storing unsafe provider previews:

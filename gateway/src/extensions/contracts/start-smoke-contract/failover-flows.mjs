@@ -150,6 +150,32 @@ export function runProviderFailureRouteStatusTsRust(context, successProviderBase
     GROBOT_STATUS_LEGACY_TEXT: "1",
   });
   const statusDefaultTextResult = runCommand(repoRoot, statusArgs);
+  const invalidSubjectStatusResult = runCommand(repoRoot, [
+    ...statusArgs,
+    "--session-subject",
+    "bad:subject",
+    "--json",
+  ]);
+  const invalidSubjectPayload = parseJsonObjectSafe(invalidSubjectStatusResult.stdout);
+  const emptySubjectStatusResult = runCommand(repoRoot, [
+    ...statusArgs,
+    "--session-subject",
+    "",
+    "--json",
+  ]);
+  const emptySubjectPayload = parseJsonObjectSafe(emptySubjectStatusResult.stdout);
+  const invalidScopeStatusResult = runCommand(repoRoot, [
+    ...statusArgs,
+    "--session-scope",
+    "room",
+    "--json",
+  ]);
+  const invalidScopePayload = parseJsonObjectSafe(invalidScopeStatusResult.stdout);
+  const invalidTenantTextResult = runCommand(repoRoot, [
+    ...statusArgs,
+    "--tenant",
+    "bad:tenant",
+  ]);
   const parsedStatus = parseJsonObjectSafe(statusJsonResult.stdout);
   const routeDecision = asRecord(parsedStatus?.route_decision);
   const routeObserved = asRecord(routeDecision.observed);
@@ -170,6 +196,20 @@ export function runProviderFailureRouteStatusTsRust(context, successProviderBase
     status_exit_code: statusJsonResult.exit_code,
     legacy_text_exit_code: statusLegacyTextResult.exit_code,
     default_text_exit_code: statusDefaultTextResult.exit_code,
+    invalid_subject_status_exit_code: invalidSubjectStatusResult.exit_code,
+    invalid_subject_status_error: invalidSubjectPayload?.error ?? null,
+    invalid_subject_status_field: invalidSubjectPayload?.field ?? null,
+    empty_subject_status_exit_code: emptySubjectStatusResult.exit_code,
+    empty_subject_status_error: emptySubjectPayload?.error ?? null,
+    empty_subject_status_field: emptySubjectPayload?.field ?? null,
+    invalid_scope_status_exit_code: invalidScopeStatusResult.exit_code,
+    invalid_scope_status_error: invalidScopePayload?.error ?? null,
+    invalid_scope_status_field: invalidScopePayload?.field ?? null,
+    invalid_tenant_text_exit_code: invalidTenantTextResult.exit_code,
+    invalid_tenant_text_has_stable_error:
+      invalidTenantTextResult.stderr.includes("error: invalid_session_tenant:")
+      && invalidTenantTextResult.stderr.includes("tenant must not contain ':'")
+      && !invalidTenantTextResult.stderr.includes("fatal error"),
     status_json_parse_ok: Boolean(parsedStatus),
     registry_path: registryPath,
     registry_exists: Boolean(registryPayload),

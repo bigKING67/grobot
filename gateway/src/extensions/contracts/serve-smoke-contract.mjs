@@ -652,6 +652,10 @@ async function runProviderFailureRouteStatusManagementApi(options) {
       `${baseUrl}/api/v1/status?session-subject=${encodeURIComponent("bad:subject")}`,
       { timeoutMs: 1_000 },
     );
+    const emptySubjectStatus = await requestJson(
+      `${baseUrl}/api/v1/status?session-subject=`,
+      { timeoutMs: 1_000 },
+    );
     const invalidScopeStatus = await requestJson(
       `${baseUrl}/api/v1/status?session-scope=${encodeURIComponent("room")}`,
       { timeoutMs: 1_000 },
@@ -688,6 +692,11 @@ async function runProviderFailureRouteStatusManagementApi(options) {
         asRecord(invalidSubjectStatus.body).error ?? null,
       management_invalid_subject_field:
         asRecord(invalidSubjectStatus.body).field ?? null,
+      management_empty_subject_status: emptySubjectStatus.status,
+      management_empty_subject_error:
+        asRecord(emptySubjectStatus.body).error ?? null,
+      management_empty_subject_field:
+        asRecord(emptySubjectStatus.body).field ?? null,
       management_invalid_scope_status: invalidScopeStatus.status,
       management_invalid_scope_error:
         asRecord(invalidScopeStatus.body).error ?? null,

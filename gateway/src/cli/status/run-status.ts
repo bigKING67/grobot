@@ -1,5 +1,4 @@
 import { resolveExecutionPlaneConfig } from "../../orchestration/execution-plane";
-import { buildSessionKey } from "../../models/session-key";
 import { hasFlag, OptionValue, readOptionString } from "../cli-args";
 import { CLI_PRODUCT_ENGINE } from "../product-identity";
 import {
@@ -56,13 +55,6 @@ import {
   resolveWorkDir,
 } from "../services/runtime-paths";
 import {
-  parsePlatform,
-  parseScope,
-  resolveSessionPlatformOption,
-  resolveSessionScopeOption,
-  resolveSessionSubjectOption,
-} from "../start/session/options";
-import {
   readGraphCacheCounter,
   resolveContextEngineRuntimeModelConfig,
 } from "./context-engine-status";
@@ -87,6 +79,10 @@ import {
   resolveRouteDecisionRuntimeSnapshot,
   serializeRouteDecisionSummary,
 } from "./route-status";
+import {
+  isRouteDecisionNamespaceInputError,
+} from "./route-namespace";
+import { resolveStatusRouteNamespace } from "./route-namespace-options";
 import {
   formatRuntimeHealthStatusLines,
   resolveRuntimeCacheStatsLocation,
@@ -129,8 +125,6 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
             ? "home"
             : "custom";
   const projectName = readOptionString(options, "project") ?? basenameFromPath(workDir);
-  const sessionScopeRaw = resolveSessionScopeOption(options);
-  const sessionSubject = resolveSessionSubjectOption(options) ?? process.env.USER ?? "user";
   const providerOverrideFromCli = readOptionString(options, "provider");
   const providerOverrideFromEnv = process.env.GROBOT_PROVIDER;
   const modelFromCli = readOptionString(options, "model");
@@ -182,6 +176,30 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     readOptionString(options, "circuit-cooldown-secs"),
     30,
   );
+  let statusRouteNamespace;
+  try {
+    statusRouteNamespace = resolveStatusRouteNamespace({
+      options,
+      projectName,
+      defaultSubject: process.env.USER ?? "user",
+    });
+  } catch (error) {
+    if (isRouteDecisionNamespaceInputError(error)) {
+      if (outputJson) {
+        process.stdout.write(`${JSON.stringify({
+          status: "error",
+          error: error.code,
+          field: error.field,
+          detail: error.message,
+        }, null, 2)}\n`);
+      } else {
+        process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      }
+      return 2;
+    }
+    throw error;
+  }
+  const { sessionNamespace, sessionPreview, sessionSubject } = statusRouteNamespace;
   const cacheStatsWindowMs = parseOptionalPositiveInt(
     readOptionString(options, "cache-stats-window-ms"),
   );
@@ -226,12 +244,6 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
       ?? process.env.GROBOT_CONTEXT_PERSISTENT_GRAPH_DEGRADE_MIN_SCANNED_FILES,
     40,
   );
-  const sessionPreview = buildSessionKey({
-    platform: parsePlatform(resolveSessionPlatformOption(options)),
-    tenant: readOptionString(options, "tenant") ?? projectName,
-    scope: parseScope(sessionScopeRaw),
-    subject: sessionSubject,
-  });
   const routeDecision = resolveRouteDecisionRuntimeSnapshot({
     projectStateRoot,
     sessionNamespaceKey: sessionPreview,
@@ -277,7 +289,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     runtimeToolRecoveryGate,
     runtimeToolSurfaceAdaptationSnapshot,
   );
-  const parsedScope = parseScope(sessionScopeRaw);
+  const parsedScope = sessionNamespace.scope;
   const maskedApiKey = maskSecret(apiKey);
   const runtimeHealth =
     executionPlane.runtimeImpl === "rust" && runtimeBinaryPath
