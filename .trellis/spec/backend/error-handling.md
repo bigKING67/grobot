@@ -75,6 +75,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     malformed, zero/negative, or out-of-range explicit CLI/config values for
     retention/session/plan cleanup controls must exit `2` with stable
     `invalid_<field>` errors instead of silently falling back or clamping.
+11. Start/session controls must fail closed on malformed explicit values.
+    `grobot start` may default history, handoff, and rewind behavior only when
+    those controls are omitted; malformed, missing-value, or out-of-range
+    explicit CLI/env controls must exit `2` with stable `invalid_<field>`
+    errors before session bootstrap or runtime turn execution.
 
 ---
 

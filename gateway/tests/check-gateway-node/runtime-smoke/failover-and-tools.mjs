@@ -300,6 +300,34 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(startInvalidStorageControlsPayload.has_start_banner, false);
   logStep("start-smoke-contract start-invalid-storage-controls-reject-flow");
 
+  const sessionControlsResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-invalid-session-controls-reject-flow",
+    ["--repo-root", repoRoot],
+    { timeoutMs: 240_000 },
+  );
+  const sessionControlsPayload = parseJsonOutput(
+    "start-smoke-contract start-invalid-session-controls-reject-flow",
+    sessionControlsResult.stdout,
+  );
+  assert.equal(sessionControlsPayload.invalid_history_exit_code, 2);
+  assert.equal(sessionControlsPayload.invalid_history_has_stable_error, true);
+  assert.equal(sessionControlsPayload.over_history_exit_code, 2);
+  assert.equal(sessionControlsPayload.over_history_has_stable_error, true);
+  assert.equal(sessionControlsPayload.missing_handoff_recent_exit_code, 2);
+  assert.equal(sessionControlsPayload.missing_handoff_recent_has_stable_error, true);
+  assert.equal(sessionControlsPayload.zero_handoff_recent_exit_code, 2);
+  assert.equal(sessionControlsPayload.zero_handoff_recent_has_stable_error, true);
+  assert.equal(sessionControlsPayload.invalid_rewind_mode_exit_code, 2);
+  assert.equal(sessionControlsPayload.invalid_rewind_mode_has_stable_error, true);
+  assert.equal(sessionControlsPayload.missing_rewind_mode_exit_code, 2);
+  assert.equal(sessionControlsPayload.missing_rewind_mode_has_stable_error, true);
+  assert.equal(sessionControlsPayload.invalid_env_handoff_exit_code, 2);
+  assert.equal(sessionControlsPayload.invalid_env_handoff_has_stable_error, true);
+  assert.equal(sessionControlsPayload.hides_top_level_fatal, true);
+  assert.equal(sessionControlsPayload.has_start_banner, false);
+  logStep("start-smoke-contract start-invalid-session-controls-reject-flow");
+
   const statusInvalidRuntimeControlsResult = runContract(
     "start-smoke-contract.mjs",
     "status-invalid-runtime-controls-reject-flow",

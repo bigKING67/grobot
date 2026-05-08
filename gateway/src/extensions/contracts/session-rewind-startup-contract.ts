@@ -7,6 +7,7 @@ import {
   resolveRewindRequested,
   resolveRewindSelector,
 } from "../../cli/start/session/options";
+import { isStartSessionOptionInputError } from "../../cli/start/session/input-errors";
 
 const CHECKPOINT_FIXTURE: readonly StartupRewindCheckpointSummary[] = [
   {
@@ -54,6 +55,17 @@ function assertAll(checks: ReadonlyArray<[string, boolean]>): void {
     const labels = failed.map(([label]) => label).join(", ");
     throw new Error(`session-rewind-startup-contract failed: ${labels}`);
   }
+}
+
+function captureInvalidRewindModeError(): unknown {
+  try {
+    resolveRewindMode({
+      "rewind-mode": "invalid-mode",
+    });
+  } catch (error) {
+    return error;
+  }
+  return undefined;
 }
 
 function run(): void {
@@ -118,9 +130,7 @@ function run(): void {
   const rewindModeSummarize = resolveRewindMode({
     "rewind-mode": "summary",
   });
-  const rewindModeInvalidFallback = resolveRewindMode({
-    "rewind-mode": "invalid-mode",
-  });
+  const rewindModeInvalidError = captureInvalidRewindModeError();
   const startupRewindWarningText = [
     rewindMultipleMatches.notice ?? "",
     rewindNoMatchFallback.notice ?? "",
@@ -190,7 +200,12 @@ function run(): void {
     check("rewind_mode_rewind_files_defaults_code", rewindModeFromFiles === "code"),
     check("rewind_mode_explicit_conversation", rewindModeConversation === "conversation"),
     check("rewind_mode_summary_alias_maps_summarize", rewindModeSummarize === "summarize"),
-    check("rewind_mode_invalid_falls_back_both", rewindModeInvalidFallback === "both"),
+    check(
+      "rewind_mode_invalid_rejects_stable_error",
+      isStartSessionOptionInputError(rewindModeInvalidError)
+      && rewindModeInvalidError.code === "invalid_rewind_mode"
+      && rewindModeInvalidError.field === "rewind-mode",
+    ),
   ]);
 }
 

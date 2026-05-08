@@ -1,5 +1,6 @@
 import { Platform, SessionScope } from "../../../models/types";
 import { hasFlag, OptionValue, readOptionString, readOptionStringAny } from "../../cli-args";
+import { StartSessionOptionInputError } from "./input-errors";
 
 const DEFAULT_HISTORY_TURNS = 12;
 const MAX_HISTORY_TURNS = 64;
@@ -7,34 +8,57 @@ const DEFAULT_HANDOFF_RECENT_TURNS = 6;
 const MAX_HANDOFF_RECENT_TURNS = 20;
 export type StartupRewindMode = "both" | "conversation" | "code" | "summarize";
 
-function parseBoolValue(raw: string | undefined, defaultValue: boolean): boolean {
-  if (typeof raw !== "string" || raw.trim().length === 0) {
-    return defaultValue;
+function parseBoolValue(raw: string | undefined, field: string): boolean | undefined {
+  if (typeof raw !== "string") {
+    return undefined;
   }
   const normalized = raw.trim().toLowerCase();
+  if (!normalized) {
+    throw new StartSessionOptionInputError(field, `${field} must be boolean`);
+  }
   if (normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on") {
     return true;
   }
   if (normalized === "false" || normalized === "0" || normalized === "no" || normalized === "off") {
     return false;
   }
-  return defaultValue;
+  throw new StartSessionOptionInputError(field, `${field} must be boolean`);
+}
+
+function hasOption(options: Record<string, OptionValue>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(options, key);
+}
+
+function readRawOptionString(options: Record<string, OptionValue>, key: string): string | undefined {
+  const value = options[key];
+  return typeof value === "string" ? value : undefined;
 }
 
 function parsePositiveIntOption(
-  raw: string | undefined,
-  defaultValue: number,
+  options: Record<string, OptionValue>,
+  key: string,
+  fallback: number,
   minimum: number,
   maximum: number,
 ): number {
-  if (!raw) {
-    return defaultValue;
+  if (!hasOption(options, key)) {
+    return fallback;
   }
-  const parsed = Number.parseInt(raw.trim(), 10);
-  if (!Number.isFinite(parsed)) {
-    return defaultValue;
+  const normalized = readRawOptionString(options, key)?.trim();
+  if (!normalized || !/^\d+$/.test(normalized)) {
+    throw new StartSessionOptionInputError(
+      key,
+      `${key} must be an integer between ${String(minimum)} and ${String(maximum)}`,
+    );
   }
-  return Math.max(minimum, Math.min(maximum, parsed));
+  const parsed = Number.parseInt(normalized, 10);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new StartSessionOptionInputError(
+      key,
+      `${key} must be an integer between ${String(minimum)} and ${String(maximum)}`,
+    );
+  }
+  return parsed;
 }
 
 export function parsePlatform(raw: string | undefined): Platform {
@@ -65,7 +89,8 @@ export function resolveSessionPlatformOption(options: Record<string, OptionValue
 
 export function resolveHistoryTurns(options: Record<string, OptionValue>): number {
   return parsePositiveIntOption(
-    readOptionString(options, "history-turns"),
+    options,
+    "history-turns",
     DEFAULT_HISTORY_TURNS,
     1,
     MAX_HISTORY_TURNS,
@@ -74,7 +99,8 @@ export function resolveHistoryTurns(options: Record<string, OptionValue>): numbe
 
 export function resolveHandoffRecentTurns(options: Record<string, OptionValue>): number {
   return parsePositiveIntOption(
-    readOptionString(options, "handoff-recent-turns"),
+    options,
+    "handoff-recent-turns",
     DEFAULT_HANDOFF_RECENT_TURNS,
     1,
     MAX_HANDOFF_RECENT_TURNS,
@@ -90,7 +116,7 @@ export function resolveHandoffAutoOnExit(options: Record<string, OptionValue>): 
   }
   const raw = process.env.GROBOT_HANDOFF_AUTO_ON_EXIT;
   if (typeof raw === "string" && raw.trim().length > 0) {
-    return parseBoolValue(raw, true);
+    return parseBoolValue(raw, "handoff-auto-on-exit") ?? true;
   }
   return true;
 }
@@ -147,9 +173,17 @@ export function resolveRewindSelector(options: Record<string, OptionValue>): str
 }
 
 export function resolveRewindMode(options: Record<string, OptionValue>): StartupRewindMode {
-  const explicit = normalizeRewindMode(readOptionString(options, "rewind-mode"));
+  const hasExplicitMode = hasOption(options, "rewind-mode");
+  const rawMode = readRawOptionString(options, "rewind-mode");
+  const explicit = normalizeRewindMode(rawMode);
   if (explicit) {
     return explicit;
+  }
+  if (hasExplicitMode) {
+    throw new StartSessionOptionInputError(
+      "rewind-mode",
+      "rewind-mode must be both, conversation, code, or summarize",
+    );
   }
   return readOptionString(options, "rewind-files") ? "code" : "both";
 }

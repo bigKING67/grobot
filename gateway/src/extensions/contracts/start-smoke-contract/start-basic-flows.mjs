@@ -319,6 +319,120 @@ export function runStartInvalidStorageControlsRejectFlow(context) {
   };
 }
 
+export function runStartInvalidSessionControlsRejectFlow(context) {
+  const {
+    repoRoot,
+    createTempDir,
+    buildSmokeConfig,
+    writeConfig,
+    runCommand,
+    hasStartBannerMarker,
+  } = context;
+  const workDir = createTempDir("grobot-start-invalid-session-controls-work");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const commonArgs = [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-subject",
+    "start-invalid-session-controls-user",
+    "--message",
+    "invalid session controls should not reach runtime",
+  ];
+  const invalidHistoryResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--history-turns",
+    "bad",
+  ]);
+  const overHistoryResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--history-turns",
+    "65",
+  ]);
+  const missingHandoffRecentResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--handoff-recent-turns",
+  ]);
+  const zeroHandoffRecentResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--handoff-recent-turns",
+    "0",
+  ]);
+  const invalidRewindModeResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--rewind-mode",
+    "history",
+  ]);
+  const missingRewindModeResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--rewind-mode",
+  ]);
+  const invalidEnvHandoffResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_HANDOFF_AUTO_ON_EXIT: "maybe",
+    },
+  );
+  const combinedOutput = [
+    invalidHistoryResult.stdout,
+    invalidHistoryResult.stderr,
+    overHistoryResult.stdout,
+    overHistoryResult.stderr,
+    missingHandoffRecentResult.stdout,
+    missingHandoffRecentResult.stderr,
+    zeroHandoffRecentResult.stdout,
+    zeroHandoffRecentResult.stderr,
+    invalidRewindModeResult.stdout,
+    invalidRewindModeResult.stderr,
+    missingRewindModeResult.stdout,
+    missingRewindModeResult.stderr,
+    invalidEnvHandoffResult.stdout,
+    invalidEnvHandoffResult.stderr,
+  ].join("\n");
+  return {
+    invalid_history_exit_code: invalidHistoryResult.exit_code,
+    invalid_history_has_stable_error:
+      invalidHistoryResult.stderr.includes("error: invalid_history_turns:")
+      && invalidHistoryResult.stderr.includes("history-turns must be an integer between 1 and 64"),
+    over_history_exit_code: overHistoryResult.exit_code,
+    over_history_has_stable_error:
+      overHistoryResult.stderr.includes("error: invalid_history_turns:")
+      && overHistoryResult.stderr.includes("history-turns must be an integer between 1 and 64"),
+    missing_handoff_recent_exit_code: missingHandoffRecentResult.exit_code,
+    missing_handoff_recent_has_stable_error:
+      missingHandoffRecentResult.stderr.includes("error: invalid_handoff_recent_turns:")
+      && missingHandoffRecentResult.stderr.includes("handoff-recent-turns must be an integer between 1 and 20"),
+    zero_handoff_recent_exit_code: zeroHandoffRecentResult.exit_code,
+    zero_handoff_recent_has_stable_error:
+      zeroHandoffRecentResult.stderr.includes("error: invalid_handoff_recent_turns:")
+      && zeroHandoffRecentResult.stderr.includes("handoff-recent-turns must be an integer between 1 and 20"),
+    invalid_rewind_mode_exit_code: invalidRewindModeResult.exit_code,
+    invalid_rewind_mode_has_stable_error:
+      invalidRewindModeResult.stderr.includes("error: invalid_rewind_mode:")
+      && invalidRewindModeResult.stderr.includes("rewind-mode must be both, conversation, code, or summarize"),
+    missing_rewind_mode_exit_code: missingRewindModeResult.exit_code,
+    missing_rewind_mode_has_stable_error:
+      missingRewindModeResult.stderr.includes("error: invalid_rewind_mode:")
+      && missingRewindModeResult.stderr.includes("rewind-mode must be both, conversation, code, or summarize"),
+    invalid_env_handoff_exit_code: invalidEnvHandoffResult.exit_code,
+    invalid_env_handoff_has_stable_error:
+      invalidEnvHandoffResult.stderr.includes("error: invalid_handoff_auto_on_exit:")
+      && invalidEnvHandoffResult.stderr.includes("handoff-auto-on-exit must be boolean"),
+    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
+    has_start_banner: hasStartBannerMarker(combinedOutput),
+  };
+}
+
 export function runStartMessageProviderConfigTsRust(
   context,
   providerBaseUrl,

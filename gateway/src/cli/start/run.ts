@@ -60,6 +60,7 @@ import { GLOBAL_TURN_GATE } from "../../orchestration/orchestrator/turn-gate";
 import { isRouteDecisionNamespaceInputError } from "../status/route-namespace";
 import { isCliNumericOptionInputError } from "../status/option-parsing";
 import { isMemoryStoreConfigInputError } from "../services/memory-store-config";
+import { isStartSessionOptionInputError } from "./session/input-errors";
 
 export async function runStart(
   options: Record<string, OptionValue>,
@@ -82,6 +83,10 @@ export async function runStart(
       return 2;
     }
     if (isMemoryStoreConfigInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    if (isStartSessionOptionInputError(error)) {
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }

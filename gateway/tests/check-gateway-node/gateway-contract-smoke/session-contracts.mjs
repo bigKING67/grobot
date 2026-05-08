@@ -363,7 +363,7 @@ export async function runSessionContracts() {
   assert.equal(sessionRewindStartupContractPayload.rewind_mode_rewind_files_defaults_code, true);
   assert.equal(sessionRewindStartupContractPayload.rewind_mode_explicit_conversation, true);
   assert.equal(sessionRewindStartupContractPayload.rewind_mode_summary_alias_maps_summarize, true);
-  assert.equal(sessionRewindStartupContractPayload.rewind_mode_invalid_falls_back_both, true);
+  assert.equal(sessionRewindStartupContractPayload.rewind_mode_invalid_rejects_stable_error, true);
   logStep("session-rewind-startup-contract");
 
   const sessionRewindStartupDisambiguationContractResult = runCommand("npx", [

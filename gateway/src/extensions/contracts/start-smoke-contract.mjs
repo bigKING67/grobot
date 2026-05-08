@@ -60,6 +60,7 @@ import {
 import {
   runStartInvalidNamespaceRejectFlow,
   runStartInvalidRuntimeControlsRejectFlow,
+  runStartInvalidSessionControlsRejectFlow,
   runStartInvalidStorageControlsRejectFlow,
   runPackageLauncherRejectsPython,
   runStartImOnlyRejectFlow,
@@ -100,6 +101,9 @@ function runCli(argv) {
       break;
     case "start-invalid-storage-controls-reject-flow":
       payload = runStartInvalidStorageControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-session-controls-reject-flow":
+      payload = runStartInvalidSessionControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "start-message-provider-config-ts-rust":
       payload = runStartMessageProviderConfigTsRust(
