@@ -197,11 +197,18 @@ export function createRunStartTurnRunner(
     const routeScoreOrder = routeDecision.trace.scoreOrder
       .map((entry) => `${entry.name}:${entry.score.toFixed(2)}`)
       .join(",");
+    const routeLastErrorPenalties = routeDecision.trace.scoreOrder
+      .filter((entry) => entry.lastErrorPenalty > 0)
+      .map((entry) => {
+        const reason = entry.lastErrorReason ?? "last_error";
+        return `${entry.name}:${reason}+${String(entry.lastErrorPenalty)}`;
+      })
+      .join(",");
     const routeCircuitSkipped = routeDecision.trace.circuitSkipped
       .map((entry) => `${entry.name}@${String(entry.reopenAtMs)}`)
       .join(",");
     writeTurnDiagnostic(
-      `[runtime-route] event=decision sticky=${routeDecision.trace.stickyProvider ?? "<none>"} sticky_hit=${routeDecision.trace.stickyHit ? "true" : "false"} sticky_reason=${routeDecision.trace.stickyReason} selected=${orderedProviders[0]?.name ?? "<none>"} score_order=${routeScoreOrder || "<none>"} circuit_skipped=${routeCircuitSkipped || "<none>"} probe=${routeDecision.trace.probeProvider ?? "<none>"} strategy=sticky+score\n`,
+      `[runtime-route] event=decision sticky=${routeDecision.trace.stickyProvider ?? "<none>"} sticky_hit=${routeDecision.trace.stickyHit ? "true" : "false"} sticky_reason=${routeDecision.trace.stickyReason} selected=${orderedProviders[0]?.name ?? "<none>"} score_order=${routeScoreOrder || "<none>"} last_error_penalties=${routeLastErrorPenalties || "<none>"} circuit_skipped=${routeCircuitSkipped || "<none>"} probe=${routeDecision.trace.probeProvider ?? "<none>"} strategy=sticky+score\n`,
     );
     if (orderedProviders.length === 0) {
       const gaState = input.gaMechanismRuntime.snapshotSession(sessionKey);

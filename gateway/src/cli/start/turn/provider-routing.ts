@@ -5,6 +5,14 @@ import {
   type KimiSearchRoutingPolicy,
   type RuntimeProviderCandidate,
 } from "./contract";
+import {
+  type ProviderStickyBypassReason,
+  hasAttemptsExhausted,
+  isTransientProviderHttpStatus,
+  recordBooleanField,
+  recordFiniteNumberField,
+  resolveProviderLastErrorHealth,
+} from "./provider-health";
 
 const EWMA_ALPHA = 0.25;
 const KIMI_SEARCH_TURN_TIMEOUT_MS = 120_000;
@@ -36,10 +44,12 @@ export interface ProviderFlowState {
 export interface RouteDecisionTrace {
   stickyProvider: string | undefined;
   stickyHit: boolean;
-  stickyReason: "none" | "applied" | "not_found" | "circuit_open";
+  stickyReason: "none" | "applied" | "not_found" | "circuit_open" | ProviderStickyBypassReason;
   scoreOrder: Array<{
     name: string;
     score: number;
+    lastErrorPenalty: number;
+    lastErrorReason?: string;
   }>;
   circuitSkipped: Array<{
     name: string;
@@ -129,11 +139,19 @@ function resolveCandidateScore(input: {
     ? Math.min(input.providerState.ewma_latency_ms, 10_000) / 40
     : 0;
   const errorPenalty = normalizeErrorRate(input.providerState?.ewma_error_rate) * 600;
+  const lastErrorPenalty = resolveProviderLastErrorHealth(input.providerState).scorePenalty;
   const weightBonus = typeof input.provider.weight === "number" && input.provider.weight > 0
     ? -Math.log10(1 + input.provider.weight) * 20
     : 0;
   const jitter = (hashText(`${input.sessionKey}:${input.provider.name}`) % 100) / 1000;
-  return priority * 1000 + failurePenalty + costPenalty + latencyPenalty + errorPenalty + weightBonus + jitter;
+  return priority * 1000
+    + failurePenalty
+    + costPenalty
+    + latencyPenalty
+    + errorPenalty
+    + lastErrorPenalty
+    + weightBonus
+    + jitter;
 }
 
 function normalizePositiveInt(value: number | undefined): number | undefined {
@@ -145,48 +163,6 @@ function normalizePositiveInt(value: number | undefined): number | undefined {
     return undefined;
   }
   return normalized;
-}
-
-function recordBooleanField(
-  value: Record<string, unknown> | undefined,
-  key: string,
-): boolean | undefined {
-  const raw = value?.[key];
-  return typeof raw === "boolean" ? raw : undefined;
-}
-
-function recordFiniteNumberField(
-  value: Record<string, unknown> | undefined,
-  key: string,
-): number | undefined {
-  const raw = value?.[key];
-  if (typeof raw !== "number" || !Number.isFinite(raw)) {
-    return undefined;
-  }
-  return raw;
-}
-
-function hasAttemptsExhausted(errorData: Record<string, unknown> | undefined): boolean {
-  const attempt = recordFiniteNumberField(errorData, "attempt");
-  const maxAttempts = recordFiniteNumberField(errorData, "max_attempts");
-  if (typeof attempt !== "number" || typeof maxAttempts !== "number") {
-    return false;
-  }
-  return maxAttempts > 0 && attempt >= maxAttempts;
-}
-
-function isTransientProviderHttpStatus(status: number | undefined): boolean {
-  if (typeof status !== "number") {
-    return false;
-  }
-  const normalized = Math.trunc(status);
-  return normalized === 408
-    || normalized === 425
-    || normalized === 429
-    || normalized === 500
-    || normalized === 502
-    || normalized === 503
-    || normalized === 504;
 }
 
 function normalizeProviderRetryRequest(
@@ -610,6 +586,15 @@ export function resolveProviderOrder(input: {
   const nowMs = Date.now();
   let stickyHit = false;
   let stickyReason: RouteDecisionTrace["stickyReason"] = "none";
+  const hasAvailableAlternative = (providerName: string): boolean => {
+    return input.providers.some((provider) => {
+      if (provider.name === providerName) {
+        return false;
+      }
+      const state = input.stateMap.get(provider.name);
+      return !state || state.circuit_open_until_ms <= nowMs;
+    });
+  };
   const pushOpenProvider = (provider: RuntimeProviderCandidate): void => {
     if (openProviders.some((item) => item.name === provider.name)) {
       return;
@@ -626,9 +611,14 @@ export function resolveProviderOrder(input: {
     if (sticky) {
       const stickyState = input.stateMap.get(sticky.name);
       if (!stickyState || stickyState.circuit_open_until_ms <= nowMs) {
-        stickyHit = true;
-        stickyReason = "applied";
-        ordered.push(sticky);
+        const stickyHealth = resolveProviderLastErrorHealth(stickyState);
+        if (stickyHealth.stickyBypassReason && hasAvailableAlternative(sticky.name)) {
+          stickyReason = stickyHealth.stickyBypassReason;
+        } else {
+          stickyHit = true;
+          stickyReason = "applied";
+          ordered.push(sticky);
+        }
       } else {
         stickyReason = "circuit_open";
         pushOpenProvider(sticky);
@@ -673,15 +663,21 @@ export function resolveProviderOrder(input: {
     }
   }
   const scoreOrder = ordered
-    .map((provider, index) => ({
-      name: provider.name,
-      score: resolveCandidateScore({
-        provider,
-        providerState: input.stateMap.get(provider.name),
-        fallbackPriority: index + 1,
-        sessionKey: input.sessionKey,
-      }),
-    }))
+    .map((provider, index) => {
+      const providerState = input.stateMap.get(provider.name);
+      const health = resolveProviderLastErrorHealth(providerState);
+      return {
+        name: provider.name,
+        score: resolveCandidateScore({
+          provider,
+          providerState,
+          fallbackPriority: index + 1,
+          sessionKey: input.sessionKey,
+        }),
+        lastErrorPenalty: health.scorePenalty,
+        lastErrorReason: health.reason,
+      };
+    })
     .sort((left, right) => left.score - right.score);
   if (ordered.length <= 1) {
     return {
@@ -696,7 +692,7 @@ export function resolveProviderOrder(input: {
       },
     };
   }
-  const stickyName = input.stickyProvider;
+  const stickyName = stickyHit && stickyReason === "applied" ? input.stickyProvider : undefined;
   const head = stickyName ? ordered.filter((item) => item.name === stickyName) : [];
   const tail = ordered
     .filter((item) => item.name !== stickyName)
