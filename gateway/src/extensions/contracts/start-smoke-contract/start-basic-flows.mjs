@@ -98,8 +98,6 @@ export function runStartInvalidNamespaceRejectFlow(context) {
     "ts",
     "--runtime-impl",
     "rust",
-    "--tenant",
-    "grobot",
     "--session-subject",
     "",
     "--message",

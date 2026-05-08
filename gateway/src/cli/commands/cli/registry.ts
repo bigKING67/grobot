@@ -1,8 +1,4 @@
-import {
-  type ParsedArgs,
-  readOptionString,
-  readOptionStringAny,
-} from "../../cli-args";
+import { type ParsedArgs } from "../../cli-args";
 import { runGc } from "../../gc/run-gc";
 import { runInit } from "../../init/run-init";
 import { runServe } from "../../serve/run-serve";
@@ -11,13 +7,21 @@ import { runStatus } from "../../status/run-status";
 import { CLI_PRODUCT_NAME } from "../../product-identity";
 import { type CliCommandSpec, type CliDispatchContext } from "./types";
 
+const START_IM_CONTEXT_OPTION_KEYS = [
+  "platform",
+  "tenant",
+  "session-scope",
+  "scope",
+  "session-subject",
+  "subject",
+] as const;
+
+function hasOption(options: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(options, key);
+}
+
 function hasStartImContext(parsed: ParsedArgs): boolean {
-  return Boolean(
-    readOptionString(parsed.options, "platform")
-      || readOptionString(parsed.options, "tenant")
-      || readOptionStringAny(parsed.options, ["session-scope", "scope"])
-      || readOptionStringAny(parsed.options, ["session-subject", "subject"]),
-  );
+  return START_IM_CONTEXT_OPTION_KEYS.some((key) => hasOption(parsed.options, key));
 }
 
 function writeStartImOnlyHint(context: CliDispatchContext): void {
