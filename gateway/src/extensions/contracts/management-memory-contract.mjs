@@ -1,0 +1,311 @@
+import { spawn } from "node:child_process";
+import { mkdirSync } from "node:fs";
+
+function parseArgs(argv) {
+  const command = argv[0] ?? "";
+  if (!command) {
+    throw new Error("missing command");
+  }
+  const options = new Map();
+  for (let index = 1; index < argv.length; index += 1) {
+    const token = argv[index] ?? "";
+    if (!token.startsWith("--")) {
+      throw new Error(`unknown argument: ${token}`);
+    }
+    const value = argv[index + 1] ?? "";
+    if (!value || value.startsWith("--")) {
+      throw new Error(`missing value for ${token}`);
+    }
+    options.set(token.slice(2), value);
+    index += 1;
+  }
+  return { command, options };
+}
+
+function requireOption(options, key) {
+  const value = options.get(key);
+  if (!value) {
+    throw new Error(`missing --${key}`);
+  }
+  return value;
+}
+
+function sleep(ms) {
+  return new Promise((resolveSleep) => {
+    setTimeout(resolveSleep, ms);
+  });
+}
+
+async function requestJson(url, init = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, init.timeoutMs ?? 2_000);
+  try {
+    const response = await fetch(url, {
+      method: init.method ?? "GET",
+      headers: init.headers ?? {},
+      body: init.body,
+      signal: controller.signal,
+    });
+    const raw = await response.text();
+    let body = {};
+    if (raw.trim()) {
+      try {
+        const parsed = JSON.parse(raw);
+        body = typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : {};
+      } catch {
+        body = {};
+      }
+    }
+    return {
+      status: response.status,
+      body,
+    };
+  } catch (error) {
+    return {
+      status: 0,
+      body: {
+        error: "request_failed",
+        detail: String(error),
+      },
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function waitStatusReady(baseUrl, timeoutMs = 8_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const statusResult = await requestJson(`${baseUrl}/api/v1/status`, { timeoutMs: 500 });
+    if (statusResult.status === 200) {
+      return statusResult;
+    }
+    await sleep(100);
+  }
+  return null;
+}
+
+async function terminateProcess(proc) {
+  if (proc.killed || proc.exitCode !== null) {
+    proc.unref();
+    return;
+  }
+  proc.kill("SIGTERM");
+  const terminated = await new Promise((resolveTerminate) => {
+    const timer = setTimeout(() => {
+      resolveTerminate(false);
+    }, 3_000);
+    proc.once("exit", () => {
+      clearTimeout(timer);
+      resolveTerminate(true);
+    });
+  });
+  if (terminated) {
+    proc.unref();
+    return;
+  }
+  proc.kill("SIGKILL");
+  await new Promise((resolveKill) => {
+    const timer = setTimeout(() => {
+      resolveKill();
+    }, 2_000);
+    proc.once("exit", () => {
+      clearTimeout(timer);
+      resolveKill();
+    });
+  });
+  proc.unref();
+}
+
+function jsonBody(payload) {
+  return JSON.stringify(payload);
+}
+
+async function runMemoryInputValidation(options) {
+  const repoRoot = requireOption(options, "repo-root");
+  const workDir = requireOption(options, "work-dir");
+  const bind = requireOption(options, "bind");
+  const managementToken = requireOption(options, "management-token");
+  mkdirSync(workDir, { recursive: true });
+  const baseUrl = `http://${bind}`;
+  const proc = spawn(
+    "./grobot",
+    [
+      "serve",
+      "--project",
+      "grobot",
+      "--project-root",
+      workDir,
+      "--work-dir",
+      workDir,
+      "--gateway-impl",
+      "ts",
+      "--runtime-impl",
+      "rust",
+      "--bind",
+      bind,
+      "--management-token",
+      managementToken,
+    ],
+    {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+      },
+      stdio: "ignore",
+    },
+  );
+
+  try {
+    const statusResult = await waitStatusReady(baseUrl);
+    if (statusResult === null) {
+      return {
+        ready: false,
+        exit_code: proc.exitCode,
+        signal_code: proc.signalCode,
+      };
+    }
+
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${managementToken}`,
+    };
+    const sessionPath = encodeURIComponent("feishu:grobot:dm:memory-input-contract");
+    const memoryUrl = `${baseUrl}/api/v1/sessions/${sessionPath}/memory`;
+    const exportUrl = `${memoryUrl}/export`;
+    const importUrl = `${memoryUrl}/import`;
+    const forgetUrl = `${memoryUrl}/forget`;
+    const lifecycleUrl = `${memoryUrl}/lifecycle`;
+    const batchLifecycleUrl = `${baseUrl}/api/v1/memory/lifecycle/run`;
+
+    const invalidListLimit = await requestJson(`${memoryUrl}?limit=nope`, {
+      timeoutMs: 1_000,
+      headers,
+    });
+    const invalidListLimitZero = await requestJson(`${memoryUrl}?limit=0`, {
+      timeoutMs: 1_000,
+      headers,
+    });
+    const invalidListIncludeArchived = await requestJson(`${memoryUrl}?include_archived=maybe`, {
+      timeoutMs: 1_000,
+      headers,
+    });
+    const invalidExportIncludeSecret = await requestJson(`${exportUrl}?include_secret=maybe`, {
+      timeoutMs: 1_000,
+      headers,
+    });
+    const invalidImportDryRun = await requestJson(importUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        dry_run: "maybe",
+        records: [{ text: "x" }],
+      }),
+    });
+    const invalidForgetDryRun = await requestJson(forgetUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        dry_run: 2,
+        ids: ["x"],
+      }),
+    });
+    const invalidLifecycleDryRun = await requestJson(lifecycleUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        dry_run: {},
+      }),
+    });
+    const invalidBatchLimit = await requestJson(batchLifecycleUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        dry_run: false,
+        limit: "bad",
+        sessions: ["feishu:grobot:dm:memory-input-contract"],
+      }),
+    });
+    const oversizedBatchLimit = await requestJson(batchLifecycleUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        dry_run: false,
+        limit: 999_999,
+        sessions: ["feishu:grobot:dm:memory-input-contract"],
+      }),
+    });
+    const validList = await requestJson(`${memoryUrl}?limit=1&include_archived=true`, {
+      timeoutMs: 1_000,
+      headers,
+    });
+
+    return {
+      ready: true,
+      invalid_list_limit_status: invalidListLimit.status,
+      invalid_list_limit_error: invalidListLimit.body.error ?? null,
+      invalid_list_limit_field: invalidListLimit.body.field ?? null,
+      invalid_list_limit_zero_status: invalidListLimitZero.status,
+      invalid_list_limit_zero_error: invalidListLimitZero.body.error ?? null,
+      invalid_list_limit_zero_field: invalidListLimitZero.body.field ?? null,
+      invalid_list_include_archived_status: invalidListIncludeArchived.status,
+      invalid_list_include_archived_error: invalidListIncludeArchived.body.error ?? null,
+      invalid_list_include_archived_field: invalidListIncludeArchived.body.field ?? null,
+      invalid_export_include_secret_status: invalidExportIncludeSecret.status,
+      invalid_export_include_secret_error: invalidExportIncludeSecret.body.error ?? null,
+      invalid_export_include_secret_field: invalidExportIncludeSecret.body.field ?? null,
+      invalid_import_dry_run_status: invalidImportDryRun.status,
+      invalid_import_dry_run_error: invalidImportDryRun.body.error ?? null,
+      invalid_import_dry_run_field: invalidImportDryRun.body.field ?? null,
+      invalid_forget_dry_run_status: invalidForgetDryRun.status,
+      invalid_forget_dry_run_error: invalidForgetDryRun.body.error ?? null,
+      invalid_forget_dry_run_field: invalidForgetDryRun.body.field ?? null,
+      invalid_lifecycle_dry_run_status: invalidLifecycleDryRun.status,
+      invalid_lifecycle_dry_run_error: invalidLifecycleDryRun.body.error ?? null,
+      invalid_lifecycle_dry_run_field: invalidLifecycleDryRun.body.field ?? null,
+      invalid_batch_limit_status: invalidBatchLimit.status,
+      invalid_batch_limit_error: invalidBatchLimit.body.error ?? null,
+      invalid_batch_limit_field: invalidBatchLimit.body.field ?? null,
+      oversized_batch_limit_status: oversizedBatchLimit.status,
+      oversized_batch_limit_error: oversizedBatchLimit.body.error ?? null,
+      oversized_batch_limit_field: oversizedBatchLimit.body.field ?? null,
+      valid_list_status: validList.status,
+      valid_list_limit: validList.body.limit ?? null,
+      valid_list_include_archived: validList.body.include_archived ?? null,
+    };
+  } finally {
+    await terminateProcess(proc);
+  }
+}
+
+async function runCli(argv) {
+  const { command, options } = parseArgs(argv);
+  switch (command) {
+    case "memory-input-validation": {
+      const payload = await runMemoryInputValidation(options);
+      process.stdout.write(`${JSON.stringify(payload)}\n`);
+      return 0;
+    }
+    default:
+      throw new Error(`unknown command: ${command}`);
+  }
+}
+
+const entryScript = process.argv[1] ?? "";
+if (entryScript.includes("management-memory-contract.mjs")) {
+  runCli(process.argv.slice(2))
+    .then((exitCode) => {
+      process.exitCode = exitCode;
+    })
+    .catch((error) => {
+      process.stderr.write(`management-memory-contract fatal: ${String(error)}\n`);
+      process.exitCode = 1;
+    });
+}

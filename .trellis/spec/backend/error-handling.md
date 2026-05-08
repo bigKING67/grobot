@@ -59,6 +59,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
    controls such as `runtime-http-timeout-ms`, `circuit-failures`,
    `circuit-cooldown-secs`, provider concurrency/rate/burst knobs, and
    `cache-stats-window-ms`.
+8. Management API query/body controls must fail closed on malformed explicit
+   values. Optional controls may use documented defaults only when omitted;
+   malformed booleans, limits, cursors, TTLs, and batch controls must return
+   HTTP `400` JSON envelopes with stable `invalid_<field>` style errors instead
+   of silently falling back or clamping.
 
 ---
 

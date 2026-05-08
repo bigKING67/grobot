@@ -257,4 +257,57 @@ export async function runRuntimeDescribeFallbackSmoke() {
   assert.equal(interruptTtlPayload.invalid_json_error, "bad_request");
   assert.equal(interruptTtlPayload.invalid_json_detail_has_context, true);
   logStep("management-interrupt-contract interrupt-ttl-validation");
+
+  const memoryInputPort = await reserveFreePort();
+  const memoryInputWorkDir = makeTempDir("management-memory-work");
+  const memoryInputResult = runContract(
+    "management-memory-contract.mjs",
+    "memory-input-validation",
+    [
+      "--repo-root",
+      repoRoot,
+      "--work-dir",
+      memoryInputWorkDir,
+      "--bind",
+      `127.0.0.1:${memoryInputPort}`,
+      "--management-token",
+      "ops-token",
+    ],
+    { timeoutMs: 240_000 },
+  );
+  const memoryInputPayload = parseJsonOutput(
+    "management-memory-contract memory-input-validation",
+    memoryInputResult.stdout,
+  );
+  assert.equal(memoryInputPayload.ready, true);
+  assert.equal(memoryInputPayload.invalid_list_limit_status, 400);
+  assert.equal(memoryInputPayload.invalid_list_limit_error, "invalid_limit");
+  assert.equal(memoryInputPayload.invalid_list_limit_field, "limit");
+  assert.equal(memoryInputPayload.invalid_list_limit_zero_status, 400);
+  assert.equal(memoryInputPayload.invalid_list_limit_zero_error, "invalid_limit");
+  assert.equal(memoryInputPayload.invalid_list_include_archived_status, 400);
+  assert.equal(memoryInputPayload.invalid_list_include_archived_error, "invalid_include_archived");
+  assert.equal(memoryInputPayload.invalid_list_include_archived_field, "include_archived");
+  assert.equal(memoryInputPayload.invalid_export_include_secret_status, 400);
+  assert.equal(memoryInputPayload.invalid_export_include_secret_error, "invalid_include_secret");
+  assert.equal(memoryInputPayload.invalid_export_include_secret_field, "include_secret");
+  assert.equal(memoryInputPayload.invalid_import_dry_run_status, 400);
+  assert.equal(memoryInputPayload.invalid_import_dry_run_error, "invalid_dry_run");
+  assert.equal(memoryInputPayload.invalid_import_dry_run_field, "dry_run");
+  assert.equal(memoryInputPayload.invalid_forget_dry_run_status, 400);
+  assert.equal(memoryInputPayload.invalid_forget_dry_run_error, "invalid_dry_run");
+  assert.equal(memoryInputPayload.invalid_forget_dry_run_field, "dry_run");
+  assert.equal(memoryInputPayload.invalid_lifecycle_dry_run_status, 400);
+  assert.equal(memoryInputPayload.invalid_lifecycle_dry_run_error, "invalid_dry_run");
+  assert.equal(memoryInputPayload.invalid_lifecycle_dry_run_field, "dry_run");
+  assert.equal(memoryInputPayload.invalid_batch_limit_status, 400);
+  assert.equal(memoryInputPayload.invalid_batch_limit_error, "invalid_limit");
+  assert.equal(memoryInputPayload.invalid_batch_limit_field, "limit");
+  assert.equal(memoryInputPayload.oversized_batch_limit_status, 400);
+  assert.equal(memoryInputPayload.oversized_batch_limit_error, "invalid_limit");
+  assert.equal(memoryInputPayload.oversized_batch_limit_field, "limit");
+  assert.equal(memoryInputPayload.valid_list_status, 200);
+  assert.equal(memoryInputPayload.valid_list_limit, 1);
+  assert.equal(memoryInputPayload.valid_list_include_archived, true);
+  logStep("management-memory-contract memory-input-validation");
 }

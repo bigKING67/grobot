@@ -10,6 +10,13 @@ import {
 } from "../services/memory-lifecycle";
 import { requireManagementToken } from "./management-routes-auth";
 import { type ManagementRoutesContext } from "./management-routes-types";
+import {
+  bodyBool,
+  bodyPositiveInt,
+  queryBool,
+  queryInt,
+  writeManagementInputError,
+} from "./management-input-parsing";
 
 interface DispatchManagementMemoryRoutesInput {
   request: IncomingMessage;
@@ -57,12 +64,28 @@ export async function dispatchManagementMemoryRoutes(
       return true;
     }
     const cursor = cursorResult.cursor;
-    const includeArchived = context.queryParamBool(query, "include_archived", true);
-    const includeRestricted = context.queryParamBool(query, "include_restricted", false);
-    const includeSecret = context.queryParamBool(query, "include_secret", false);
+    const includeArchivedResult = queryBool(query, "include_archived", true);
+    if (!includeArchivedResult.ok) {
+      return writeManagementInputError(response, context, includeArchivedResult);
+    }
+    const includeRestrictedResult = queryBool(query, "include_restricted", false);
+    if (!includeRestrictedResult.ok) {
+      return writeManagementInputError(response, context, includeRestrictedResult);
+    }
+    const includeSecretResult = queryBool(query, "include_secret", false);
+    if (!includeSecretResult.ok) {
+      return writeManagementInputError(response, context, includeSecretResult);
+    }
+    const includeArchived = includeArchivedResult.value;
+    const includeRestricted = includeRestrictedResult.value;
+    const includeSecret = includeSecretResult.value;
     const effectiveIncludeRestricted = includeRestricted || includeSecret;
     const queryText = context.queryParamStr(query, "query", "");
-    const limit = context.queryParamInt(query, "limit", 2000, 1, 5000);
+    const limitResult = queryInt(query, "limit", 2000, 1, 5000);
+    if (!limitResult.ok) {
+      return writeManagementInputError(response, context, limitResult);
+    }
+    const limit = limitResult.value;
     const fetchLimit = cursor + limit + 1;
     if (fetchLimit > MANAGEMENT_MEMORY_FETCH_MAX) {
       context.writeJson(response, 400, {
@@ -134,9 +157,21 @@ export async function dispatchManagementMemoryRoutes(
       return true;
     }
     const cursor = cursorResult.cursor;
-    const includeArchived = context.queryParamBool(query, "include_archived", false);
-    const includeRestricted = context.queryParamBool(query, "include_restricted", false);
-    const includeSecret = context.queryParamBool(query, "include_secret", false);
+    const includeArchivedResult = queryBool(query, "include_archived", false);
+    if (!includeArchivedResult.ok) {
+      return writeManagementInputError(response, context, includeArchivedResult);
+    }
+    const includeRestrictedResult = queryBool(query, "include_restricted", false);
+    if (!includeRestrictedResult.ok) {
+      return writeManagementInputError(response, context, includeRestrictedResult);
+    }
+    const includeSecretResult = queryBool(query, "include_secret", false);
+    if (!includeSecretResult.ok) {
+      return writeManagementInputError(response, context, includeSecretResult);
+    }
+    const includeArchived = includeArchivedResult.value;
+    const includeRestricted = includeRestrictedResult.value;
+    const includeSecret = includeSecretResult.value;
     const effectiveIncludeRestricted = includeRestricted || includeSecret;
 
     const kindRaw = context.queryParamStr(query, "kind", "").toLowerCase();
@@ -160,7 +195,11 @@ export async function dispatchManagementMemoryRoutes(
     }
 
     const queryText = context.queryParamStr(query, "query", "");
-    const limit = context.queryParamInt(query, "limit", 50, 1, 1000);
+    const limitResult = queryInt(query, "limit", 50, 1, 1000);
+    if (!limitResult.ok) {
+      return writeManagementInputError(response, context, limitResult);
+    }
+    const limit = limitResult.value;
     const fetchLimit = cursor + limit + 1;
     if (fetchLimit > MANAGEMENT_MEMORY_FETCH_MAX) {
       context.writeJson(response, 400, {
@@ -255,7 +294,11 @@ export async function dispatchManagementMemoryRoutes(
       });
       return true;
     }
-    const dryRun = context.parseBodyBool(body.dry_run, false);
+    const dryRunResult = bodyBool(body, "dry_run", false);
+    if (!dryRunResult.ok) {
+      return writeManagementInputError(response, context, dryRunResult);
+    }
+    const dryRun = dryRunResult.value;
     const source = typeof body.source === "string" && body.source.trim().length > 0 ? body.source.trim() : undefined;
     const importResult = context.importMemoryRows(sessionId, scope, body.records, source, dryRun);
     if (!importResult.ok) {
@@ -347,7 +390,11 @@ export async function dispatchManagementMemoryRoutes(
       return true;
     }
 
-    const dryRun = context.parseBodyBool(body.dry_run, false);
+    const dryRunResult = bodyBool(body, "dry_run", false);
+    if (!dryRunResult.ok) {
+      return writeManagementInputError(response, context, dryRunResult);
+    }
+    const dryRun = dryRunResult.value;
     const reason = typeof body.reason === "string" && body.reason.trim().length > 0 ? body.reason.trim() : undefined;
     const forgetResult = context.forgetMemoryRows(sessionId, scope, ids, reason, dryRun);
     if (!forgetResult.ok) {
@@ -423,7 +470,11 @@ export async function dispatchManagementMemoryRoutes(
       });
       return true;
     }
-    const dryRun = context.parseBodyBool(body.dry_run, false);
+    const dryRunResult = bodyBool(body, "dry_run", false);
+    if (!dryRunResult.ok) {
+      return writeManagementInputError(response, context, dryRunResult);
+    }
+    const dryRun = dryRunResult.value;
     const lifecycleResult = context.runMemoryLifecycle(sessionId, scope, dryRun);
     if (!lifecycleResult.ok) {
       context.writeJson(response, 400, {
@@ -481,7 +532,11 @@ export async function dispatchManagementMemoryRoutes(
       });
       return true;
     }
-    const dryRun = context.parseBodyBool(body.dry_run, false);
+    const dryRunResult = bodyBool(body, "dry_run", false);
+    if (!dryRunResult.ok) {
+      return writeManagementInputError(response, context, dryRunResult);
+    }
+    const dryRun = dryRunResult.value;
 
     const sessions: string[] = [];
     if (Array.isArray(body.sessions)) {
@@ -512,16 +567,17 @@ export async function dispatchManagementMemoryRoutes(
       }
     }
 
-    let limit = 20;
-    if (typeof body.limit === "number" && Number.isFinite(body.limit)) {
-      limit = Math.floor(body.limit);
-    } else if (typeof body.limit === "string" && body.limit.trim().length > 0) {
-      const parsedLimit = Number.parseInt(body.limit.trim(), 10);
-      if (Number.isFinite(parsedLimit)) {
-        limit = parsedLimit;
-      }
+    const limitResult = bodyPositiveInt(
+      body,
+      "limit",
+      20,
+      1,
+      MANAGEMENT_MEMORY_BATCH_MAX_SESSIONS,
+    );
+    if (!limitResult.ok) {
+      return writeManagementInputError(response, context, limitResult);
     }
-    const normalizedLimit = Math.max(1, Math.min(MANAGEMENT_MEMORY_BATCH_MAX_SESSIONS, limit));
+    const normalizedLimit = limitResult.value;
 
     if (sessions.length === 0 && sessionPrefixes.length === 0) {
       context.writeJson(response, 400, {
