@@ -121,6 +121,15 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     below the minimum must exit `2` with stable `invalid_<field>` errors before
     start/status continues. Explicit auto-compact limits must not exceed the
     derived effective window. Numeric values must not be silently clamped.
+17. Experience scheduler controls must fail closed on malformed explicit
+    env/project TOML values. `GROBOT_EXPERIENCE_SCHEDULER_*` env values and
+    `[experience.scheduler]` project TOML knobs may use defaults only when
+    omitted; malformed booleans, non-integer intervals, zero/negative or
+    out-of-range intervals/delay windows, and empty explicit task/done/log
+    paths must exit `2` with stable `invalid_<field>` errors before scheduler
+    bootstrap. Scheduler intervals must be `10000..86400000` ms, interval
+    seconds must be `10..86400`, and default task delay must be `1..24` hours.
+    Numeric values must not be silently clamped.
 
 ---
 

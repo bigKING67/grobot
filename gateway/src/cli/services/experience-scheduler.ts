@@ -1,6 +1,10 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { removeTrailingSlashes } from "./runtime-paths";
+export {
+  type ExperienceSchedulerConfig,
+} from "./experience-scheduler-config";
+import { type ExperienceSchedulerConfig } from "./experience-scheduler-config";
 
 type SchedulerTaskRepeat = "daily" | "weekday" | "weekly" | "monthly" | "once" | `every_${number}h` | `every_${number}d`;
 
@@ -18,15 +22,6 @@ interface SchedulerTaskFile {
   schedule?: unknown;
   prompt?: unknown;
   max_delay_hours?: unknown;
-}
-
-export interface ExperienceSchedulerConfig {
-  enabled: boolean;
-  intervalMs: number;
-  tasksDir: string;
-  doneDir: string;
-  logPath: string;
-  defaultMaxDelayHours: number;
 }
 
 export interface ExperienceSchedulerTrigger {
@@ -58,192 +53,8 @@ export interface ExperienceSchedulerRuntime {
   writeDoneReport(trigger: ExperienceSchedulerTrigger, report: ExperienceSchedulerExecutionReport): void;
 }
 
-interface ResolveExperienceSchedulerConfigInput {
-  workDir: string;
-  projectTomlPath?: string;
-}
-
 function nowIso(): string {
   return new Date().toISOString();
-}
-
-function stripInlineComment(line: string): string {
-  let inQuote = false;
-  let escaped = false;
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (char === "\\") {
-      escaped = true;
-      continue;
-    }
-    if (char === "\"") {
-      inQuote = !inQuote;
-      continue;
-    }
-    if (char === "#" && !inQuote) {
-      return line.slice(0, index);
-    }
-  }
-  return line;
-}
-
-function parseTomlBool(raw: string): boolean | undefined {
-  const normalized = raw.trim().toLowerCase();
-  if (normalized === "true") {
-    return true;
-  }
-  if (normalized === "false") {
-    return false;
-  }
-  return undefined;
-}
-
-function parseTomlInt(raw: string): number | undefined {
-  const normalized = raw.trim();
-  if (!/^-?\d+$/.test(normalized)) {
-    return undefined;
-  }
-  const parsed = Number.parseInt(normalized, 10);
-  if (!Number.isFinite(parsed)) {
-    return undefined;
-  }
-  return parsed;
-}
-
-function parseTomlString(raw: string): string | undefined {
-  const match = raw.trim().match(/^"([^"]*)"$/);
-  if (!match || typeof match[1] !== "string") {
-    return undefined;
-  }
-  return match[1];
-}
-
-function parseEnvBool(raw: string | undefined): boolean | undefined {
-  if (typeof raw !== "string") {
-    return undefined;
-  }
-  const normalized = raw.trim().toLowerCase();
-  if (["1", "true", "yes", "on"].includes(normalized)) {
-    return true;
-  }
-  if (["0", "false", "no", "off"].includes(normalized)) {
-    return false;
-  }
-  return undefined;
-}
-
-function parseEnvInt(raw: string | undefined): number | undefined {
-  if (typeof raw !== "string") {
-    return undefined;
-  }
-  const normalized = raw.trim();
-  if (!/^-?\d+$/.test(normalized)) {
-    return undefined;
-  }
-  const parsed = Number.parseInt(normalized, 10);
-  if (!Number.isFinite(parsed)) {
-    return undefined;
-  }
-  return parsed;
-}
-
-function normalizeSchedulerPath(value: string, workDir: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return removeTrailingSlashes(workDir);
-  }
-  if (trimmed.startsWith("/") || trimmed.startsWith("\\")) {
-    return removeTrailingSlashes(trimmed);
-  }
-  return removeTrailingSlashes(resolve(workDir, trimmed));
-}
-
-function parseProjectSchedulerConfig(projectTomlPath: string | undefined): Partial<ExperienceSchedulerConfig> {
-  if (!projectTomlPath || !existsSync(projectTomlPath)) {
-    return {};
-  }
-  let raw = "";
-  try {
-    raw = readFileSync(projectTomlPath, "utf8");
-  } catch {
-    return {};
-  }
-  const lines = raw.split(/\r?\n/);
-  let inSchedulerSection = false;
-  const resolved: Partial<ExperienceSchedulerConfig> = {};
-  for (const rawLine of lines) {
-    const line = stripInlineComment(rawLine).trim();
-    if (!line) {
-      continue;
-    }
-    const sectionMatch = line.match(/^\[([A-Za-z0-9_.-]+)\]$/);
-    if (sectionMatch) {
-      inSchedulerSection = sectionMatch[1] === "experience.scheduler";
-      continue;
-    }
-    if (!inSchedulerSection) {
-      continue;
-    }
-    const kv = line.match(/^([A-Za-z0-9_]+)\s*=\s*(.+)$/);
-    if (!kv) {
-      continue;
-    }
-    const key = kv[1];
-    const value = kv[2];
-    if (key === "enabled") {
-      const parsed = parseTomlBool(value);
-      if (typeof parsed === "boolean") {
-        resolved.enabled = parsed;
-      }
-      continue;
-    }
-    if (key === "interval_ms") {
-      const parsed = parseTomlInt(value);
-      if (typeof parsed === "number") {
-        resolved.intervalMs = parsed;
-      }
-      continue;
-    }
-    if (key === "interval_secs") {
-      const parsed = parseTomlInt(value);
-      if (typeof parsed === "number") {
-        resolved.intervalMs = parsed * 1_000;
-      }
-      continue;
-    }
-    if (key === "tasks_dir") {
-      const parsed = parseTomlString(value);
-      if (parsed) {
-        resolved.tasksDir = parsed;
-      }
-      continue;
-    }
-    if (key === "done_dir") {
-      const parsed = parseTomlString(value);
-      if (parsed) {
-        resolved.doneDir = parsed;
-      }
-      continue;
-    }
-    if (key === "log_path") {
-      const parsed = parseTomlString(value);
-      if (parsed) {
-        resolved.logPath = parsed;
-      }
-      continue;
-    }
-    if (key === "default_max_delay_hours") {
-      const parsed = parseTomlInt(value);
-      if (typeof parsed === "number") {
-        resolved.defaultMaxDelayHours = parsed;
-      }
-    }
-  }
-  return resolved;
 }
 
 function clampInt(value: number, minimum: number, maximum: number): number {
@@ -400,61 +211,6 @@ function getLastRunAt(doneDir: string, taskId: string): Date | undefined {
     }
   }
   return latest;
-}
-
-export function resolveExperienceSchedulerConfig(input: ResolveExperienceSchedulerConfigInput): ExperienceSchedulerConfig {
-  const defaults: ExperienceSchedulerConfig = {
-    enabled: false,
-    intervalMs: 120_000,
-    tasksDir: `${removeTrailingSlashes(input.workDir)}/.grobot/scheduler/tasks`,
-    doneDir: `${removeTrailingSlashes(input.workDir)}/.grobot/scheduler/done`,
-    logPath: `${removeTrailingSlashes(input.workDir)}/.grobot/scheduler/scheduler.log`,
-    defaultMaxDelayHours: 6,
-  };
-  const fromProject = parseProjectSchedulerConfig(input.projectTomlPath);
-  const merged: ExperienceSchedulerConfig = {
-    enabled: typeof fromProject.enabled === "boolean" ? fromProject.enabled : defaults.enabled,
-    intervalMs: clampInt(
-      typeof fromProject.intervalMs === "number" ? fromProject.intervalMs : defaults.intervalMs,
-      10_000,
-      86_400_000,
-    ),
-    tasksDir: normalizeSchedulerPath(fromProject.tasksDir ?? defaults.tasksDir, input.workDir),
-    doneDir: normalizeSchedulerPath(fromProject.doneDir ?? defaults.doneDir, input.workDir),
-    logPath: normalizeSchedulerPath(fromProject.logPath ?? defaults.logPath, input.workDir),
-    defaultMaxDelayHours: clampInt(
-      typeof fromProject.defaultMaxDelayHours === "number"
-        ? fromProject.defaultMaxDelayHours
-        : defaults.defaultMaxDelayHours,
-      1,
-      24,
-    ),
-  };
-  const envEnabled = parseEnvBool(process.env.GROBOT_EXPERIENCE_SCHEDULER_ENABLED);
-  if (typeof envEnabled === "boolean") {
-    merged.enabled = envEnabled;
-  }
-  const envIntervalMs = parseEnvInt(process.env.GROBOT_EXPERIENCE_SCHEDULER_INTERVAL_MS);
-  if (typeof envIntervalMs === "number") {
-    merged.intervalMs = clampInt(envIntervalMs, 10_000, 86_400_000);
-  }
-  const envTasksDir = process.env.GROBOT_EXPERIENCE_SCHEDULER_TASKS_DIR;
-  if (typeof envTasksDir === "string" && envTasksDir.trim().length > 0) {
-    merged.tasksDir = normalizeSchedulerPath(envTasksDir, input.workDir);
-  }
-  const envDoneDir = process.env.GROBOT_EXPERIENCE_SCHEDULER_DONE_DIR;
-  if (typeof envDoneDir === "string" && envDoneDir.trim().length > 0) {
-    merged.doneDir = normalizeSchedulerPath(envDoneDir, input.workDir);
-  }
-  const envLogPath = process.env.GROBOT_EXPERIENCE_SCHEDULER_LOG_PATH;
-  if (typeof envLogPath === "string" && envLogPath.trim().length > 0) {
-    merged.logPath = normalizeSchedulerPath(envLogPath, input.workDir);
-  }
-  const envDefaultMaxDelayHours = parseEnvInt(process.env.GROBOT_EXPERIENCE_SCHEDULER_DEFAULT_MAX_DELAY_HOURS);
-  if (typeof envDefaultMaxDelayHours === "number") {
-    merged.defaultMaxDelayHours = clampInt(envDefaultMaxDelayHours, 1, 24);
-  }
-  return merged;
 }
 
 export function createExperienceSchedulerRuntime(

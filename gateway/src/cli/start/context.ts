@@ -42,6 +42,10 @@ import {
   resolveExperienceTeam,
 } from "./context/experience-options";
 import {
+  resolveExperienceSchedulerConfig,
+  type ExperienceSchedulerConfig,
+} from "../services/experience-scheduler-config";
+import {
   readKimiSearchRoutingPolicyFromProjectToml,
   resolveRuntimeModelConfig,
 } from "./context/runtime-model-config";
@@ -92,6 +96,11 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     projectTomlPath,
     runtimeModelConfig: runtimeModelConfig.modelConfig,
   });
+  const experienceSchedulerConfig: ExperienceSchedulerConfig =
+    resolveExperienceSchedulerConfig({
+      workDir,
+      projectTomlPath,
+    });
   const historyTurns = resolveHistoryTurns(options);
   const handoffRecentTurns = resolveHandoffRecentTurns(options);
   const handoffAutoOnExit = resolveHandoffAutoOnExit(options);
@@ -186,6 +195,7 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     experienceTeam,
     experiencePublishMode: resolveExperiencePublishMode(),
     experienceRecallLimit: resolveExperienceRecallLimit(),
+    experienceSchedulerConfig,
     subject,
     executionPlane,
     sessionNamespaceKey,

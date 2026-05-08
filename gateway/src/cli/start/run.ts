@@ -32,10 +32,8 @@ import {
   type MemoryOrchestratorExperienceAdapter,
   type MemoryOrchestratorGaAdapter,
 } from "../../tools/memory";
-import {
-  createExperienceSchedulerRuntime,
-  resolveExperienceSchedulerConfig,
-} from "../services/experience-scheduler";
+import { createExperienceSchedulerRuntime } from "../services/experience-scheduler";
+import { isExperienceSchedulerConfigInputError } from "../services/experience-scheduler-config";
 import { type RuntimeAttachment, type RuntimeEvent } from "../../models/types";
 import { isTruthyEnvFlag } from "./startup/env";
 import {
@@ -110,13 +108,16 @@ export async function runStart(
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }
+    if (isExperienceSchedulerConfigInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
     throw error;
   }
   const {
     homeDir,
     projectRoot,
     workDir,
-    projectTomlPath,
     configTomlPath,
     projectName,
     historyTurns,
@@ -139,6 +140,7 @@ export async function runStart(
     experienceTeam,
     experiencePublishMode,
     experienceRecallLimit,
+    experienceSchedulerConfig,
     subject,
     executionPlane,
     runtimeModelConfig,
@@ -470,10 +472,7 @@ export async function runStart(
   };
 
   const schedulerRuntime = createExperienceSchedulerRuntime(
-    resolveExperienceSchedulerConfig({
-      workDir,
-      projectTomlPath,
-    }),
+    experienceSchedulerConfig,
   );
   const schedulerConfig = schedulerRuntime.getConfig();
   writeStartupDiagnostics(
