@@ -46,6 +46,48 @@ Error handling follows fail-fast plus explicit fallback boundaries:
 
 ---
 
+## Provider Routing Failure Health Contract
+
+When Rust model/provider execution returns structured failure metadata, gateway
+provider routing must treat `error_data` as the primary recovery signal. Message
+text is only a legacy fallback.
+
+Implementation points:
+
+1. `runtime/src/models/contracts.rs` emits provider/model `error_data` fields:
+   `diagnostic_kind`, `source`, `stage`, `recovery_hint`, `provider`,
+   `provider_kind`, `model`, `http_status`, `attempt`, `max_attempts`, and
+   `retryable`.
+2. `gateway/src/cli/start/session-registry/normalization.ts` persists only safe
+   `provider_runtime_states[].last_error_data` summary fields. It must not
+   persist `body_preview` or `response_headers`.
+3. `gateway/src/cli/start/turn/provider-health.ts` maps
+   `SessionProviderRuntimeState.last_error_data` into route health:
+   - `retryable=false` -> strong score penalty and sticky bypass when another
+     provider is available.
+   - `attempt >= max_attempts` -> strong score penalty and sticky bypass when
+     another provider is available.
+   - `config_missing` / `config_invalid` and auth-like HTTP status
+     `401` / `403` / `404` -> strongest penalty.
+   - transient HTTP status `408` / `425` / `429` / `500` / `502` / `503` / `504`
+     with `retryable=true` -> moderate penalty, not an immediate sticky bypass.
+4. `gateway/src/cli/start/turn/provider-routing.ts` must include the health
+   penalty in `resolveProviderOrder()` score calculations and expose route
+   diagnostics via `RouteDecisionTrace.scoreOrder[].lastErrorPenalty`,
+   `RouteDecisionTrace.scoreOrder[].lastErrorReason`, and stderr
+   `last_error_penalties=...`.
+5. `gateway/src/extensions/contracts/provider-routing-contract.ts` must cover
+   retry decisions and route ordering together:
+   - non-retryable sticky provider is bypassed when a clean alternate is open;
+   - exhausted-attempt sticky provider is bypassed when a clean alternate is
+     open;
+   - retryable transient provider keeps only moderate penalty and can remain
+     selected when it is otherwise the better route;
+   - config/auth blockers rank behind clean providers;
+   - trace fields include machine-readable penalty reason.
+
+---
+
 ## Common Mistakes
 
 1. Swallowing error context (`catch {}` without warning/error output).
