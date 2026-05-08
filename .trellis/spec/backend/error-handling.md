@@ -116,7 +116,9 @@ Implementation points:
    `invalid_session_subject`) instead of throwing through the HTTP server or
    top-level CLI fatal handler. Management uses JSON HTTP `400`; `grobot status
    --json` uses `status:"error"` with exit code `2`; text status prints a
-   concise stderr error and exits `2`. Valid alias query forms must return
+   concise stderr error and exits `2`. `grobot start` and `grobot serve` must
+   reject invalid CLI namespace options before bootstrap/listen with the same
+   concise stderr error and exit code `2`. Valid alias query forms must return
    provider health fields in the same shape as `grobot status --json`.
 
 Memory and experience feedback must preserve the same safe structured signal

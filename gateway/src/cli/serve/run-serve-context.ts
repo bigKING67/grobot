@@ -17,16 +17,12 @@ import {
 import { parseBind, type BindConfig } from "./bind-config";
 import { memoryStoreRedisKey } from "./memory-store-runtime";
 import {
-  resolveSessionPlatformOption,
-  resolveSessionScopeOption,
-  resolveSessionSubjectOption,
-} from "../start/session/options";
-import {
   resolveRouteDecisionRuntimeSnapshot,
   type RouteDecisionSummary,
 } from "../status/route-status";
 import { buildRouteDecisionSessionKey } from "../status/route-namespace";
 import { parseRequiredPositiveInt } from "../status/option-parsing";
+import { resolveCliRouteNamespace } from "../status/route-namespace-options";
 
 interface ExecutionPlaneConfigInput {
   gatewayImplArg?: string;
@@ -153,7 +149,11 @@ export function resolveRunServeContext(options: Record<string, OptionValue>): Ru
   const configTomlPath = resolveConfigTomlPath(options, homeDir, { workDir, projectRoot });
   const bind = parseBind(readOptionString(options, "bind"));
   const projectName = readOptionString(options, "project") ?? basenameFromPath(workDir);
-  const sessionSubject = resolveSessionSubjectOption(options) ?? process.env.USER ?? "user";
+  const { sessionNamespace } = resolveCliRouteNamespace({
+    options,
+    projectName,
+    defaultSubject: process.env.USER ?? "user",
+  });
   const providerOverrideFromCli = readOptionString(options, "provider");
   const managementToken =
     readOptionString(options, "management-token") ??
@@ -178,10 +178,10 @@ export function resolveRunServeContext(options: Record<string, OptionValue>): Ru
     circuitFailures: parseRequiredPositiveInt(readOptionString(options, "circuit-failures"), 2),
     circuitCooldownSecs: parseRequiredPositiveInt(readOptionString(options, "circuit-cooldown-secs"), 30),
     session: {
-      platform: resolveSessionPlatformOption(options),
-      tenant: readOptionString(options, "tenant") ?? projectName,
-      scope: resolveSessionScopeOption(options),
-      subject: sessionSubject,
+      platform: sessionNamespace.platform,
+      tenant: sessionNamespace.tenant,
+      scope: sessionNamespace.scope,
+      subject: sessionNamespace.subject,
     },
   };
   const interruptStorePath = resolveInterruptStorePath(projectStateRoot);

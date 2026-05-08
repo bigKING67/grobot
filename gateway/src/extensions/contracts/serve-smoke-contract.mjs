@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { buildFailoverConfig } from "./start-smoke-contract/config-fixtures.mjs";
 import { startMockModelServer } from "./_shared/mock-model-server.mjs";
+import { runServeInvalidNamespaceRejectFlow } from "./serve-smoke-contract/namespace-flows.mjs";
 
 function parseArgs(argv) {
   const command = argv[0] ?? "";
@@ -737,6 +738,11 @@ async function runCli(argv) {
   switch (command) {
     case "config-read-policy-auto": {
       const payload = await runConfigReadPolicyAuto(options);
+      process.stdout.write(`${JSON.stringify(payload)}\n`);
+      return 0;
+    }
+    case "serve-invalid-namespace-reject-flow": {
+      const payload = await runServeInvalidNamespaceRejectFlow(options);
       process.stdout.write(`${JSON.stringify(payload)}\n`);
       return 0;
     }

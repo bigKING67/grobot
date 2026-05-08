@@ -6,9 +6,19 @@ import { type MCPRuntimeState } from "./mcp-runtime";
 import { runServeServerLifecycle } from "./server-lifecycle";
 import { resolveRunServeContext } from "./run-serve-context";
 import { createRunServeWire } from "./run-serve-wire";
+import { isRouteDecisionNamespaceInputError } from "../status/route-namespace";
 
 export async function runServe(options: Record<string, OptionValue>): Promise<number> {
-  const context = resolveRunServeContext(options);
+  let context: ReturnType<typeof resolveRunServeContext>;
+  try {
+    context = resolveRunServeContext(options);
+  } catch (error) {
+    if (isRouteDecisionNamespaceInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    throw error;
+  }
   const { bind } = context;
   const mcpSessions = new Set<string>();
   const mcpServerStates = new Map<string, MCPRuntimeState>();

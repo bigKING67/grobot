@@ -354,6 +354,37 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(managementProviderFailurePayload.management_failing_redacts_response_headers, true);
   logStep("serve-smoke-contract provider-failure-route-status-management-api");
 
+  const serveInvalidNamespacePort = await reserveFreePort();
+  const serveInvalidNamespaceWorkDir = makeTempDir("serve-invalid-namespace-work");
+  const serveInvalidNamespaceResult = runContract(
+    "serve-smoke-contract.mjs",
+    "serve-invalid-namespace-reject-flow",
+    [
+      "--repo-root",
+      repoRoot,
+      "--work-dir",
+      serveInvalidNamespaceWorkDir,
+      "--bind",
+      `127.0.0.1:${serveInvalidNamespacePort}`,
+    ],
+    { timeoutMs: 240_000 },
+  );
+  const serveInvalidNamespacePayload = parseJsonOutput(
+    "serve-smoke-contract serve-invalid-namespace-reject-flow",
+    serveInvalidNamespaceResult.stdout,
+  );
+  assert.equal(serveInvalidNamespacePayload.invalid_tenant_exit_code, 2);
+  assert.equal(serveInvalidNamespacePayload.invalid_tenant_has_stable_error, true);
+  assert.equal(serveInvalidNamespacePayload.invalid_platform_exit_code, 2);
+  assert.equal(serveInvalidNamespacePayload.invalid_platform_has_stable_error, true);
+  assert.equal(serveInvalidNamespacePayload.invalid_scope_exit_code, 2);
+  assert.equal(serveInvalidNamespacePayload.invalid_scope_has_stable_error, true);
+  assert.equal(serveInvalidNamespacePayload.empty_subject_exit_code, 2);
+  assert.equal(serveInvalidNamespacePayload.empty_subject_has_stable_error, true);
+  assert.equal(serveInvalidNamespacePayload.hides_top_level_fatal, true);
+  assert.equal(serveInvalidNamespacePayload.has_serve_banner, false);
+  logStep("serve-smoke-contract serve-invalid-namespace-reject-flow");
+
   const toolCallFailureResult = runContract(
     "runtime-smoke-contract.mjs",
     "tool-call-fail-fast",

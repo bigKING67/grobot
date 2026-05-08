@@ -31,17 +31,19 @@ function readRawOptionStringAny(
   return undefined;
 }
 
-export interface StatusRouteNamespace {
+export interface CliRouteNamespace {
   sessionNamespace: SessionKeyParts;
   sessionPreview: string;
   sessionSubject: string;
 }
 
+export type StatusRouteNamespace = CliRouteNamespace;
+
 export function resolveCliRouteNamespace(input: {
   options: Record<string, OptionValue>;
   projectName: string;
   defaultSubject: string;
-}): StatusRouteNamespace {
+}): CliRouteNamespace {
   const sessionSubjectOptionRaw = readRawOptionStringAny(input.options, [
     "session-subject",
     "subject",
@@ -71,7 +73,7 @@ export function resolveCliRouteNamespace(input: {
   return {
     sessionNamespace,
     sessionPreview: formatRouteDecisionSessionKey(sessionNamespace),
-    sessionSubject: sessionSubjectOptionRaw?.trim() || input.defaultSubject,
+    sessionSubject: sessionNamespace.subject,
   };
 }
 
