@@ -1,4 +1,5 @@
 import { createRunStartModelOps } from "../../cli/start/model-ops";
+import { parseModelCatalogFromProbePayload } from "../../cli/provider-probe/catalog";
 import { type ProviderModelListResult } from "../../cli/provider-probe";
 import {
   type TerminalSelectMenuInput,
@@ -261,6 +262,25 @@ async function main(): Promise<void> {
       capturedModelMenu?.modelPickerMeta?.startupModel ?? "",
     model_menu_cancel_is_silent: modelMenuCancelledSnapshot.length === 0,
     runtime_source_after_switch: runtimeModelConfigSource.model,
+    catalog_context_window_tokens_strict:
+      (() => {
+        const parsed = parseModelCatalogFromProbePayload({
+          data: [
+            { id: "model-precision", context_window_tokens: 1024.5 },
+            { id: "model-string-precision", contextWindowTokens: "1024.5" },
+            { id: "model-valid", context_window_tokens: 2048 },
+          ],
+        });
+        return !Object.prototype.hasOwnProperty.call(
+          parsed.modelContextWindowTokensById,
+          "model-precision",
+        )
+          && !Object.prototype.hasOwnProperty.call(
+            parsed.modelContextWindowTokensById,
+            "model-string-precision",
+          )
+          && parsed.modelContextWindowTokensById["model-valid"] === 2048;
+      })(),
   };
 
   process.stdout.write(`${JSON.stringify(payload)}\n`);

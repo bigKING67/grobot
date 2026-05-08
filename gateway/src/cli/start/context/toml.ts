@@ -22,30 +22,6 @@ export function stripInlineComment(line: string): string {
   return line;
 }
 
-export function parseTomlStringArray(raw: string): string[] {
-  const trimmed = raw.trim();
-  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) {
-    return [];
-  }
-  const content = trimmed.slice(1, -1).trim();
-  if (!content) {
-    return [];
-  }
-  const values: string[] = [];
-  for (const token of content.split(",")) {
-    const part = token.trim();
-    if (!part.startsWith("\"") || !part.endsWith("\"")) {
-      continue;
-    }
-    const value = part.slice(1, -1).trim();
-    if (!value) {
-      continue;
-    }
-    values.push(value);
-  }
-  return values;
-}
-
 export function parseTomlString(raw: string): string | undefined {
   const trimmed = raw.trim();
   const match = trimmed.match(/^"([^"]*)"$/);

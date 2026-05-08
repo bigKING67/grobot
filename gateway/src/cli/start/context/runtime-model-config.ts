@@ -216,11 +216,10 @@ function normalizePositiveInt(value: number | undefined): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return undefined;
   }
-  const normalized = Math.floor(value);
-  if (normalized <= 0) {
+  if (!Number.isInteger(value) || value <= 0) {
     return undefined;
   }
-  return normalized;
+  return value;
 }
 
 function normalizeKimiMaxTokens(

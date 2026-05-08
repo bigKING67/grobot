@@ -15,8 +15,10 @@ function normalizePositiveInt(value: number | undefined): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return undefined;
   }
-  const normalized = Math.floor(value);
-  return normalized > 0 ? normalized : undefined;
+  if (!Number.isInteger(value) || value <= 0) {
+    return undefined;
+  }
+  return value;
 }
 
 function normalizePositiveNumber(value: number | undefined): number | undefined {

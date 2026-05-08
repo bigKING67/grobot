@@ -146,9 +146,17 @@ export function runStartInvalidRuntimeModelControlsRejectFlow(context) {
     "provider-priority",
     ["priority = 0"],
   );
+  const invalidProviderPriorityFractionResult = makeCase(
+    "provider-priority-fraction",
+    ["priority = 1.5"],
+  );
   const invalidProviderWeightResult = makeCase(
     "provider-weight",
     ["weight = 0"],
+  );
+  const invalidPromptCacheUserLastNFractionResult = makeCase(
+    "prompt-cache-user-last-n-fraction",
+    ["prompt_cache_enabled = true", "prompt_cache_user_last_n = 2.5"],
   );
   const invalidProviderKindResult = makeCase(
     "provider-kind",
@@ -202,8 +210,12 @@ export function runStartInvalidRuntimeModelControlsRejectFlow(context) {
     invalidKimiAllowlistEmptyResult.stderr,
     invalidProviderPriorityResult.stdout,
     invalidProviderPriorityResult.stderr,
+    invalidProviderPriorityFractionResult.stdout,
+    invalidProviderPriorityFractionResult.stderr,
     invalidProviderWeightResult.stdout,
     invalidProviderWeightResult.stderr,
+    invalidPromptCacheUserLastNFractionResult.stdout,
+    invalidPromptCacheUserLastNFractionResult.stderr,
     invalidProviderKindResult.stdout,
     invalidProviderKindResult.stderr,
     invalidSearchRoutingResult.stdout,
@@ -268,10 +280,18 @@ export function runStartInvalidRuntimeModelControlsRejectFlow(context) {
     invalid_provider_priority_has_stable_error:
       invalidProviderPriorityResult.stderr.includes("error: invalid_provider_priority:")
       && invalidProviderPriorityResult.stderr.includes("provider-priority must be a positive integer"),
+    invalid_provider_priority_fraction_exit_code: invalidProviderPriorityFractionResult.exit_code,
+    invalid_provider_priority_fraction_has_stable_error:
+      invalidProviderPriorityFractionResult.stderr.includes("error: invalid_provider_priority:"),
     invalid_provider_weight_exit_code: invalidProviderWeightResult.exit_code,
     invalid_provider_weight_has_stable_error:
       invalidProviderWeightResult.stderr.includes("error: invalid_provider_weight:")
       && invalidProviderWeightResult.stderr.includes("provider-weight must be a positive number"),
+    invalid_prompt_cache_user_last_n_fraction_exit_code:
+      invalidPromptCacheUserLastNFractionResult.exit_code,
+    invalid_prompt_cache_user_last_n_fraction_has_stable_error:
+      invalidPromptCacheUserLastNFractionResult.stderr.includes("error: invalid_prompt_cache_user_last_n:")
+      && invalidPromptCacheUserLastNFractionResult.stderr.includes("prompt-cache-user-last-n must be an integer"),
     invalid_provider_kind_exit_code: invalidProviderKindResult.exit_code,
     invalid_provider_kind_has_stable_error:
       invalidProviderKindResult.stderr.includes("error: invalid_provider_kind:")

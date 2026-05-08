@@ -43,8 +43,12 @@ export function assertRuntimeModelControlSmoke() {
   assert.equal(payload.invalid_kimi_allowlist_empty_has_stable_error, true);
   assert.equal(payload.invalid_provider_priority_exit_code, 2);
   assert.equal(payload.invalid_provider_priority_has_stable_error, true);
+  assert.equal(payload.invalid_provider_priority_fraction_exit_code, 2);
+  assert.equal(payload.invalid_provider_priority_fraction_has_stable_error, true);
   assert.equal(payload.invalid_provider_weight_exit_code, 2);
   assert.equal(payload.invalid_provider_weight_has_stable_error, true);
+  assert.equal(payload.invalid_prompt_cache_user_last_n_fraction_exit_code, 2);
+  assert.equal(payload.invalid_prompt_cache_user_last_n_fraction_has_stable_error, true);
   assert.equal(payload.invalid_provider_kind_exit_code, 2);
   assert.equal(payload.invalid_provider_kind_has_stable_error, true);
   assert.equal(payload.invalid_search_routing_exit_code, 2);

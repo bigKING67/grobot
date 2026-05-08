@@ -11,12 +11,19 @@ export function normalizeProbeBaseUrl(rawBaseUrl: string): URL {
 
 function parsePositiveInteger(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    return Math.floor(value);
+    if (Number.isInteger(value)) {
+      return value;
+    }
+    return undefined;
   }
   if (typeof value === "string") {
-    const parsed = Number.parseFloat(value.trim());
+    const trimmed = value.trim();
+    if (!/^\d+$/.test(trimmed)) {
+      return undefined;
+    }
+    const parsed = Number.parseInt(trimmed, 10);
     if (Number.isFinite(parsed) && parsed > 0) {
-      return Math.floor(parsed);
+      return parsed;
     }
   }
   return undefined;

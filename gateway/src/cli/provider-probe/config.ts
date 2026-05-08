@@ -217,27 +217,27 @@ function assignProviderTomlValue(
       currentProvider.promptCacheCapability = parsed;
     });
   } else if (key === "priority") {
-    assignInteger(key, (parsed) => {
+    assignInteger("provider-priority", (parsed) => {
       currentProvider.priority = parsed;
     });
   } else if (key === "weight") {
-    assignNumber(key, (parsed) => {
+    assignNumber("provider-weight", (parsed) => {
       currentProvider.weight = parsed;
     });
   } else if (key === "unit_cost" || key === "cost_per_1k_tokens") {
-    assignNumber(key, (parsed) => {
+    assignNumber("provider-unit-cost", (parsed) => {
       currentProvider.unitCost = parsed;
     });
   } else if (key === "max_inflight" || key === "max_in_flight") {
-    assignInteger(key, (parsed) => {
+    assignInteger("provider-max-inflight", (parsed) => {
       currentProvider.maxInFlight = parsed;
     });
   } else if (key === "requests_per_minute" || key === "rpm") {
-    assignInteger(key, (parsed) => {
+    assignInteger("provider-requests-per-minute", (parsed) => {
       currentProvider.requestsPerMinute = parsed;
     });
   } else if (key === "burst" || key === "bucket_burst") {
-    assignInteger(key, (parsed) => {
+    assignInteger("provider-burst", (parsed) => {
       currentProvider.burst = parsed;
     });
   }

@@ -365,6 +365,7 @@ export async function runMemoryContracts() {
     modelOpsContractPayload.runtime_source_after_switch,
     "config_toml:provider.model",
   );
+  assert.equal(modelOpsContractPayload.catalog_context_window_tokens_strict, true);
   logStep("start-model-ops-contract");
 
   const modelConfigSyncContractResult = runCommand("npx", [
