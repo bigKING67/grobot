@@ -65,7 +65,9 @@ import {
   serializeContextPersistentGraphIndexStatus,
 } from "./context-graph-json";
 import {
-  parseOptionalPositiveInt,
+  parseExplicitPositiveIntOption,
+  parseExplicitRequiredPositiveIntOption,
+  isCliNumericOptionInputError,
   parseRequiredPositiveInt,
   parseRequiredRatio,
 } from "./option-parsing";
@@ -92,6 +94,7 @@ import { resolveRuntimeToolContextPreview } from "./runtime-tool-context-preview
 import { serializeRuntimeToolsStatus } from "./runtime-tool-json";
 import { buildRuntimeToolQualitySummary } from "./runtime-tool-quality";
 import { formatRuntimeToolStatusLines } from "./runtime-tool-status-lines";
+import { writeStatusInputError } from "./input-error-output";
 import { renderInfoPanel } from "../tui/components/info-panel/render";
 import {
   displayValue,
@@ -168,14 +171,26 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     || Boolean(apiKeyFromEnv)
     || Boolean(modelFromCli)
     || Boolean(modelFromEnv);
-  const circuitFailures = parseRequiredPositiveInt(
-    readOptionString(options, "circuit-failures"),
-    2,
-  );
-  const circuitCooldownSecs = parseRequiredPositiveInt(
-    readOptionString(options, "circuit-cooldown-secs"),
-    30,
-  );
+  let circuitFailures: number;
+  let circuitCooldownSecs: number;
+  try {
+    circuitFailures = parseExplicitRequiredPositiveIntOption({
+      options,
+      key: "circuit-failures",
+      fallbackValue: 2,
+    });
+    circuitCooldownSecs = parseExplicitRequiredPositiveIntOption({
+      options,
+      key: "circuit-cooldown-secs",
+      fallbackValue: 30,
+    });
+  } catch (error) {
+    if (isCliNumericOptionInputError(error)) {
+      writeStatusInputError(error, outputJson);
+      return 2;
+    }
+    throw error;
+  }
   let statusRouteNamespace;
   try {
     statusRouteNamespace = resolveStatusRouteNamespace({
@@ -185,24 +200,25 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     });
   } catch (error) {
     if (isRouteDecisionNamespaceInputError(error)) {
-      if (outputJson) {
-        process.stdout.write(`${JSON.stringify({
-          status: "error",
-          error: error.code,
-          field: error.field,
-          detail: error.message,
-        }, null, 2)}\n`);
-      } else {
-        process.stderr.write(`error: ${error.code}: ${error.message}\n`);
-      }
+      writeStatusInputError(error, outputJson);
       return 2;
     }
     throw error;
   }
   const { sessionNamespace, sessionPreview, sessionSubject } = statusRouteNamespace;
-  const cacheStatsWindowMs = parseOptionalPositiveInt(
-    readOptionString(options, "cache-stats-window-ms"),
-  );
+  let cacheStatsWindowMs: number | undefined;
+  try {
+    cacheStatsWindowMs = parseExplicitPositiveIntOption({
+      options,
+      key: "cache-stats-window-ms",
+    });
+  } catch (error) {
+    if (isCliNumericOptionInputError(error)) {
+      writeStatusInputError(error, outputJson);
+      return 2;
+    }
+    throw error;
+  }
   const resetCacheStatsWindow = hasFlag(options, "cache-stats-reset-window");
   const contextGraphCacheWindowSize = parseRequiredPositiveInt(
     readOptionString(options, "context-graph-cache-window-size")

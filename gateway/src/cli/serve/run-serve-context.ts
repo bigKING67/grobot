@@ -21,7 +21,7 @@ import {
   type RouteDecisionSummary,
 } from "../status/route-status";
 import { buildRouteDecisionSessionKey } from "../status/route-namespace";
-import { parseRequiredPositiveInt } from "../status/option-parsing";
+import { parseExplicitRequiredPositiveIntOption } from "../status/option-parsing";
 import { resolveCliRouteNamespace } from "../status/route-namespace-options";
 
 interface ExecutionPlaneConfigInput {
@@ -179,8 +179,16 @@ export function resolveRunServeContext(options: Record<string, OptionValue>): Ru
     providerOverrideFromCli,
     providerOverrideFromEnv: process.env.GROBOT_PROVIDER,
     hasDirectRuntimeOverride: resolveHasDirectRuntimeOverride(options),
-    circuitFailures: parseRequiredPositiveInt(readOptionString(options, "circuit-failures"), 2),
-    circuitCooldownSecs: parseRequiredPositiveInt(readOptionString(options, "circuit-cooldown-secs"), 30),
+    circuitFailures: parseExplicitRequiredPositiveIntOption({
+      options,
+      key: "circuit-failures",
+      fallbackValue: 2,
+    }),
+    circuitCooldownSecs: parseExplicitRequiredPositiveIntOption({
+      options,
+      key: "circuit-cooldown-secs",
+      fallbackValue: 30,
+    }),
     session: {
       platform: sessionNamespace.platform,
       tenant: sessionNamespace.tenant,

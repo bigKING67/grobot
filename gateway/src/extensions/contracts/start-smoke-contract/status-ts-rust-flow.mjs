@@ -408,3 +408,72 @@ export function runStatusTsRust(context, windowSize) {
     status_route_reason_type: typeof routeDecision?.reason,
   };
 }
+
+export function runStatusInvalidRuntimeControlsRejectFlow(context) {
+  const {
+    repoRoot,
+    createTempDir,
+    writeExecutionProjectToml,
+    runCommand,
+    parseJsonObjectSafe,
+  } = context;
+  const workDir = createTempDir("grobot-status-invalid-runtime-controls-work");
+  writeExecutionProjectToml(workDir);
+  const commonArgs = [
+    "./grobot",
+    "status",
+    "--work-dir",
+    workDir,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+  ];
+  const invalidCircuitJsonResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--json",
+    "--circuit-failures",
+    "nope",
+  ]);
+  const invalidCircuitJsonPayload = parseJsonObjectSafe(invalidCircuitJsonResult.stdout);
+  const missingCircuitTextResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--circuit-failures",
+  ]);
+  const invalidCacheWindowJsonResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--json",
+    "--cache-stats-window-ms",
+    "-1",
+  ]);
+  const invalidCacheWindowJsonPayload = parseJsonObjectSafe(invalidCacheWindowJsonResult.stdout);
+  const combinedOutput = [
+    invalidCircuitJsonResult.stdout,
+    invalidCircuitJsonResult.stderr,
+    missingCircuitTextResult.stdout,
+    missingCircuitTextResult.stderr,
+    invalidCacheWindowJsonResult.stdout,
+    invalidCacheWindowJsonResult.stderr,
+  ].join("\n");
+  return {
+    invalid_circuit_json_exit_code: invalidCircuitJsonResult.exit_code,
+    invalid_circuit_json_error: invalidCircuitJsonPayload?.error ?? null,
+    invalid_circuit_json_field: invalidCircuitJsonPayload?.field ?? null,
+    invalid_circuit_json_detail:
+      typeof invalidCircuitJsonPayload?.detail === "string"
+        ? invalidCircuitJsonPayload.detail
+        : null,
+    missing_circuit_text_exit_code: missingCircuitTextResult.exit_code,
+    missing_circuit_text_has_stable_error:
+      missingCircuitTextResult.stderr.includes("error: invalid_circuit_failures:")
+      && missingCircuitTextResult.stderr.includes("circuit-failures must be a positive integer"),
+    invalid_cache_window_json_exit_code: invalidCacheWindowJsonResult.exit_code,
+    invalid_cache_window_json_error: invalidCacheWindowJsonPayload?.error ?? null,
+    invalid_cache_window_json_field: invalidCacheWindowJsonPayload?.field ?? null,
+    invalid_cache_window_json_detail:
+      typeof invalidCacheWindowJsonPayload?.detail === "string"
+        ? invalidCacheWindowJsonPayload.detail
+        : null,
+    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
+  };
+}

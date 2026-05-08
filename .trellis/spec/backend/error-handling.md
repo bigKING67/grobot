@@ -52,6 +52,13 @@ Error handling follows fail-fast plus explicit fallback boundaries:
    `grobot serve --bind` may default to `127.0.0.1:8080` only when omitted;
    malformed explicit values must print a concise `invalid_bind` stderr error
    and exit `2` before listening.
+7. Explicit runtime control knobs that change routing, timeout, concurrency,
+   or runtime health reset behavior must fail closed on invalid CLI/env values.
+   `grobot start`, `grobot status`, and `grobot serve` must return stable
+   `invalid_<option>` errors with exit code `2` for malformed positive-integer
+   controls such as `runtime-http-timeout-ms`, `circuit-failures`,
+   `circuit-cooldown-secs`, provider concurrency/rate/burst knobs, and
+   `cache-stats-window-ms`.
 
 ---
 

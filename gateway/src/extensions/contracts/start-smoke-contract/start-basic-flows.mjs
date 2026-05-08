@@ -129,6 +129,99 @@ export function runStartInvalidNamespaceRejectFlow(context) {
   };
 }
 
+export function runStartInvalidRuntimeControlsRejectFlow(context) {
+  const {
+    repoRoot,
+    createTempDir,
+    buildSmokeConfig,
+    writeConfig,
+    runCommand,
+    hasStartBannerMarker,
+  } = context;
+  const workDir = createTempDir("grobot-start-invalid-runtime-controls-work");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const commonArgs = [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-subject",
+    "start-invalid-runtime-controls-user",
+    "--message",
+    "invalid runtime controls should not reach runtime",
+  ];
+  const invalidTimeoutResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--runtime-http-timeout-ms",
+    "0",
+  ]);
+  const missingTimeoutResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--runtime-http-timeout-ms",
+  ]);
+  const invalidCircuitFailuresResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--circuit-failures",
+    "nan",
+  ]);
+  const invalidProviderLimitResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--provider-max-inflight",
+    "-1",
+  ]);
+  const invalidEnvProviderBurstResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_PROVIDER_BURST: "NaN",
+    },
+  );
+  const combinedOutput = [
+    invalidTimeoutResult.stdout,
+    invalidTimeoutResult.stderr,
+    missingTimeoutResult.stdout,
+    missingTimeoutResult.stderr,
+    invalidCircuitFailuresResult.stdout,
+    invalidCircuitFailuresResult.stderr,
+    invalidProviderLimitResult.stdout,
+    invalidProviderLimitResult.stderr,
+    invalidEnvProviderBurstResult.stdout,
+    invalidEnvProviderBurstResult.stderr,
+  ].join("\n");
+  return {
+    invalid_timeout_exit_code: invalidTimeoutResult.exit_code,
+    invalid_timeout_has_stable_error:
+      invalidTimeoutResult.stderr.includes("error: invalid_runtime_http_timeout_ms:")
+      && invalidTimeoutResult.stderr.includes("runtime-http-timeout-ms must be a positive integer"),
+    missing_timeout_exit_code: missingTimeoutResult.exit_code,
+    missing_timeout_has_stable_error:
+      missingTimeoutResult.stderr.includes("error: invalid_runtime_http_timeout_ms:")
+      && missingTimeoutResult.stderr.includes("runtime-http-timeout-ms must be a positive integer"),
+    invalid_circuit_failures_exit_code: invalidCircuitFailuresResult.exit_code,
+    invalid_circuit_failures_has_stable_error:
+      invalidCircuitFailuresResult.stderr.includes("error: invalid_circuit_failures:")
+      && invalidCircuitFailuresResult.stderr.includes("circuit-failures must be a positive integer"),
+    invalid_provider_limit_exit_code: invalidProviderLimitResult.exit_code,
+    invalid_provider_limit_has_stable_error:
+      invalidProviderLimitResult.stderr.includes("error: invalid_provider_max_inflight:")
+      && invalidProviderLimitResult.stderr.includes("provider-max-inflight must be a positive integer"),
+    invalid_env_provider_burst_exit_code: invalidEnvProviderBurstResult.exit_code,
+    invalid_env_provider_burst_has_stable_error:
+      invalidEnvProviderBurstResult.stderr.includes("error: invalid_provider_burst:")
+      && invalidEnvProviderBurstResult.stderr.includes("provider-burst must be a positive integer"),
+    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
+    has_start_banner: hasStartBannerMarker(combinedOutput),
+  };
+}
+
 export function runStartMessageProviderConfigTsRust(
   context,
   providerBaseUrl,

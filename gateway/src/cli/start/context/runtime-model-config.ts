@@ -7,6 +7,10 @@ import {
 } from "../../../models/types";
 import { readOptionString, type OptionValue } from "../../cli-args";
 import {
+  parseExplicitPositiveIntOption,
+  parseExplicitRequiredPositiveIntOption,
+} from "../../status/option-parsing";
+import {
   type KimiSearchRoutingPolicy,
   type RuntimeFailoverConfig,
   type RuntimeProviderCandidate,
@@ -299,32 +303,6 @@ function resolveDefaultRuntimeHttpTimeoutMs(
   return DEFAULT_RUNTIME_HTTP_TIMEOUT_MS_OPENAI_COMPATIBLE;
 }
 
-function parseRequiredPositiveInt(
-  value: string | undefined,
-  fallback: number,
-): number {
-  const parsed = parseOptionalPositiveInt(value);
-  if (typeof parsed !== "number") {
-    return fallback;
-  }
-  return parsed;
-}
-
-function parseOptionalPositiveInt(value: string | undefined): number | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const normalized = value.trim();
-  if (!/^\d+$/.test(normalized)) {
-    return undefined;
-  }
-  const parsed = Number.parseInt(normalized, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return undefined;
-  }
-  return parsed;
-}
-
 export function resolveRuntimeModelConfig(
   options: Record<string, OptionValue>,
   fallbackPool: RuntimeProviderPoolSnapshot | undefined,
@@ -333,20 +311,6 @@ export function resolveRuntimeModelConfig(
   const apiKeyFromCli = readOptionString(options, "api-key");
   const modelFromCli = readOptionString(options, "model");
   const timeoutFromCli = readOptionString(options, "runtime-http-timeout-ms");
-  const circuitFailuresFromCli = readOptionString(options, "circuit-failures");
-  const circuitCooldownFromCli = readOptionString(
-    options,
-    "circuit-cooldown-secs",
-  );
-  const providerMaxInFlightFromCli = readOptionString(
-    options,
-    "provider-max-inflight",
-  );
-  const providerRequestsPerMinuteFromCli = readOptionString(
-    options,
-    "provider-requests-per-minute",
-  );
-  const providerBurstFromCli = readOptionString(options, "provider-burst");
 
   const fallback = fallbackPool?.providers[0];
   const baseUrlFromEnv = process.env.GROBOT_BASE_URL;
@@ -375,24 +339,39 @@ export function resolveRuntimeModelConfig(
     fallback?.name,
     baseUrl,
   );
-  const timeoutMs = parseOptionalPositiveInt(timeoutFromCli ?? timeoutFromEnv);
+  const timeoutMs = parseExplicitPositiveIntOption({
+    options,
+    key: "runtime-http-timeout-ms",
+    fallback: timeoutFromEnv,
+  });
   const defaultTimeoutMs =
     resolveDefaultRuntimeHttpTimeoutMs(defaultProviderKind);
   const resolvedTimeoutMs = timeoutMs ?? defaultTimeoutMs;
-  const providerMaxInFlightDefault = parseOptionalPositiveInt(
-    providerMaxInFlightFromCli ?? providerMaxInFlightFromEnv,
-  );
-  const providerRequestsPerMinuteDefault = parseOptionalPositiveInt(
-    providerRequestsPerMinuteFromCli ?? providerRequestsPerMinuteFromEnv,
-  );
-  const providerBurstDefault = parseOptionalPositiveInt(
-    providerBurstFromCli ?? providerBurstFromEnv,
-  );
-  const circuitFailures = parseRequiredPositiveInt(circuitFailuresFromCli, 2);
-  const circuitCooldownSecs = parseRequiredPositiveInt(
-    circuitCooldownFromCli,
-    30,
-  );
+  const providerMaxInFlightDefault = parseExplicitPositiveIntOption({
+    options,
+    key: "provider-max-inflight",
+    fallback: providerMaxInFlightFromEnv,
+  });
+  const providerRequestsPerMinuteDefault = parseExplicitPositiveIntOption({
+    options,
+    key: "provider-requests-per-minute",
+    fallback: providerRequestsPerMinuteFromEnv,
+  });
+  const providerBurstDefault = parseExplicitPositiveIntOption({
+    options,
+    key: "provider-burst",
+    fallback: providerBurstFromEnv,
+  });
+  const circuitFailures = parseExplicitRequiredPositiveIntOption({
+    options,
+    key: "circuit-failures",
+    fallbackValue: 2,
+  });
+  const circuitCooldownSecs = parseExplicitRequiredPositiveIntOption({
+    options,
+    key: "circuit-cooldown-secs",
+    fallbackValue: 30,
+  });
 
   const source = {
     baseUrl: baseUrlFromCli

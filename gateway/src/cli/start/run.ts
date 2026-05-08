@@ -58,6 +58,7 @@ import { createTurnExecutionController } from "./turn-execution-controller";
 import { runStartupSessionActions } from "./startup/session-actions";
 import { GLOBAL_TURN_GATE } from "../../orchestration/orchestrator/turn-gate";
 import { isRouteDecisionNamespaceInputError } from "../status/route-namespace";
+import { isCliNumericOptionInputError } from "../status/option-parsing";
 
 export async function runStart(
   options: Record<string, OptionValue>,
@@ -72,6 +73,10 @@ export async function runStart(
     context = resolveRunStartContext(options);
   } catch (error) {
     if (isRouteDecisionNamespaceInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    if (isCliNumericOptionInputError(error)) {
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }

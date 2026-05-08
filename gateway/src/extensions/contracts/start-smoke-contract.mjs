@@ -32,6 +32,7 @@ import {
   runStartContextMemoryDecayAutotuneHysteresisFlow,
 } from "./start-smoke-contract/context-memory-decay-hysteresis-flow.mjs";
 import {
+  runStatusInvalidRuntimeControlsRejectFlow,
   runStatusTsRust,
 } from "./start-smoke-contract/status-ts-rust-flow.mjs";
 import {
@@ -58,6 +59,7 @@ import {
 } from "./start-smoke-contract/start-interactive-flows.mjs";
 import {
   runStartInvalidNamespaceRejectFlow,
+  runStartInvalidRuntimeControlsRejectFlow,
   runPackageLauncherRejectsPython,
   runStartImOnlyRejectFlow,
   runStartMessageProviderConfigTsRust,
@@ -91,6 +93,9 @@ function runCli(argv) {
       break;
     case "start-invalid-namespace-reject-flow":
       payload = runStartInvalidNamespaceRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-runtime-controls-reject-flow":
+      payload = runStartInvalidRuntimeControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "start-message-provider-config-ts-rust":
       payload = runStartMessageProviderConfigTsRust(
@@ -187,6 +192,9 @@ function runCli(argv) {
       break;
     case "status-ts-rust":
       payload = runStatusTsRust(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "status-invalid-runtime-controls-reject-flow":
+      payload = runStatusInvalidRuntimeControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "status-ts-rust-window-size": {
       const parsedWindowSize = Number.parseInt(options.get("window-size") ?? "7", 10);

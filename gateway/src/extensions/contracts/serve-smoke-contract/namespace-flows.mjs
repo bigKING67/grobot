@@ -94,6 +94,15 @@ export async function runServeInvalidNamespaceRejectFlow(options) {
     ...commonArgs,
     "--bind",
   ]);
+  const invalidCircuitFailuresResult = await runRepoCommand(repoRoot, [
+    ...commonArgs,
+    "--circuit-failures",
+    "0",
+  ]);
+  const missingCircuitCooldownResult = await runRepoCommand(repoRoot, [
+    ...commonArgs,
+    "--circuit-cooldown-secs",
+  ]);
   const emptySubjectResult = await runRepoCommand(repoRoot, [
     ...commonArgs,
     "--session-subject",
@@ -110,6 +119,10 @@ export async function runServeInvalidNamespaceRejectFlow(options) {
     invalidBindResult.stderr,
     missingBindValueResult.stdout,
     missingBindValueResult.stderr,
+    invalidCircuitFailuresResult.stdout,
+    invalidCircuitFailuresResult.stderr,
+    missingCircuitCooldownResult.stdout,
+    missingCircuitCooldownResult.stderr,
     emptySubjectResult.stdout,
     emptySubjectResult.stderr,
   ].join("\n");
@@ -134,6 +147,14 @@ export async function runServeInvalidNamespaceRejectFlow(options) {
     missing_bind_value_has_stable_error:
       missingBindValueResult.stderr.includes("error: invalid_bind:")
       && missingBindValueResult.stderr.includes("bind must be host:port"),
+    invalid_circuit_failures_exit_code: invalidCircuitFailuresResult.exit_code,
+    invalid_circuit_failures_has_stable_error:
+      invalidCircuitFailuresResult.stderr.includes("error: invalid_circuit_failures:")
+      && invalidCircuitFailuresResult.stderr.includes("circuit-failures must be a positive integer"),
+    missing_circuit_cooldown_exit_code: missingCircuitCooldownResult.exit_code,
+    missing_circuit_cooldown_has_stable_error:
+      missingCircuitCooldownResult.stderr.includes("error: invalid_circuit_cooldown_secs:")
+      && missingCircuitCooldownResult.stderr.includes("circuit-cooldown-secs must be a positive integer"),
     empty_subject_exit_code: emptySubjectResult.exit_code,
     empty_subject_has_stable_error:
       emptySubjectResult.stderr.includes("error: invalid_session_subject:")

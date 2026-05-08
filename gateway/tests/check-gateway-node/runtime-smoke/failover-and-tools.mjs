@@ -252,6 +252,59 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(startInvalidNamespacePayload.has_start_banner, false);
   logStep("start-smoke-contract start-invalid-namespace-reject-flow");
 
+  const startInvalidRuntimeControlsResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-invalid-runtime-controls-reject-flow",
+    ["--repo-root", repoRoot],
+    { timeoutMs: 240_000 },
+  );
+  const startInvalidRuntimeControlsPayload = parseJsonOutput(
+    "start-smoke-contract start-invalid-runtime-controls-reject-flow",
+    startInvalidRuntimeControlsResult.stdout,
+  );
+  assert.equal(startInvalidRuntimeControlsPayload.invalid_timeout_exit_code, 2);
+  assert.equal(startInvalidRuntimeControlsPayload.invalid_timeout_has_stable_error, true);
+  assert.equal(startInvalidRuntimeControlsPayload.missing_timeout_exit_code, 2);
+  assert.equal(startInvalidRuntimeControlsPayload.missing_timeout_has_stable_error, true);
+  assert.equal(startInvalidRuntimeControlsPayload.invalid_circuit_failures_exit_code, 2);
+  assert.equal(startInvalidRuntimeControlsPayload.invalid_circuit_failures_has_stable_error, true);
+  assert.equal(startInvalidRuntimeControlsPayload.invalid_provider_limit_exit_code, 2);
+  assert.equal(startInvalidRuntimeControlsPayload.invalid_provider_limit_has_stable_error, true);
+  assert.equal(startInvalidRuntimeControlsPayload.invalid_env_provider_burst_exit_code, 2);
+  assert.equal(startInvalidRuntimeControlsPayload.invalid_env_provider_burst_has_stable_error, true);
+  assert.equal(startInvalidRuntimeControlsPayload.hides_top_level_fatal, true);
+  assert.equal(startInvalidRuntimeControlsPayload.has_start_banner, false);
+  logStep("start-smoke-contract start-invalid-runtime-controls-reject-flow");
+
+  const statusInvalidRuntimeControlsResult = runContract(
+    "start-smoke-contract.mjs",
+    "status-invalid-runtime-controls-reject-flow",
+    ["--repo-root", repoRoot],
+    { timeoutMs: 240_000 },
+  );
+  const statusInvalidRuntimeControlsPayload = parseJsonOutput(
+    "start-smoke-contract status-invalid-runtime-controls-reject-flow",
+    statusInvalidRuntimeControlsResult.stdout,
+  );
+  assert.equal(statusInvalidRuntimeControlsPayload.invalid_circuit_json_exit_code, 2);
+  assert.equal(statusInvalidRuntimeControlsPayload.invalid_circuit_json_error, "invalid_circuit_failures");
+  assert.equal(statusInvalidRuntimeControlsPayload.invalid_circuit_json_field, "circuit-failures");
+  assert.equal(
+    statusInvalidRuntimeControlsPayload.invalid_circuit_json_detail,
+    "circuit-failures must be a positive integer",
+  );
+  assert.equal(statusInvalidRuntimeControlsPayload.missing_circuit_text_exit_code, 2);
+  assert.equal(statusInvalidRuntimeControlsPayload.missing_circuit_text_has_stable_error, true);
+  assert.equal(statusInvalidRuntimeControlsPayload.invalid_cache_window_json_exit_code, 2);
+  assert.equal(statusInvalidRuntimeControlsPayload.invalid_cache_window_json_error, "invalid_cache_stats_window_ms");
+  assert.equal(statusInvalidRuntimeControlsPayload.invalid_cache_window_json_field, "cache-stats-window-ms");
+  assert.equal(
+    statusInvalidRuntimeControlsPayload.invalid_cache_window_json_detail,
+    "cache-stats-window-ms must be a positive integer",
+  );
+  assert.equal(statusInvalidRuntimeControlsPayload.hides_top_level_fatal, true);
+  logStep("start-smoke-contract status-invalid-runtime-controls-reject-flow");
+
   const providerFailureCleanAlternateModel = await startMockModelServer();
   try {
     const providerFailureCleanAlternateResult = await runContractAsync(
@@ -383,6 +436,10 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(serveInvalidNamespacePayload.invalid_bind_has_stable_error, true);
   assert.equal(serveInvalidNamespacePayload.missing_bind_value_exit_code, 2);
   assert.equal(serveInvalidNamespacePayload.missing_bind_value_has_stable_error, true);
+  assert.equal(serveInvalidNamespacePayload.invalid_circuit_failures_exit_code, 2);
+  assert.equal(serveInvalidNamespacePayload.invalid_circuit_failures_has_stable_error, true);
+  assert.equal(serveInvalidNamespacePayload.missing_circuit_cooldown_exit_code, 2);
+  assert.equal(serveInvalidNamespacePayload.missing_circuit_cooldown_has_stable_error, true);
   assert.equal(serveInvalidNamespacePayload.empty_subject_exit_code, 2);
   assert.equal(serveInvalidNamespacePayload.empty_subject_has_stable_error, true);
   assert.equal(serveInvalidNamespacePayload.hides_top_level_fatal, true);
