@@ -2,27 +2,15 @@ import { type IncomingMessage, type ServerResponse } from "node:http";
 import { dispatchManagementMemoryRoutes } from "./management-routes-memory";
 import { requireManagementToken } from "./management-routes-auth";
 import { type ManagementRoutesContext } from "./management-routes-types";
+import { queryCsvEnum, queryInt, writeManagementInputError } from "./management-input-parsing";
 import { type ExperienceRecordState } from "../../tools/state/experience-pool/types";
 import { CLI_PRODUCT_ENGINE } from "../product-identity";
 import { serializeRouteDecisionSummary } from "../status/route-status";
 
 export type { ManagementRoutesContext } from "./management-routes-types";
 
-function parseExperienceStates(raw: string): ExperienceRecordState[] | undefined {
-  const normalized = raw.trim();
-  if (!normalized) {
-    return undefined;
-  }
-  const states = normalized
-    .split(",")
-    .map((token) => token.trim())
-    .filter((token): token is ExperienceRecordState =>
-      token === "active" || token === "quarantined" || token === "disabled");
-  if (states.length === 0) {
-    return undefined;
-  }
-  return Array.from(new Set(states));
-}
+const EXPERIENCE_RECORD_STATES: readonly ExperienceRecordState[] = ["active", "quarantined", "disabled"];
+const EXPERIENCE_STATES_DETAIL = "states must be comma separated: active,quarantined,disabled";
 
 function resolveInterruptTtlSecs(rawBody: string): {
   ok: true;
@@ -272,16 +260,22 @@ export async function dispatchManagementRoutes(
     const team = context.queryParamStr(query, "team", context.getExperiencePoolState().teamDefault).trim();
     const user = context.queryParamStr(query, "user", "").trim();
     const q = context.queryParamStr(query, "q", "").trim();
-    const limit = context.queryParamInt(query, "limit", 10, 1, 100);
-    const statesRaw = context.queryParamStr(query, "states", "active");
-    const includeStates = parseExperienceStates(statesRaw);
-    if (!includeStates) {
-      context.writeJson(response, 400, {
-        error: "invalid_states",
-        detail: "states must be comma separated: active,quarantined,disabled",
-      });
-      return true;
+    const limitResult = queryInt(query, "limit", 10, 1, 100);
+    if (!limitResult.ok) {
+      return writeManagementInputError(response, context, limitResult);
     }
+    const limit = limitResult.value;
+    const includeStatesResult = queryCsvEnum(
+      query,
+      "states",
+      ["active"],
+      EXPERIENCE_RECORD_STATES,
+      EXPERIENCE_STATES_DETAIL,
+    );
+    if (!includeStatesResult.ok) {
+      return writeManagementInputError(response, context, includeStatesResult);
+    }
+    const includeStates = includeStatesResult.value;
 
     if (q) {
       const matches = context.searchExperienceRecords({

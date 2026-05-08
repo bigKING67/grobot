@@ -104,6 +104,44 @@ export function queryInt(
   };
 }
 
+export function queryCsvEnum<T extends string>(
+  query: QueryParams,
+  key: string,
+  defaultValue: readonly T[],
+  allowedValues: readonly T[],
+  detail: string,
+): ParseInputResult<T[]> {
+  const raw = queryValue(query, key);
+  if (raw === undefined) {
+    return {
+      ok: true,
+      value: [...defaultValue],
+    };
+  }
+  const tokens = raw
+    .split(",")
+    .map((token) => token.trim().toLowerCase())
+    .filter((token) => token.length > 0);
+  const allowed = new Set<string>(allowedValues);
+  const values: T[] = [];
+  for (const token of tokens) {
+    if (!allowed.has(token)) {
+      return invalidInput(key, detail);
+    }
+    const value = token as T;
+    if (!values.includes(value)) {
+      values.push(value);
+    }
+  }
+  if (values.length === 0) {
+    return invalidInput(key, detail);
+  }
+  return {
+    ok: true,
+    value: values,
+  };
+}
+
 export function bodyBool(
   body: Record<string, unknown>,
   key: string,

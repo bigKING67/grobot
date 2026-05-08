@@ -310,4 +310,46 @@ export async function runRuntimeDescribeFallbackSmoke() {
   assert.equal(memoryInputPayload.valid_list_limit, 1);
   assert.equal(memoryInputPayload.valid_list_include_archived, true);
   logStep("management-memory-contract memory-input-validation");
+
+  const experienceInputPort = await reserveFreePort();
+  const experienceInputWorkDir = makeTempDir("management-experience-work");
+  const experienceInputResult = runContract(
+    "management-experience-contract.mjs",
+    "experience-input-validation",
+    [
+      "--repo-root",
+      repoRoot,
+      "--work-dir",
+      experienceInputWorkDir,
+      "--bind",
+      `127.0.0.1:${experienceInputPort}`,
+      "--management-token",
+      "ops-token",
+    ],
+    { timeoutMs: 240_000 },
+  );
+  const experienceInputPayload = parseJsonOutput(
+    "management-experience-contract experience-input-validation",
+    experienceInputResult.stdout,
+  );
+  assert.equal(experienceInputPayload.ready, true);
+  assert.equal(experienceInputPayload.invalid_limit_alpha_status, 400);
+  assert.equal(experienceInputPayload.invalid_limit_alpha_error, "invalid_limit");
+  assert.equal(experienceInputPayload.invalid_limit_alpha_field, "limit");
+  assert.equal(experienceInputPayload.invalid_limit_zero_status, 400);
+  assert.equal(experienceInputPayload.invalid_limit_zero_error, "invalid_limit");
+  assert.equal(experienceInputPayload.invalid_limit_zero_field, "limit");
+  assert.equal(experienceInputPayload.invalid_limit_oversized_status, 400);
+  assert.equal(experienceInputPayload.invalid_limit_oversized_error, "invalid_limit");
+  assert.equal(experienceInputPayload.invalid_limit_oversized_field, "limit");
+  assert.equal(experienceInputPayload.invalid_states_partial_status, 400);
+  assert.equal(experienceInputPayload.invalid_states_partial_error, "invalid_states");
+  assert.equal(experienceInputPayload.invalid_states_partial_field, "states");
+  assert.equal(experienceInputPayload.invalid_states_empty_status, 400);
+  assert.equal(experienceInputPayload.invalid_states_empty_error, "invalid_states");
+  assert.equal(experienceInputPayload.invalid_states_empty_field, "states");
+  assert.equal(experienceInputPayload.valid_list_status, 200);
+  assert.equal(experienceInputPayload.valid_list_mode, "list");
+  assert.equal(experienceInputPayload.valid_list_total_type, "number");
+  logStep("management-experience-contract experience-input-validation");
 }
