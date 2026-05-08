@@ -41,6 +41,24 @@ interface ResolveMcpInstructionRuntimeInput {
   projectTomlPath?: string;
 }
 
+export class McpInstructionConfigInputError extends Error {
+  readonly code: string;
+  readonly field: string;
+
+  constructor(field: string, detail: string) {
+    super(detail);
+    this.name = "McpInstructionConfigInputError";
+    this.code = `invalid_${field.replace(/-/g, "_")}`;
+    this.field = field;
+  }
+}
+
+export function isMcpInstructionConfigInputError(
+  error: unknown,
+): error is McpInstructionConfigInputError {
+  return error instanceof McpInstructionConfigInputError;
+}
+
 const MCP_RULE_MAX_CHARS_PER_SERVER = 1_200;
 const MCP_RULE_MAX_TOTAL_CHARS = 3_200;
 const MCP_RULE_BLOCKLIST_SNIPPETS = [
@@ -77,7 +95,7 @@ function parseTomlString(value: string): string | undefined {
   if (!trimmed) {
     return undefined;
   }
-  const match = trimmed.match(/^"([^"]*)"/);
+  const match = trimmed.match(/^"([^"]*)"$/);
   if (!match || typeof match[1] !== "string") {
     return undefined;
   }
@@ -93,6 +111,42 @@ function parseTomlBoolean(value: string): boolean | undefined {
     return false;
   }
   return undefined;
+}
+
+function throwMcpInstructionConfigError(
+  field: string,
+  detail: string,
+  source: string,
+): never {
+  throw new McpInstructionConfigInputError(
+    field,
+    `${detail} (source=${source})`,
+  );
+}
+
+function readConfigBoolean(
+  value: string,
+  field: string,
+  source: string,
+): boolean {
+  const parsed = parseTomlBoolean(value);
+  if (typeof parsed !== "boolean") {
+    throwMcpInstructionConfigError(field, `${field} must be boolean`, source);
+  }
+  return parsed;
+}
+
+function readConfigString(
+  value: string,
+  field: string,
+  detail: string,
+  source: string,
+): string {
+  const parsed = parseTomlString(value);
+  if (typeof parsed !== "string" || parsed.trim().length === 0) {
+    throwMcpInstructionConfigError(field, detail, source);
+  }
+  return parsed.trim();
 }
 
 function fileReadable(path: string): boolean {
@@ -202,15 +256,31 @@ function readMcpInstructionSettings(projectTomlPath?: string): McpInstructionSet
     const key = kvMatch[1];
     const value = kvMatch[2];
     if (key === "enabled") {
-      enabled = parseTomlBoolean(value) ?? enabled;
+      enabled = readConfigBoolean(
+        value,
+        "mcp-instructions-enabled",
+        "project_toml",
+      );
       continue;
     }
     if (key === "strict") {
-      strict = parseTomlBoolean(value) ?? strict;
+      strict = readConfigBoolean(
+        value,
+        "mcp-instructions-strict",
+        "project_toml",
+      );
       continue;
     }
     if (key === "scope") {
-      scope = normalizeMcpScope(parseTomlString(value)) ?? scope;
+      const parsedScope = normalizeMcpScope(parseTomlString(value));
+      if (!parsedScope) {
+        throwMcpInstructionConfigError(
+          "mcp-instructions-scope",
+          "mcp-instructions-scope must be project_first, project_only, or global_only",
+          "project_toml",
+        );
+      }
+      scope = parsedScope;
     }
   }
   return { enabled, strict, scope };
@@ -230,18 +300,24 @@ function parseMcpServerEntries(registryPath: string): McpServerEntry[] {
   const rows: McpServerEntry[] = [];
   let current: McpServerEntry | undefined;
   let inServerEnvSection = false;
+  const source = `mcp_registry:${registryPath}`;
 
   const flushCurrent = () => {
     if (!current) {
       return;
     }
     const normalizedName = current.name.trim();
-    if (normalizedName.length > 0) {
-      rows.push({
-        name: normalizedName,
-        enabled: current.enabled,
-      });
+    if (normalizedName.length === 0) {
+      throwMcpInstructionConfigError(
+        "mcp-server-name",
+        "mcp-server-name must be a non-empty string",
+        source,
+      );
     }
+    rows.push({
+      name: normalizedName,
+      enabled: current.enabled,
+    });
     current = undefined;
     inServerEnvSection = false;
   };
@@ -280,11 +356,20 @@ function parseMcpServerEntries(registryPath: string): McpServerEntry[] {
     const key = kvMatch[1];
     const value = kvMatch[2];
     if (key === "name") {
-      current.name = parseTomlString(value) ?? current.name;
+      current.name = readConfigString(
+        value,
+        "mcp-server-name",
+        "mcp-server-name must be a non-empty string",
+        source,
+      );
       continue;
     }
     if (key === "enabled") {
-      current.enabled = parseTomlBoolean(value) ?? current.enabled;
+      current.enabled = readConfigBoolean(
+        value,
+        "mcp-server-enabled",
+        source,
+      );
     }
   }
   flushCurrent();

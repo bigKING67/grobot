@@ -130,6 +130,15 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     bootstrap. Scheduler intervals must be `10000..86400000` ms, interval
     seconds must be `10..86400`, and default task delay must be `1..24` hours.
     Numeric values must not be silently clamped.
+18. MCP instruction controls must fail closed on malformed explicit project
+    TOML values. `[mcp.instructions]` booleans (`enabled`, `strict`) and
+    `scope` may use defaults only when omitted; malformed booleans, invalid
+    scope values, or malformed quoted scope strings must exit `2` with stable
+    `invalid_mcp_instructions_*` errors before prompt/runtime bootstrap.
+    Enabled MCP registry entries in `.grobot/mcp.toml` or
+    `${home}/mcp/servers.toml` must also fail closed for malformed explicit
+    `name` or `enabled` fields, returning stable `invalid_mcp_server_*` errors
+    instead of silently keeping previous/default values.
 
 ---
 

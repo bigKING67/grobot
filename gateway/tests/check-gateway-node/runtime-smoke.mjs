@@ -6,6 +6,7 @@ import { runRuntimePlanEventsPolicySmoke } from "./runtime-smoke/plan-events-pol
 import { runRuntimeContextQualityFlowSmoke } from "./runtime-smoke/context-quality-flows.mjs";
 import { assertContextEngineControlSmoke } from "./runtime-smoke/context-engine-controls.mjs";
 import { assertExperienceSchedulerControlSmoke } from "./runtime-smoke/experience-scheduler-controls.mjs";
+import { assertMcpInstructionControlSmoke } from "./runtime-smoke/mcp-instruction-controls.mjs";
 import { runRuntimeDescribeFallbackSmoke } from "./runtime-smoke/runtime-describe-fallbacks.mjs";
 
 export async function runTsRustExecutionSmoke() {
@@ -17,5 +18,6 @@ export async function runTsRustExecutionSmoke() {
   await runRuntimeContextQualityFlowSmoke();
   assertContextEngineControlSmoke();
   assertExperienceSchedulerControlSmoke();
+  assertMcpInstructionControlSmoke();
   await runRuntimeDescribeFallbackSmoke();
 }
