@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { mkdirSync, writeFileSync } from "node:fs";
 
 function parseArgs(argv) {
   const command = argv[0] ?? "";
@@ -90,6 +91,25 @@ async function runConfigControlsRejectFlow(options) {
     "--bind",
     bind,
   ];
+  const makeConfigTomlCase = async (suffix, configTomlLines) => {
+    const caseRoot = `${workDir}/config-controls-${suffix}-${Date.now().toString(36)}-${Math.floor(Math.random() * 100000).toString(36)}`;
+    mkdirSync(caseRoot, { recursive: true });
+    const configPath = `${caseRoot}/config.toml`;
+    writeFileSync(
+      configPath,
+      [
+        "[management]",
+        ...configTomlLines,
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    return await runRepoCommand(repoRoot, [
+      ...commonArgs,
+      "--config",
+      configPath,
+    ]);
+  };
   const invalidConfigReadPolicy = await runRepoCommand(repoRoot, [
     ...commonArgs,
     "--config-read-policy",
@@ -132,6 +152,10 @@ async function runConfigControlsRejectFlow(options) {
       GROBOT_CONFIG_READ_POLICY: "open",
     },
   );
+  const invalidConfigPolicyTrailing = await makeConfigTomlCase(
+    "config-policy-trailing",
+    ['config_read_policy = "auto" trailing'],
+  );
   const invalidExperiencePublishMode = await runRepoCommand(
     repoRoot,
     commonArgs,
@@ -161,6 +185,8 @@ async function runConfigControlsRejectFlow(options) {
     invalidEnvSessionStore.stderr,
     invalidEnvConfigReadPolicy.stdout,
     invalidEnvConfigReadPolicy.stderr,
+    invalidConfigPolicyTrailing.stdout,
+    invalidConfigPolicyTrailing.stderr,
     invalidExperiencePublishMode.stdout,
     invalidExperiencePublishMode.stderr,
     invalidExperienceRecallLimit.stdout,
@@ -195,6 +221,10 @@ async function runConfigControlsRejectFlow(options) {
     invalid_env_config_policy_has_stable_error:
       invalidEnvConfigReadPolicy.stderr.includes("error: invalid_config_read_policy:")
       && invalidEnvConfigReadPolicy.stderr.includes("config-read-policy must be auto, public, auth, or disabled"),
+    invalid_config_policy_trailing_exit_code: invalidConfigPolicyTrailing.exit_code,
+    invalid_config_policy_trailing_has_stable_error:
+      invalidConfigPolicyTrailing.stderr.includes("error: invalid_config_read_policy:")
+      && invalidConfigPolicyTrailing.stderr.includes("config-read-policy must be auto, public, auth, or disabled"),
     invalid_experience_publish_mode_exit_code: invalidExperiencePublishMode.exit_code,
     invalid_experience_publish_mode_has_stable_error:
       invalidExperiencePublishMode.stderr.includes("error: invalid_experience_publish_mode:")

@@ -57,16 +57,11 @@ function stripInlineComment(line: string): string {
 
 function parseTomlString(value: string): string | undefined {
   const trimmed = value.trim();
-  if (!trimmed) {
+  const match = trimmed.match(/^"([^"]*)"$/);
+  if (!match || typeof match[1] !== "string") {
     return undefined;
   }
-  if (trimmed.startsWith("\"")) {
-    const match = trimmed.match(/^"([^"]*)"/);
-    if (match && typeof match[1] === "string") {
-      return match[1].trim();
-    }
-  }
-  return trimmed;
+  return match[1].trim();
 }
 
 function parseTomlBoolean(value: string): boolean | undefined {
@@ -108,8 +103,11 @@ function parseRuntimeStorageFromToml(rawToml: string): RuntimeStorageTomlSetting
     }
     if (kvMatch[1] === "hot_cache") {
       const parsed = parseTomlString(kvMatch[2]);
-      if (!parsed) {
-        continue;
+      if (typeof parsed !== "string" || parsed.length === 0) {
+        throw new MemoryStoreConfigInputError(
+          "memory-store-backend",
+          "memory-store-backend must be file, redis, or auto",
+        );
       }
       const normalized = parsed.trim().toLowerCase();
       if (normalized === "redis") {

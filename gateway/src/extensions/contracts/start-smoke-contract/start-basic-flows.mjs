@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+
 export function runPackageLauncherRejectsPython(context) {
   const { repoRoot, runCommand } = context;
   return runCommand(repoRoot, ["./packages/cli/bin/grobot", "status", "--gateway-impl=python"]);
@@ -233,6 +235,42 @@ export function runStartInvalidStorageControlsRejectFlow(context) {
   } = context;
   const workDir = createTempDir("grobot-start-invalid-storage-controls-work");
   const config = writeConfig(buildSmokeConfig(workDir));
+  const makeProjectTomlCase = (suffix, projectTomlLines) => {
+    const caseWorkDir = createTempDir(`grobot-start-invalid-storage-controls-${suffix}`);
+    const grobotDir = `${caseWorkDir}/.grobot`;
+    mkdirSync(grobotDir, { recursive: true });
+    writeFileSync(
+      `${grobotDir}/project.toml`,
+      [
+        "schema_version = 1",
+        'mode = "mvp"',
+        "",
+        "[runtime.storage]",
+        ...projectTomlLines,
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    const caseConfig = writeConfig(buildSmokeConfig(caseWorkDir));
+    return runCommand(repoRoot, [
+      "./grobot",
+      "start",
+      "--project",
+      "grobot",
+      "--work-dir",
+      caseWorkDir,
+      "--config",
+      caseConfig.configPath,
+      "--gateway-impl",
+      "ts",
+      "--runtime-impl",
+      "rust",
+      "--session-subject",
+      `start-invalid-storage-controls-${suffix}-user`,
+      "--message",
+      "invalid storage project config should not reach runtime",
+    ]);
+  };
   const commonArgs = [
     "./grobot",
     "start",
@@ -281,6 +319,14 @@ export function runStartInvalidStorageControlsRejectFlow(context) {
       GROBOT_SESSION_STORE: "sqlite",
     },
   );
+  const invalidProjectHotCacheTrailingResult = makeProjectTomlCase(
+    "hot-cache-trailing",
+    ['hot_cache = "redis" trailing'],
+  );
+  const invalidProjectRequireRedisTrailingResult = makeProjectTomlCase(
+    "require-redis-trailing",
+    ["require_redis = true trailing"],
+  );
   const combinedOutput = [
     invalidBackendResult.stdout,
     invalidBackendResult.stderr,
@@ -292,6 +338,10 @@ export function runStartInvalidStorageControlsRejectFlow(context) {
     invalidRedisUrlResult.stderr,
     invalidEnvBackendResult.stdout,
     invalidEnvBackendResult.stderr,
+    invalidProjectHotCacheTrailingResult.stdout,
+    invalidProjectHotCacheTrailingResult.stderr,
+    invalidProjectRequireRedisTrailingResult.stdout,
+    invalidProjectRequireRedisTrailingResult.stderr,
   ].join("\n");
   return {
     invalid_backend_exit_code: invalidBackendResult.exit_code,
@@ -314,6 +364,14 @@ export function runStartInvalidStorageControlsRejectFlow(context) {
     invalid_env_backend_has_stable_error:
       invalidEnvBackendResult.stderr.includes("error: invalid_session_store:")
       && invalidEnvBackendResult.stderr.includes("session-store must be file, redis, or auto"),
+    invalid_project_hot_cache_trailing_exit_code: invalidProjectHotCacheTrailingResult.exit_code,
+    invalid_project_hot_cache_trailing_has_stable_error:
+      invalidProjectHotCacheTrailingResult.stderr.includes("error: invalid_memory_store_backend:")
+      && invalidProjectHotCacheTrailingResult.stderr.includes("memory-store-backend must be file, redis, or auto"),
+    invalid_project_require_redis_trailing_exit_code: invalidProjectRequireRedisTrailingResult.exit_code,
+    invalid_project_require_redis_trailing_has_stable_error:
+      invalidProjectRequireRedisTrailingResult.stderr.includes("error: invalid_require_redis:")
+      && invalidProjectRequireRedisTrailingResult.stderr.includes("require-redis must be boolean"),
     hides_top_level_fatal: !combinedOutput.includes("fatal error"),
     has_start_banner: hasStartBannerMarker(combinedOutput),
   };

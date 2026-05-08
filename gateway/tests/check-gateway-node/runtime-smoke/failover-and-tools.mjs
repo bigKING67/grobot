@@ -325,6 +325,10 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(startInvalidStorageControlsPayload.invalid_redis_url_has_stable_error, true);
   assert.equal(startInvalidStorageControlsPayload.invalid_env_backend_exit_code, 2);
   assert.equal(startInvalidStorageControlsPayload.invalid_env_backend_has_stable_error, true);
+  assert.equal(startInvalidStorageControlsPayload.invalid_project_hot_cache_trailing_exit_code, 2);
+  assert.equal(startInvalidStorageControlsPayload.invalid_project_hot_cache_trailing_has_stable_error, true);
+  assert.equal(startInvalidStorageControlsPayload.invalid_project_require_redis_trailing_exit_code, 2);
+  assert.equal(startInvalidStorageControlsPayload.invalid_project_require_redis_trailing_has_stable_error, true);
   assert.equal(startInvalidStorageControlsPayload.hides_top_level_fatal, true);
   assert.equal(startInvalidStorageControlsPayload.has_start_banner, false);
   logStep("start-smoke-contract start-invalid-storage-controls-reject-flow");
@@ -617,6 +621,8 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(serveInvalidConfigPayload.invalid_env_session_store_has_stable_error, true);
   assert.equal(serveInvalidConfigPayload.invalid_env_config_policy_exit_code, 2);
   assert.equal(serveInvalidConfigPayload.invalid_env_config_policy_has_stable_error, true);
+  assert.equal(serveInvalidConfigPayload.invalid_config_policy_trailing_exit_code, 2);
+  assert.equal(serveInvalidConfigPayload.invalid_config_policy_trailing_has_stable_error, true);
   assert.equal(serveInvalidConfigPayload.invalid_experience_publish_mode_exit_code, 2);
   assert.equal(serveInvalidConfigPayload.invalid_experience_publish_mode_has_stable_error, true);
   assert.equal(serveInvalidConfigPayload.invalid_experience_recall_limit_exit_code, 2);

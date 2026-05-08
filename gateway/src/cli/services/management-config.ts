@@ -86,16 +86,11 @@ function stripInlineComment(line: string): string {
 
 function parseTomlString(value: string): string | undefined {
   const trimmed = value.trim();
-  if (!trimmed) {
+  const match = trimmed.match(/^"([^"]*)"$/);
+  if (!match || typeof match[1] !== "string") {
     return undefined;
   }
-  if (trimmed.startsWith("\"")) {
-    const match = trimmed.match(/^"([^"]*)"/);
-    if (match && typeof match[1] === "string") {
-      return match[1].trim();
-    }
-  }
-  return trimmed;
+  return match[1].trim();
 }
 
 function normalizeConfigReadPolicy(raw: string | undefined): ConfigReadPolicy | undefined {
@@ -137,7 +132,14 @@ function parseManagementConfigReadPolicy(rawToml: string): string | undefined {
     if (kvMatch[1] !== "config_read_policy") {
       continue;
     }
-    return parseTomlString(kvMatch[2]);
+    const parsed = parseTomlString(kvMatch[2]);
+    if (typeof parsed !== "string") {
+      throw new ManagementConfigInputError(
+        "config-read-policy",
+        "config-read-policy must be auto, public, auth, or disabled",
+      );
+    }
+    return parsed;
   }
   return undefined;
 }

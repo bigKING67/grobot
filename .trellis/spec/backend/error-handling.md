@@ -69,7 +69,9 @@ Error handling follows fail-fast plus explicit fallback boundaries:
    redis URLs, and management config-read policies may use defaults only when
    omitted; malformed explicit values must return stable `invalid_<field>`
    errors before `grobot start` starts a turn or `grobot serve` begins
-   listening.
+   listening. TOML values for these controls must use strict parsing: quoted
+   strings may not accept trailing tokens such as `"redis" trailing`, and
+   booleans may not accept trailing tokens such as `true trailing`.
 10. CLI maintenance controls must fail closed on malformed explicit values.
     `grobot gc` may use cleanup defaults only when options are omitted;
     malformed, zero/negative, or out-of-range explicit CLI/config values for
