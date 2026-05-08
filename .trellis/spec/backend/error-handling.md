@@ -43,6 +43,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
 2. Management routes should return consistent JSON error envelopes via route helpers.
 3. Rust runtime pipeline emits `turn_failed` and terminal `turn_end` events on failure.
 4. Stdio runtime client converts JSON-RPC errors into typed, contextual JS errors.
+5. Management API numeric controls must fail closed on invalid values instead
+   of silently falling back to defaults. For example,
+   `POST /api/v1/sessions/{id}/interrupt` accepts omitted `ttl_secs` as the
+   documented default but returns HTTP `400` with `invalid_ttl_secs` for
+   non-number, non-finite, zero, or negative values.
 
 ---
 

@@ -86,6 +86,7 @@ function runWorkflowGuard() {
 function ensureContractsExist() {
   const requiredContracts = [
     "management-policy-contract.mjs",
+    "management-interrupt-contract.mjs",
     "local-tools-contract.mjs",
     "runtime-paths-contract.mjs",
     "session-lifecycle-contract.mjs",

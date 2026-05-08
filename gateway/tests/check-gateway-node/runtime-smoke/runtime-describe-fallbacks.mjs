@@ -220,4 +220,41 @@ export async function runRuntimeDescribeFallbackSmoke() {
     { timeoutMs: 240_000 },
   );
   logStep("serve-smoke-contract config-read-policy-disabled");
+
+  const interruptTtlPort = await reserveFreePort();
+  const interruptTtlWorkDir = makeTempDir("management-interrupt-work");
+  const interruptTtlResult = runContract(
+    "management-interrupt-contract.mjs",
+    "interrupt-ttl-validation",
+    [
+      "--repo-root",
+      repoRoot,
+      "--work-dir",
+      interruptTtlWorkDir,
+      "--bind",
+      `127.0.0.1:${interruptTtlPort}`,
+      "--management-token",
+      "ops-token",
+    ],
+    { timeoutMs: 240_000 },
+  );
+  const interruptTtlPayload = parseJsonOutput(
+    "management-interrupt-contract interrupt-ttl-validation",
+    interruptTtlResult.stdout,
+  );
+  assert.equal(interruptTtlPayload.ready, true);
+  assert.equal(interruptTtlPayload.valid_ttl_status, 200);
+  assert.equal(interruptTtlPayload.valid_ttl_secs, 42);
+  assert.equal(interruptTtlPayload.default_ttl_status, 200);
+  assert.equal(interruptTtlPayload.default_ttl_secs, 300);
+  assert.equal(interruptTtlPayload.invalid_zero_status, 400);
+  assert.equal(interruptTtlPayload.invalid_zero_error, "invalid_ttl_secs");
+  assert.equal(interruptTtlPayload.invalid_string_status, 400);
+  assert.equal(interruptTtlPayload.invalid_string_error, "invalid_ttl_secs");
+  assert.equal(interruptTtlPayload.invalid_shape_status, 400);
+  assert.equal(interruptTtlPayload.invalid_shape_error, "bad_request");
+  assert.equal(interruptTtlPayload.invalid_json_status, 400);
+  assert.equal(interruptTtlPayload.invalid_json_error, "bad_request");
+  assert.equal(interruptTtlPayload.invalid_json_detail_has_context, true);
+  logStep("management-interrupt-contract interrupt-ttl-validation");
 }

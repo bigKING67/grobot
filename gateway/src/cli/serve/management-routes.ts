@@ -24,6 +24,57 @@ function parseExperienceStates(raw: string): ExperienceRecordState[] | undefined
   return Array.from(new Set(states));
 }
 
+function resolveInterruptTtlSecs(rawBody: string): {
+  ok: true;
+  ttlSecs: number;
+} | {
+  ok: false;
+  error: string;
+  detail: string;
+} {
+  if (!rawBody.trim()) {
+    return {
+      ok: true,
+      ttlSecs: 300,
+    };
+  }
+  let payload: unknown;
+  try {
+    payload = JSON.parse(rawBody) as unknown;
+  } catch (error) {
+    return {
+      ok: false,
+      error: "bad_request",
+      detail: `Invalid JSON body: ${String(error)}`,
+    };
+  }
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return {
+      ok: false,
+      error: "bad_request",
+      detail: "JSON body must be an object",
+    };
+  }
+  const value = (payload as Record<string, unknown>).ttl_secs;
+  if (value === undefined) {
+    return {
+      ok: true,
+      ttlSecs: 300,
+    };
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return {
+      ok: false,
+      error: "invalid_ttl_secs",
+      detail: "ttl_secs must be a positive number",
+    };
+  }
+  return {
+    ok: true,
+    ttlSecs: Math.floor(value),
+  };
+}
+
 export async function dispatchManagementRoutes(
   request: IncomingMessage,
   response: ServerResponse,
@@ -508,31 +559,21 @@ export async function dispatchManagementRoutes(
 
     const sessionId = decodeURIComponent(interruptMatch[1]);
     const body = await context.readBody(request);
-    let ttlSecs = 300;
-    if (body.trim()) {
-      try {
-        const payload = JSON.parse(body) as unknown;
-        if (typeof payload === "object" && payload !== null) {
-          const value = (payload as Record<string, unknown>).ttl_secs;
-          if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-            ttlSecs = Math.floor(value);
-          }
-        }
-      } catch {
-        context.writeJson(response, 400, {
-          error: "bad_request",
-          detail: "invalid json body",
-        });
-        return true;
-      }
+    const ttl = resolveInterruptTtlSecs(body);
+    if (!ttl.ok) {
+      context.writeJson(response, 400, {
+        error: ttl.error,
+        detail: ttl.detail,
+      });
+      return true;
     }
 
-    context.setInterruptFlag(sessionId, ttlSecs);
+    context.setInterruptFlag(sessionId, ttl.ttlSecs);
     context.forceEndTurnGate(sessionId);
     context.writeJson(response, 200, {
       status: "ok",
       session_id: sessionId,
-      ttl_secs: ttlSecs,
+      ttl_secs: ttl.ttlSecs,
       turn_gate_forced_end: true,
     });
     return true;
