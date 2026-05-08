@@ -419,6 +419,44 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(statusInvalidRuntimeControlsPayload.hides_top_level_fatal, true);
   logStep("start-smoke-contract status-invalid-runtime-controls-reject-flow");
 
+  const statusInvalidContextControlsResult = runContract(
+    "start-smoke-contract.mjs",
+    "status-invalid-context-controls-reject-flow",
+    ["--repo-root", repoRoot],
+    { timeoutMs: 240_000 },
+  );
+  const statusInvalidContextControlsPayload = parseJsonOutput(
+    "start-smoke-contract status-invalid-context-controls-reject-flow",
+    statusInvalidContextControlsResult.stdout,
+  );
+  assert.equal(statusInvalidContextControlsPayload.invalid_window_exit_code, 2);
+  assert.equal(statusInvalidContextControlsPayload.invalid_window_has_stable_error, true);
+  assert.equal(statusInvalidContextControlsPayload.missing_window_exit_code, 2);
+  assert.equal(statusInvalidContextControlsPayload.missing_window_has_stable_error, true);
+  assert.equal(statusInvalidContextControlsPayload.invalid_hit_rate_json_exit_code, 2);
+  assert.equal(
+    statusInvalidContextControlsPayload.invalid_hit_rate_json_error,
+    "invalid_context_graph_cache_degrade_hit_rate",
+  );
+  assert.equal(
+    statusInvalidContextControlsPayload.invalid_hit_rate_json_field,
+    "context-graph-cache-degrade-hit-rate",
+  );
+  assert.equal(statusInvalidContextControlsPayload.invalid_hit_rate_json_detail_has_range, true);
+  assert.equal(statusInvalidContextControlsPayload.invalid_parsed_rate_exit_code, 2);
+  assert.equal(statusInvalidContextControlsPayload.invalid_parsed_rate_has_stable_error, true);
+  assert.equal(statusInvalidContextControlsPayload.invalid_env_min_entries_exit_code, 2);
+  assert.equal(statusInvalidContextControlsPayload.invalid_env_min_entries_has_stable_error, true);
+  assert.equal(statusInvalidContextControlsPayload.invalid_env_min_scanned_files_exit_code, 2);
+  assert.equal(statusInvalidContextControlsPayload.invalid_env_min_scanned_files_has_stable_error, true);
+  assert.equal(statusInvalidContextControlsPayload.valid_boundary_exit_code, 0);
+  assert.equal(statusInvalidContextControlsPayload.valid_boundary_json_parse_ok, true);
+  assert.equal(statusInvalidContextControlsPayload.valid_boundary_window_size, 200);
+  assert.equal(statusInvalidContextControlsPayload.valid_boundary_persistent_min_entries, 1);
+  assert.equal(statusInvalidContextControlsPayload.valid_boundary_persistent_min_scanned_files, 1);
+  assert.equal(statusInvalidContextControlsPayload.hides_top_level_fatal, true);
+  logStep("start-smoke-contract status-invalid-context-controls-reject-flow");
+
   const providerFailureCleanAlternateModel = await startMockModelServer();
   try {
     const providerFailureCleanAlternateResult = await runContractAsync(

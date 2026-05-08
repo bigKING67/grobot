@@ -59,6 +59,7 @@ import {
   resolveContextEngineRuntimeModelConfig,
 } from "./context-engine-status";
 import { serializeContextEngineStatus } from "./context-engine-json";
+import { resolveStatusContextControls } from "./context-controls";
 import {
   serializeContextGraphCacheStatsStatus,
   serializeContextGraphQualitySignalsStatus,
@@ -68,8 +69,6 @@ import {
   parseExplicitPositiveIntOption,
   parseExplicitRequiredPositiveIntOption,
   isCliNumericOptionInputError,
-  parseRequiredPositiveInt,
-  parseRequiredRatio,
 } from "./option-parsing";
 import {
   formatStatusProviderProbeLines,
@@ -221,46 +220,26 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     throw error;
   }
   const resetCacheStatsWindow = hasFlag(options, "cache-stats-reset-window");
-  const contextGraphCacheWindowSize = parseRequiredPositiveInt(
-    readOptionString(options, "context-graph-cache-window-size")
-      ?? process.env.GROBOT_CONTEXT_GRAPH_CACHE_WINDOW_SIZE,
-    20,
-  );
-  const contextGraphCacheDegradeHitRateThreshold = parseRequiredRatio(
-    readOptionString(options, "context-graph-cache-degrade-hit-rate")
-      ?? process.env.GROBOT_CONTEXT_GRAPH_CACHE_DEGRADE_HIT_RATE,
-    0.3,
-  );
-  const contextGraphCacheDegradeMinEntries = parseRequiredPositiveInt(
-    readOptionString(options, "context-graph-cache-degrade-min-entries")
-      ?? process.env.GROBOT_CONTEXT_GRAPH_CACHE_DEGRADE_MIN_ENTRIES,
-    8,
-  );
-  const contextPersistentGraphDegradeParsedPerScannedMax = parseRequiredRatio(
-    readOptionString(options, "context-persistent-graph-degrade-parsed-rate")
-      ?? process.env.GROBOT_CONTEXT_PERSISTENT_GRAPH_DEGRADE_PARSED_RATE,
-    0.35,
-  );
-  const contextPersistentGraphDegradeReusedPerScannedMin = parseRequiredRatio(
-    readOptionString(options, "context-persistent-graph-degrade-reused-rate")
-      ?? process.env.GROBOT_CONTEXT_PERSISTENT_GRAPH_DEGRADE_REUSED_RATE,
-    0.55,
-  );
-  const contextPersistentGraphDegradeRemovedPerScannedMax = parseRequiredRatio(
-    readOptionString(options, "context-persistent-graph-degrade-removed-rate")
-      ?? process.env.GROBOT_CONTEXT_PERSISTENT_GRAPH_DEGRADE_REMOVED_RATE,
-    0.2,
-  );
-  const contextPersistentGraphDegradeMinEntries = parseRequiredPositiveInt(
-    readOptionString(options, "context-persistent-graph-degrade-min-entries")
-      ?? process.env.GROBOT_CONTEXT_PERSISTENT_GRAPH_DEGRADE_MIN_ENTRIES,
-    8,
-  );
-  const contextPersistentGraphDegradeMinScannedFiles = parseRequiredPositiveInt(
-    readOptionString(options, "context-persistent-graph-degrade-min-scanned-files")
-      ?? process.env.GROBOT_CONTEXT_PERSISTENT_GRAPH_DEGRADE_MIN_SCANNED_FILES,
-    40,
-  );
+  let contextControls;
+  try {
+    contextControls = resolveStatusContextControls(options);
+  } catch (error) {
+    if (isCliNumericOptionInputError(error)) {
+      writeStatusInputError(error, outputJson);
+      return 2;
+    }
+    throw error;
+  }
+  const {
+    contextGraphCacheWindowSize,
+    contextGraphCacheDegradeHitRateThreshold,
+    contextGraphCacheDegradeMinEntries,
+    contextPersistentGraphDegradeParsedPerScannedMax,
+    contextPersistentGraphDegradeReusedPerScannedMin,
+    contextPersistentGraphDegradeRemovedPerScannedMax,
+    contextPersistentGraphDegradeMinEntries,
+    contextPersistentGraphDegradeMinScannedFiles,
+  } = contextControls;
   const routeDecision = resolveRouteDecisionRuntimeSnapshot({
     projectStateRoot,
     sessionNamespaceKey: sessionPreview,

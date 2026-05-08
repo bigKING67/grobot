@@ -91,6 +91,18 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     use defaults only when omitted; malformed or out-of-range explicit env
     values must return stable `invalid_<field>` errors before session bootstrap
     or management server listen.
+14. Status context graph controls must fail closed on malformed explicit
+    CLI/env values. `grobot status` may default graph cache and persistent graph
+    degradation thresholds only when omitted; explicit malformed,
+    zero/negative, or out-of-range values for
+    `context-graph-cache-window-size`,
+    `context-graph-cache-degrade-hit-rate`,
+    `context-graph-cache-degrade-min-entries`,
+    `context-persistent-graph-degrade-*-rate`,
+    `context-persistent-graph-degrade-min-entries`, and
+    `context-persistent-graph-degrade-min-scanned-files` must exit `2` with
+    stable `invalid_<field>` errors. Ratio controls accept only `0..1`, and
+    integer controls use bounded ranges matching the status window readers.
 
 ---
 

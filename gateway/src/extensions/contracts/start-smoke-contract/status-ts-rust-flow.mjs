@@ -409,6 +409,137 @@ export function runStatusTsRust(context, windowSize) {
   };
 }
 
+export function runStatusInvalidContextControlsRejectFlow(context) {
+  const {
+    repoRoot,
+    createTempDir,
+    writeExecutionProjectToml,
+    runCommand,
+    parseJsonObjectSafe,
+  } = context;
+  const workDir = createTempDir("grobot-status-invalid-context-controls-work");
+  writeExecutionProjectToml(workDir);
+  const commonArgs = [
+    "./grobot",
+    "status",
+    "--work-dir",
+    workDir,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+  ];
+  const invalidWindowResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--context-graph-cache-window-size",
+    "0",
+  ]);
+  const missingWindowResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--context-graph-cache-window-size",
+  ]);
+  const invalidHitRateJsonResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--json",
+    "--context-graph-cache-degrade-hit-rate",
+    "1.5",
+  ]);
+  const invalidParsedRateResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--context-persistent-graph-degrade-parsed-rate",
+    "NaN",
+  ]);
+  const invalidMinEntriesResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_CONTEXT_PERSISTENT_GRAPH_DEGRADE_MIN_ENTRIES: "0",
+    },
+  );
+  const invalidMinScannedFilesResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_CONTEXT_PERSISTENT_GRAPH_DEGRADE_MIN_SCANNED_FILES: "200001",
+    },
+  );
+  const validBoundaryResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--json",
+    "--context-graph-cache-window-size",
+    "200",
+    "--context-graph-cache-degrade-hit-rate",
+    "1",
+    "--context-graph-cache-degrade-min-entries",
+    "1",
+    "--context-persistent-graph-degrade-parsed-rate",
+    "0",
+    "--context-persistent-graph-degrade-reused-rate",
+    "1.0",
+    "--context-persistent-graph-degrade-removed-rate",
+    "0.0",
+    "--context-persistent-graph-degrade-min-entries",
+    "1",
+    "--context-persistent-graph-degrade-min-scanned-files",
+    "1",
+  ]);
+  const invalidHitRateJson = parseJsonObjectSafe(invalidHitRateJsonResult.stdout);
+  const validBoundaryJson = parseJsonObjectSafe(validBoundaryResult.stdout);
+  const contextGraphWindow =
+    validBoundaryJson?.context_graph_cache_stats?.window ?? null;
+  const contextPersistentGraphDegradation =
+    validBoundaryJson?.context_persistent_graph_index?.degradation ?? null;
+  const combinedOutput = [
+    invalidWindowResult.stdout,
+    invalidWindowResult.stderr,
+    missingWindowResult.stdout,
+    missingWindowResult.stderr,
+    invalidHitRateJsonResult.stdout,
+    invalidHitRateJsonResult.stderr,
+    invalidParsedRateResult.stdout,
+    invalidParsedRateResult.stderr,
+    invalidMinEntriesResult.stdout,
+    invalidMinEntriesResult.stderr,
+    invalidMinScannedFilesResult.stdout,
+    invalidMinScannedFilesResult.stderr,
+  ].join("\n");
+  return {
+    invalid_window_exit_code: invalidWindowResult.exit_code,
+    invalid_window_has_stable_error:
+      invalidWindowResult.stderr.includes("error: invalid_context_graph_cache_window_size:")
+      && invalidWindowResult.stderr.includes("context-graph-cache-window-size must be an integer between 1 and 200"),
+    missing_window_exit_code: missingWindowResult.exit_code,
+    missing_window_has_stable_error:
+      missingWindowResult.stderr.includes("error: invalid_context_graph_cache_window_size:")
+      && missingWindowResult.stderr.includes("context-graph-cache-window-size must not be empty"),
+    invalid_hit_rate_json_exit_code: invalidHitRateJsonResult.exit_code,
+    invalid_hit_rate_json_error: invalidHitRateJson?.error ?? null,
+    invalid_hit_rate_json_field: invalidHitRateJson?.field ?? null,
+    invalid_hit_rate_json_detail_has_range:
+      String(invalidHitRateJson?.detail ?? "").includes("between 0 and 1"),
+    invalid_parsed_rate_exit_code: invalidParsedRateResult.exit_code,
+    invalid_parsed_rate_has_stable_error:
+      invalidParsedRateResult.stderr.includes("error: invalid_context_persistent_graph_degrade_parsed_rate:")
+      && invalidParsedRateResult.stderr.includes("context-persistent-graph-degrade-parsed-rate must be a number between 0 and 1"),
+    invalid_env_min_entries_exit_code: invalidMinEntriesResult.exit_code,
+    invalid_env_min_entries_has_stable_error:
+      invalidMinEntriesResult.stderr.includes("error: invalid_context_persistent_graph_degrade_min_entries:")
+      && invalidMinEntriesResult.stderr.includes("context-persistent-graph-degrade-min-entries must be an integer between 1 and 200"),
+    invalid_env_min_scanned_files_exit_code: invalidMinScannedFilesResult.exit_code,
+    invalid_env_min_scanned_files_has_stable_error:
+      invalidMinScannedFilesResult.stderr.includes("error: invalid_context_persistent_graph_degrade_min_scanned_files:")
+      && invalidMinScannedFilesResult.stderr.includes("context-persistent-graph-degrade-min-scanned-files must be an integer between 1 and 200000"),
+    valid_boundary_exit_code: validBoundaryResult.exit_code,
+    valid_boundary_json_parse_ok: Boolean(validBoundaryJson),
+    valid_boundary_window_size: contextGraphWindow?.configured_size ?? null,
+    valid_boundary_persistent_min_entries:
+      contextPersistentGraphDegradation?.min_entries ?? null,
+    valid_boundary_persistent_min_scanned_files:
+      contextPersistentGraphDegradation?.min_scanned_files ?? null,
+    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
+  };
+}
+
 export function runStatusInvalidRuntimeControlsRejectFlow(context) {
   const {
     repoRoot,

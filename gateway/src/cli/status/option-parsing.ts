@@ -45,37 +45,6 @@ export function parseOptionalPositiveInt(value: string | undefined): number | un
   return parsed;
 }
 
-export function parseRequiredPositiveInt(value: string | undefined, fallback: number): number {
-  const parsed = parseOptionalPositiveInt(value);
-  if (typeof parsed !== "number") {
-    return fallback;
-  }
-  return parsed;
-}
-
-export function parseOptionalRatio(value: string | undefined): number | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const normalized = value.trim();
-  if (!normalized) {
-    return undefined;
-  }
-  const parsed = Number.parseFloat(normalized);
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
-    return undefined;
-  }
-  return parsed;
-}
-
-export function parseRequiredRatio(value: string | undefined, fallback: number): number {
-  const parsed = parseOptionalRatio(value);
-  if (typeof parsed !== "number") {
-    return fallback;
-  }
-  return parsed;
-}
-
 export function parseExplicitPositiveIntOption(input: {
   options: Record<string, OptionValue>;
   key: string;
@@ -111,4 +80,78 @@ export function parseExplicitRequiredPositiveIntOption(input: {
   fallback?: string;
 }): number {
   return parseExplicitPositiveIntOption(input) ?? input.fallbackValue;
+}
+
+function readExplicitRawControl(input: {
+  options: Record<string, OptionValue>;
+  key: string;
+  envKey?: string;
+}): string | undefined {
+  if (hasOption(input.options, input.key)) {
+    const raw = readRawOptionString(input.options, input.key);
+    if (raw === undefined) {
+      throw new CliNumericOptionInputError(
+        input.key,
+        `${input.key} must not be empty`,
+      );
+    }
+    return raw;
+  }
+  return input.envKey ? process.env[input.envKey] : undefined;
+}
+
+export function parseExplicitRequiredIntControl(input: {
+  options: Record<string, OptionValue>;
+  key: string;
+  envKey?: string;
+  fallbackValue: number;
+  min: number;
+  max: number;
+}): number {
+  const raw = readExplicitRawControl(input);
+  if (raw === undefined || raw.trim().length === 0) {
+    return input.fallbackValue;
+  }
+  const normalized = raw.trim();
+  if (!/^\d+$/.test(normalized)) {
+    throw new CliNumericOptionInputError(
+      input.key,
+      `${input.key} must be an integer between ${String(input.min)} and ${String(input.max)}`,
+    );
+  }
+  const parsed = Number.parseInt(normalized, 10);
+  if (!Number.isSafeInteger(parsed) || parsed < input.min || parsed > input.max) {
+    throw new CliNumericOptionInputError(
+      input.key,
+      `${input.key} must be an integer between ${String(input.min)} and ${String(input.max)}`,
+    );
+  }
+  return parsed;
+}
+
+export function parseExplicitRequiredRatioControl(input: {
+  options: Record<string, OptionValue>;
+  key: string;
+  envKey?: string;
+  fallbackValue: number;
+}): number {
+  const raw = readExplicitRawControl(input);
+  if (raw === undefined || raw.trim().length === 0) {
+    return input.fallbackValue;
+  }
+  const normalized = raw.trim();
+  if (!/^(?:0(?:\.\d+)?|1(?:\.0+)?)$/.test(normalized)) {
+    throw new CliNumericOptionInputError(
+      input.key,
+      `${input.key} must be a number between 0 and 1`,
+    );
+  }
+  const parsed = Number.parseFloat(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+    throw new CliNumericOptionInputError(
+      input.key,
+      `${input.key} must be a number between 0 and 1`,
+    );
+  }
+  return parsed;
 }

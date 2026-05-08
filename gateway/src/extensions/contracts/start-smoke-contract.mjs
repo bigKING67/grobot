@@ -32,6 +32,7 @@ import {
   runStartContextMemoryDecayAutotuneHysteresisFlow,
 } from "./start-smoke-contract/context-memory-decay-hysteresis-flow.mjs";
 import {
+  runStatusInvalidContextControlsRejectFlow,
   runStatusInvalidRuntimeControlsRejectFlow,
   runStatusTsRust,
 } from "./start-smoke-contract/status-ts-rust-flow.mjs";
@@ -211,6 +212,9 @@ function runCli(argv) {
       break;
     case "status-invalid-runtime-controls-reject-flow":
       payload = runStatusInvalidRuntimeControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "status-invalid-context-controls-reject-flow":
+      payload = runStatusInvalidContextControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "status-ts-rust-window-size": {
       const parsedWindowSize = Number.parseInt(options.get("window-size") ?? "7", 10);
