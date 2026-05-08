@@ -535,6 +535,95 @@ export function runStartInvalidToolLoopControlsRejectFlow(context) {
   };
 }
 
+export function runStartInvalidExperienceControlsRejectFlow(context) {
+  const {
+    repoRoot,
+    createTempDir,
+    buildSmokeConfig,
+    writeConfig,
+    runCommand,
+    hasStartBannerMarker,
+  } = context;
+  const workDir = createTempDir("grobot-start-invalid-experience-controls-work");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const commonArgs = [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-subject",
+    "start-invalid-experience-controls-user",
+    "--message",
+    "invalid experience controls should not reach runtime",
+  ];
+  const invalidPublishModeResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_EXPERIENCE_PUBLISH_MODE: "always",
+    },
+  );
+  const invalidRecallLimitResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_EXPERIENCE_RECALL_LIMIT: "many",
+    },
+  );
+  const overRecallLimitResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_EXPERIENCE_RECALL_LIMIT: "7",
+    },
+  );
+  const zeroRecallLimitResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_EXPERIENCE_RECALL_LIMIT: "0",
+    },
+  );
+  const combinedOutput = [
+    invalidPublishModeResult.stdout,
+    invalidPublishModeResult.stderr,
+    invalidRecallLimitResult.stdout,
+    invalidRecallLimitResult.stderr,
+    overRecallLimitResult.stdout,
+    overRecallLimitResult.stderr,
+    zeroRecallLimitResult.stdout,
+    zeroRecallLimitResult.stderr,
+  ].join("\n");
+  return {
+    invalid_publish_mode_exit_code: invalidPublishModeResult.exit_code,
+    invalid_publish_mode_has_stable_error:
+      invalidPublishModeResult.stderr.includes("error: invalid_experience_publish_mode:")
+      && invalidPublishModeResult.stderr.includes("experience-publish-mode must be auto or off"),
+    invalid_recall_limit_exit_code: invalidRecallLimitResult.exit_code,
+    invalid_recall_limit_has_stable_error:
+      invalidRecallLimitResult.stderr.includes("error: invalid_experience_recall_limit:")
+      && invalidRecallLimitResult.stderr.includes("experience-recall-limit must be an integer between 1 and 6"),
+    over_recall_limit_exit_code: overRecallLimitResult.exit_code,
+    over_recall_limit_has_stable_error:
+      overRecallLimitResult.stderr.includes("error: invalid_experience_recall_limit:")
+      && overRecallLimitResult.stderr.includes("experience-recall-limit must be an integer between 1 and 6"),
+    zero_recall_limit_exit_code: zeroRecallLimitResult.exit_code,
+    zero_recall_limit_has_stable_error:
+      zeroRecallLimitResult.stderr.includes("error: invalid_experience_recall_limit:")
+      && zeroRecallLimitResult.stderr.includes("experience-recall-limit must be an integer between 1 and 6"),
+    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
+    has_start_banner: hasStartBannerMarker(combinedOutput),
+  };
+}
+
 export function runStartMessageProviderConfigTsRust(
   context,
   providerBaseUrl,

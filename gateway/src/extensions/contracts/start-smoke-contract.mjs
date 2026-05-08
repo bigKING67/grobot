@@ -60,6 +60,7 @@ import {
 import {
   runStartInvalidNamespaceRejectFlow,
   runStartInvalidRuntimeControlsRejectFlow,
+  runStartInvalidExperienceControlsRejectFlow,
   runStartInvalidSessionControlsRejectFlow,
   runStartInvalidStorageControlsRejectFlow,
   runStartInvalidToolLoopControlsRejectFlow,
@@ -99,6 +100,9 @@ function runCli(argv) {
       break;
     case "start-invalid-runtime-controls-reject-flow":
       payload = runStartInvalidRuntimeControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-experience-controls-reject-flow":
+      payload = runStartInvalidExperienceControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "start-invalid-storage-controls-reject-flow":
       payload = runStartInvalidStorageControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));

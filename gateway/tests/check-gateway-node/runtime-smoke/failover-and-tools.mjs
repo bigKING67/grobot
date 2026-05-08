@@ -276,6 +276,28 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(startInvalidRuntimeControlsPayload.has_start_banner, false);
   logStep("start-smoke-contract start-invalid-runtime-controls-reject-flow");
 
+  const experienceControlsResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-invalid-experience-controls-reject-flow",
+    ["--repo-root", repoRoot],
+    { timeoutMs: 240_000 },
+  );
+  const experienceControlsPayload = parseJsonOutput(
+    "start-smoke-contract start-invalid-experience-controls-reject-flow",
+    experienceControlsResult.stdout,
+  );
+  assert.equal(experienceControlsPayload.invalid_publish_mode_exit_code, 2);
+  assert.equal(experienceControlsPayload.invalid_publish_mode_has_stable_error, true);
+  assert.equal(experienceControlsPayload.invalid_recall_limit_exit_code, 2);
+  assert.equal(experienceControlsPayload.invalid_recall_limit_has_stable_error, true);
+  assert.equal(experienceControlsPayload.over_recall_limit_exit_code, 2);
+  assert.equal(experienceControlsPayload.over_recall_limit_has_stable_error, true);
+  assert.equal(experienceControlsPayload.zero_recall_limit_exit_code, 2);
+  assert.equal(experienceControlsPayload.zero_recall_limit_has_stable_error, true);
+  assert.equal(experienceControlsPayload.hides_top_level_fatal, true);
+  assert.equal(experienceControlsPayload.has_start_banner, false);
+  logStep("start-smoke-contract start-invalid-experience-controls-reject-flow");
+
   const startInvalidStorageControlsResult = runContract(
     "start-smoke-contract.mjs",
     "start-invalid-storage-controls-reject-flow",
@@ -571,6 +593,10 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(serveInvalidConfigPayload.invalid_env_session_store_has_stable_error, true);
   assert.equal(serveInvalidConfigPayload.invalid_env_config_policy_exit_code, 2);
   assert.equal(serveInvalidConfigPayload.invalid_env_config_policy_has_stable_error, true);
+  assert.equal(serveInvalidConfigPayload.invalid_experience_publish_mode_exit_code, 2);
+  assert.equal(serveInvalidConfigPayload.invalid_experience_publish_mode_has_stable_error, true);
+  assert.equal(serveInvalidConfigPayload.invalid_experience_recall_limit_exit_code, 2);
+  assert.equal(serveInvalidConfigPayload.invalid_experience_recall_limit_has_stable_error, true);
   assert.equal(serveInvalidConfigPayload.hides_top_level_fatal, true);
   assert.equal(serveInvalidConfigPayload.ready_not_reached, true);
   logStep("management-config-contract config-controls-reject-flow");

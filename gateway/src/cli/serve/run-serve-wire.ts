@@ -10,6 +10,10 @@ import {
 } from "../services/runtime-paths";
 import { redisGetJson, redisSetJson } from "../services/redis-client";
 import { createExperiencePoolRuntime } from "../services/experience-pool-runtime";
+import {
+  resolveExperiencePublishMode,
+  resolveExperienceRecallLimit,
+} from "../services/experience-controls";
 import { type ManagementRoutesContext } from "./management-routes";
 import { type MCPRuntimeState } from "./mcp-runtime";
 import {
@@ -23,26 +27,6 @@ import { reloadRunServeRuntimeState } from "./run-serve-reload";
 import { createRunServeRuntimeState, type RunServeRuntimeState } from "./run-serve-runtime-state";
 
 const MEMORY_STORE_REDIS_TTL_SECS = 14 * 24 * 60 * 60;
-
-function resolveExperiencePublishMode(): "auto" | "off" {
-  const raw = process.env.GROBOT_EXPERIENCE_PUBLISH_MODE?.trim().toLowerCase();
-  if (raw === "off") {
-    return "off";
-  }
-  return "auto";
-}
-
-function resolveExperienceRecallLimit(): number {
-  const raw = process.env.GROBOT_EXPERIENCE_RECALL_LIMIT?.trim();
-  if (!raw || !/^\d+$/.test(raw)) {
-    return 2;
-  }
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) {
-    return 2;
-  }
-  return Math.min(Math.max(parsed, 1), 6);
-}
 
 function resolveExperienceTeamDefault(): string {
   const raw = process.env.GROBOT_TEAM?.trim();

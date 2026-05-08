@@ -132,6 +132,20 @@ async function runConfigControlsRejectFlow(options) {
       GROBOT_CONFIG_READ_POLICY: "open",
     },
   );
+  const invalidExperiencePublishMode = await runRepoCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_EXPERIENCE_PUBLISH_MODE: "always",
+    },
+  );
+  const invalidExperienceRecallLimit = await runRepoCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_EXPERIENCE_RECALL_LIMIT: "7",
+    },
+  );
   const combinedOutput = [
     invalidConfigReadPolicy.stdout,
     invalidConfigReadPolicy.stderr,
@@ -147,6 +161,10 @@ async function runConfigControlsRejectFlow(options) {
     invalidEnvSessionStore.stderr,
     invalidEnvConfigReadPolicy.stdout,
     invalidEnvConfigReadPolicy.stderr,
+    invalidExperiencePublishMode.stdout,
+    invalidExperiencePublishMode.stderr,
+    invalidExperienceRecallLimit.stdout,
+    invalidExperienceRecallLimit.stderr,
   ].join("\n");
   return {
     invalid_config_policy_exit_code: invalidConfigReadPolicy.exit_code,
@@ -177,6 +195,14 @@ async function runConfigControlsRejectFlow(options) {
     invalid_env_config_policy_has_stable_error:
       invalidEnvConfigReadPolicy.stderr.includes("error: invalid_config_read_policy:")
       && invalidEnvConfigReadPolicy.stderr.includes("config-read-policy must be auto, public, auth, or disabled"),
+    invalid_experience_publish_mode_exit_code: invalidExperiencePublishMode.exit_code,
+    invalid_experience_publish_mode_has_stable_error:
+      invalidExperiencePublishMode.stderr.includes("error: invalid_experience_publish_mode:")
+      && invalidExperiencePublishMode.stderr.includes("experience-publish-mode must be auto or off"),
+    invalid_experience_recall_limit_exit_code: invalidExperienceRecallLimit.exit_code,
+    invalid_experience_recall_limit_has_stable_error:
+      invalidExperienceRecallLimit.stderr.includes("error: invalid_experience_recall_limit:")
+      && invalidExperienceRecallLimit.stderr.includes("experience-recall-limit must be an integer between 1 and 6"),
     hides_top_level_fatal: !combinedOutput.includes("fatal error"),
     ready_not_reached:
       !combinedOutput.includes("Management server listening")

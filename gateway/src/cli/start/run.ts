@@ -60,6 +60,7 @@ import { GLOBAL_TURN_GATE } from "../../orchestration/orchestrator/turn-gate";
 import { isRouteDecisionNamespaceInputError } from "../status/route-namespace";
 import { isCliNumericOptionInputError } from "../status/option-parsing";
 import { isMemoryStoreConfigInputError } from "../services/memory-store-config";
+import { isExperienceControlInputError } from "../services/experience-controls";
 import { isStartSessionOptionInputError } from "./session/input-errors";
 import { isRuntimeToolControlInputError } from "./context/runtime-tool-controls";
 
@@ -92,6 +93,10 @@ export async function runStart(
       return 2;
     }
     if (isRuntimeToolControlInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    if (isExperienceControlInputError(error)) {
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }

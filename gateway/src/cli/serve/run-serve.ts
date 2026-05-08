@@ -11,6 +11,7 @@ import { isBindConfigInputError } from "./bind-config";
 import { isCliNumericOptionInputError } from "../status/option-parsing";
 import { isManagementConfigInputError } from "../services/management-config";
 import { isMemoryStoreConfigInputError } from "../services/memory-store-config";
+import { isExperienceControlInputError } from "../services/experience-controls";
 
 export async function runServe(options: Record<string, OptionValue>): Promise<number> {
   try {
@@ -61,6 +62,10 @@ export async function runServe(options: Record<string, OptionValue>): Promise<nu
       return 2;
     }
     if (isManagementConfigInputError(error) || isMemoryStoreConfigInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    if (isExperienceControlInputError(error)) {
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }

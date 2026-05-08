@@ -86,6 +86,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     defaults only when omitted; malformed or out-of-range explicit env values
     must return stable `invalid_<field>` errors instead of silently falling
     back or clamping.
+13. Experience controls must fail closed consistently across start and serve.
+    `GROBOT_EXPERIENCE_PUBLISH_MODE` and `GROBOT_EXPERIENCE_RECALL_LIMIT` may
+    use defaults only when omitted; malformed or out-of-range explicit env
+    values must return stable `invalid_<field>` errors before session bootstrap
+    or management server listen.
 
 ---
 
