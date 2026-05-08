@@ -80,11 +80,26 @@ fn validate_pdf_pages_argument(raw_pages: &str) -> Result<(), ToolExecutionError
 }
 
 fn parse_read_request(args: &Map<String, Value>) -> Result<ReadRequest, ToolExecutionError> {
-    let path = get_string_arg(args, "path")
-        .ok_or_else(|| ToolExecutionError::new("invalid_tool_arguments", "read.path is required"))?;
+    for key in args.keys() {
+        if key != "path"
+            && key != "line_start"
+            && key != "line_end"
+            && key != "offset"
+            && key != "limit"
+            && key != "pages"
+            && key != "include_metadata"
+        {
+            return Err(ToolExecutionError::new(
+                "invalid_tool_arguments",
+                format!("unsupported read argument: {key}"),
+            ));
+        }
+    }
 
-    let include_metadata = get_bool_arg(args, "include_metadata", true);
-    let pages = get_string_arg(args, "pages");
+    let path = parse_required_string_arg(args, TOOL_READ, "path", "read.path is required")?;
+
+    let include_metadata = get_bool_arg(args, TOOL_READ, "include_metadata", true)?;
+    let pages = parse_optional_string_arg(args, TOOL_READ, "pages")?;
     if let Some(value) = pages.as_deref() {
         validate_pdf_pages_argument(value)?;
     }

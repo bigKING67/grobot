@@ -12,8 +12,8 @@ fn parse_bash_request(args: &Map<String, Value>) -> Result<BashRequest, ToolExec
         }
     }
 
-    let command = get_string_arg(args, "command")
-        .ok_or_else(|| ToolExecutionError::new("invalid_tool_arguments", "bash.command is required"))?;
+    let command =
+        parse_required_string_arg(args, TOOL_BASH, "command", "bash.command is required")?;
     if command.chars().count() > MAX_BASH_COMMAND_CHARS {
         return Err(ToolExecutionError::new(
             "invalid_tool_arguments",

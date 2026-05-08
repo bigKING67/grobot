@@ -7,9 +7,23 @@ fn run_mcp_servers(
     context: &ToolContextResolved,
     args: &Map<String, Value>,
 ) -> Result<ToolCallOutput, ToolExecutionError> {
-    let ready_only = get_bool_arg(args, "ready_only", false);
+    for key in args.keys() {
+        if key != "ready_only" && key != "include_disabled" {
+            return Err(ToolExecutionError::new(
+                "invalid_tool_arguments",
+                format!("unsupported mcp_servers argument: {key}"),
+            ));
+        }
+    }
+
+    let ready_only = get_bool_arg(args, TOOL_MCP_SERVERS, "ready_only", false)?;
     let include_disabled_default = should_include_disabled_mcp_servers_by_default(context);
-    let include_disabled = get_bool_arg(args, "include_disabled", include_disabled_default);
+    let include_disabled = get_bool_arg(
+        args,
+        TOOL_MCP_SERVERS,
+        "include_disabled",
+        include_disabled_default,
+    )?;
     let policy = load_mcp_call_policy(context);
     let state_snapshots = {
         let mut store = lock_runtime_store()?;
@@ -89,10 +103,19 @@ fn run_mcp_call(
     context: &ToolContextResolved,
     args: &Map<String, Value>,
 ) -> Result<ToolCallOutput, ToolExecutionError> {
-    let server_name = get_string_arg(args, "server")
-        .ok_or_else(|| ToolExecutionError::new("invalid_tool_arguments", "mcp_call.server is required"))?;
-    let tool_name = get_string_arg(args, "tool")
-        .ok_or_else(|| ToolExecutionError::new("invalid_tool_arguments", "mcp_call.tool is required"))?;
+    for key in args.keys() {
+        if key != "server" && key != "tool" && key != "arguments" {
+            return Err(ToolExecutionError::new(
+                "invalid_tool_arguments",
+                format!("unsupported mcp_call argument: {key}"),
+            ));
+        }
+    }
+
+    let server_name =
+        parse_required_string_arg(args, TOOL_MCP_CALL, "server", "mcp_call.server is required")?;
+    let tool_name =
+        parse_required_string_arg(args, TOOL_MCP_CALL, "tool", "mcp_call.tool is required")?;
     let raw_arguments = args.get("arguments").cloned().unwrap_or_else(|| json!({}));
     let call_arguments = parse_mcp_call_arguments(&raw_arguments, &server_name, &tool_name)?;
     let policy = load_mcp_call_policy(context);

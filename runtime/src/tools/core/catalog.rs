@@ -82,15 +82,16 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "path": { "type": "string" },
-                    "line_start": { "type": "integer" },
-                    "line_end": { "type": "integer" },
-                    "offset": { "type": "integer" },
-                    "limit": { "type": "integer" },
-                    "pages": { "type": "string" },
+                    "path": { "type": "string", "minLength": 1 },
+                    "line_start": { "type": "integer", "minimum": 1 },
+                    "line_end": { "type": "integer", "minimum": 1 },
+                    "offset": { "type": "integer", "minimum": 1 },
+                    "limit": { "type": "integer", "minimum": 1 },
+                    "pages": { "type": "string", "minLength": 1 },
                     "include_metadata": { "type": "boolean" }
                 },
-                "required": ["path"]
+                "required": ["path"],
+                "additionalProperties": false
             }),
             default_enabled: true,
         },
@@ -173,7 +174,8 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
                 "properties": {
                     "ready_only": { "type": "boolean" },
                     "include_disabled": { "type": "boolean" }
-                }
+                },
+                "additionalProperties": false
             }),
             default_enabled: false,
         },
@@ -183,11 +185,12 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "server": { "type": "string" },
-                    "tool": { "type": "string" },
+                    "server": { "type": "string", "minLength": 1 },
+                    "tool": { "type": "string", "minLength": 1 },
                     "arguments": { "type": "object" }
                 },
-                "required": ["server", "tool"]
+                "required": ["server", "tool"],
+                "additionalProperties": false
             }),
             default_enabled: false,
         },
@@ -280,23 +283,28 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "query": { "type": "string" },
+                    "query": { "type": "string", "minLength": 1 },
                     "sources": {
                         "type": "array",
+                        "minItems": 1,
+                        "maxItems": 3,
+                        "uniqueItems": true,
                         "items": { "type": "string", "enum": ["code", "memory", "wiki"] }
                     },
                     "technical_terms": {
                         "type": "array",
-                        "items": { "type": "string" }
+                        "maxItems": MAX_TERM_ITEMS,
+                        "items": { "type": "string", "minLength": 1 }
                     },
-                    "per_source_limit": { "type": "integer" },
-                    "max_segments": { "type": "integer" },
+                    "per_source_limit": { "type": "integer", "minimum": 1, "maximum": MAX_SEMANTIC_PER_SOURCE_LIMIT },
+                    "max_segments": { "type": "integer", "minimum": 1, "maximum": MAX_SEMANTIC_MAX_SEGMENTS },
                     "include_org": { "type": "boolean" },
                     "refresh": { "type": "string", "enum": ["auto", "force", "skip"] },
-                    "timeout_ms": { "type": "integer" },
-                    "bridge_script": { "type": "string" }
+                    "timeout_ms": { "type": "integer", "minimum": MIN_SEMANTIC_TIMEOUT_MS, "maximum": MAX_SEMANTIC_TIMEOUT_MS },
+                    "bridge_script": { "type": "string", "minLength": 1 }
                 },
-                "required": ["query"]
+                "required": ["query"],
+                "additionalProperties": false
             }),
             default_enabled: false,
         },
@@ -306,26 +314,32 @@ pub(crate) fn local_tool_catalog() -> Vec<LocalToolCatalogEntry> {
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "prompt": { "type": "string" },
+                    "prompt": { "type": "string", "minLength": 1 },
                     "sources": {
                         "type": "array",
+                        "minItems": 1,
+                        "maxItems": 3,
+                        "uniqueItems": true,
                         "items": { "type": "string", "enum": ["code", "memory", "wiki"] }
                     },
                     "explicit_paths": {
                         "type": "array",
-                        "items": { "type": "string" }
+                        "maxItems": MAX_TERM_ITEMS,
+                        "items": { "type": "string", "minLength": 1 }
                     },
                     "explicit_symbols": {
                         "type": "array",
-                        "items": { "type": "string" }
+                        "maxItems": MAX_TERM_ITEMS,
+                        "items": { "type": "string", "minLength": 1 }
                     },
-                    "max_evidence": { "type": "integer" },
+                    "max_evidence": { "type": "integer", "minimum": 1, "maximum": MAX_PROMPT_MAX_EVIDENCE },
                     "include_org": { "type": "boolean" },
                     "refresh": { "type": "string", "enum": ["auto", "force", "skip"] },
-                    "timeout_ms": { "type": "integer" },
-                    "bridge_script": { "type": "string" }
+                    "timeout_ms": { "type": "integer", "minimum": MIN_SEMANTIC_TIMEOUT_MS, "maximum": MAX_SEMANTIC_TIMEOUT_MS },
+                    "bridge_script": { "type": "string", "minLength": 1 }
                 },
-                "required": ["prompt"]
+                "required": ["prompt"],
+                "additionalProperties": false
             }),
             default_enabled: false,
         },

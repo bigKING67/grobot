@@ -41,33 +41,40 @@ fn parse_edit_operations(args: &Map<String, Value>) -> Result<Vec<EditOperation>
                 ));
             }
         }
-        let old_text = edit
-            .get("old_text")
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                ToolExecutionError::new(
-                    "invalid_tool_arguments",
-                    format!("edit.edits[{index}].old_text is required"),
-                )
-            })?
-            .to_string();
+        let Some(old_text_value) = edit.get("old_text") else {
+            return Err(ToolExecutionError::new(
+                "invalid_tool_arguments",
+                format!("edit.edits[{index}].old_text is required"),
+            ));
+        };
+        let old_text = old_text_value.as_str().ok_or_else(|| {
+            ToolExecutionError::new(
+                "invalid_tool_arguments",
+                format!("edit.edits[{index}].old_text must be a string"),
+            )
+        })?;
         if old_text.is_empty() {
             return Err(ToolExecutionError::new(
                 "invalid_tool_arguments",
                 format!("edit.edits[{index}].old_text cannot be empty"),
             ));
         }
-        let new_text = edit
-            .get("new_text")
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                ToolExecutionError::new(
-                    "invalid_tool_arguments",
-                    format!("edit.edits[{index}].new_text is required"),
-                )
-            })?
-            .to_string();
-        edits.push(EditOperation { old_text, new_text });
+        let Some(new_text_value) = edit.get("new_text") else {
+            return Err(ToolExecutionError::new(
+                "invalid_tool_arguments",
+                format!("edit.edits[{index}].new_text is required"),
+            ));
+        };
+        let new_text = new_text_value.as_str().ok_or_else(|| {
+            ToolExecutionError::new(
+                "invalid_tool_arguments",
+                format!("edit.edits[{index}].new_text must be a string"),
+            )
+        })?;
+        edits.push(EditOperation {
+            old_text: old_text.to_string(),
+            new_text: new_text.to_string(),
+        });
     }
     Ok(edits)
 }

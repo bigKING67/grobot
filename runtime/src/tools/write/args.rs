@@ -13,12 +13,18 @@ fn parse_write_request(args: &Map<String, Value>) -> Result<WriteRequest, ToolEx
             ));
         }
     }
-    let path = get_string_arg(args, "path")
-        .ok_or_else(|| ToolExecutionError::new("invalid_tool_arguments", "write.path is required"))?;
-    let content = args
-        .get("content")
-        .and_then(Value::as_str)
-        .map(ToString::to_string)
-        .ok_or_else(|| ToolExecutionError::new("invalid_tool_arguments", "write.content is required"))?;
-    Ok(WriteRequest { path, content })
+    let path = parse_required_string_arg(args, TOOL_WRITE, "path", "write.path is required")?;
+    let Some(content_value) = args.get("content") else {
+        return Err(ToolExecutionError::new(
+            "invalid_tool_arguments",
+            "write.content is required",
+        ));
+    };
+    let content = content_value.as_str().ok_or_else(|| {
+        ToolExecutionError::new("invalid_tool_arguments", "write.content must be a string")
+    })?;
+    Ok(WriteRequest {
+        path,
+        content: content.to_string(),
+    })
 }

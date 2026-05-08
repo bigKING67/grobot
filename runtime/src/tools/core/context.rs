@@ -101,25 +101,92 @@ fn value_object<'a>(
     })
 }
 
-fn get_string_arg(args: &Map<String, Value>, key: &str) -> Option<String> {
-    args.get(key)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
+fn parse_optional_string_arg(
+    args: &Map<String, Value>,
+    tool_name: &str,
+    key: &str,
+) -> Result<Option<String>, ToolExecutionError> {
+    let Some(value) = args.get(key) else {
+        return Ok(None);
+    };
+    let parsed = value.as_str().map(str::trim).ok_or_else(|| {
+        ToolExecutionError::new(
+            "invalid_tool_arguments",
+            format!("{tool_name}.{key} must be a string"),
+        )
+    })?;
+    if parsed.is_empty() {
+        return Err(ToolExecutionError::new(
+            "invalid_tool_arguments",
+            format!("{tool_name}.{key} cannot be empty"),
+        ));
+    }
+    Ok(Some(parsed.to_string()))
 }
 
-fn get_bool_arg(args: &Map<String, Value>, key: &str, fallback: bool) -> bool {
-    args.get(key).and_then(Value::as_bool).unwrap_or(fallback)
+fn parse_required_string_arg(
+    args: &Map<String, Value>,
+    tool_name: &str,
+    key: &str,
+    required_message: &str,
+) -> Result<String, ToolExecutionError> {
+    parse_optional_string_arg(args, tool_name, key)?.ok_or_else(|| {
+        ToolExecutionError::new("invalid_tool_arguments", required_message.to_string())
+    })
 }
 
-fn get_usize_arg(args: &Map<String, Value>, key: &str, fallback: usize, max: usize) -> usize {
-    let parsed = args
-        .get(key)
-        .and_then(Value::as_u64)
-        .map(|value| value as usize)
-        .unwrap_or(fallback);
-    parsed.clamp(1, max)
+fn get_bool_arg(
+    args: &Map<String, Value>,
+    tool_name: &str,
+    key: &str,
+    fallback: bool,
+) -> Result<bool, ToolExecutionError> {
+    let Some(value) = args.get(key) else {
+        return Ok(fallback);
+    };
+    value.as_bool().ok_or_else(|| {
+        ToolExecutionError::new(
+            "invalid_tool_arguments",
+            format!("{tool_name}.{key} must be a boolean"),
+        )
+    })
+}
+
+fn get_usize_arg(
+    args: &Map<String, Value>,
+    tool_name: &str,
+    key: &str,
+    fallback: usize,
+    max: usize,
+) -> Result<usize, ToolExecutionError> {
+    let Some(value) = args.get(key) else {
+        return Ok(fallback);
+    };
+    let raw_u64 = value.as_u64().ok_or_else(|| {
+        ToolExecutionError::new(
+            "invalid_tool_arguments",
+            format!("{tool_name}.{key} must be an integer"),
+        )
+    })?;
+    let raw = usize::try_from(raw_u64).map_err(|_| {
+        ToolExecutionError::new(
+            "invalid_tool_arguments",
+            format!("{tool_name}.{key} is too large"),
+        )
+    })?;
+    if raw == 0 {
+        return Err(ToolExecutionError::new(
+            "invalid_tool_arguments",
+            format!("{tool_name}.{key} must be >= 1"),
+        ));
+    }
+    if raw > max {
+        return Err(ToolExecutionError::new(
+            "invalid_tool_arguments",
+            format!("{tool_name}.{key} must be <= {max}"),
+        ));
+    }
+    Ok(raw)
 }
 
 fn parse_ask_user_options_arg(raw: &Value) -> Vec<Value> {
@@ -246,6 +313,19 @@ fn run_ask_user(
     _context: &ToolContextResolved,
     args: &Map<String, Value>,
 ) -> Result<ToolCallOutput, ToolExecutionError> {
+    for key in args.keys() {
+        if key != "questions"
+            && key != "blocking_node_id"
+            && key != "default_on_timeout"
+            && key != "resume_token"
+        {
+            return Err(ToolExecutionError::new(
+                "invalid_tool_arguments",
+                format!("unsupported ask_user argument: {key}"),
+            ));
+        }
+    }
+
     let questions = parse_ask_user_arg_questions(args);
     if questions.is_empty() {
         return Err(ToolExecutionError::new(
@@ -253,12 +333,12 @@ fn run_ask_user(
             "ask_user.questions must include at least one valid item",
         ));
     }
-    let blocking_node_id =
-        get_string_arg(args, "blocking_node_id").unwrap_or_else(|| "node.unknown".to_string());
-    let default_on_timeout = get_string_arg(args, "default_on_timeout")
+    let blocking_node_id = parse_optional_string_arg(args, TOOL_ASK_USER, "blocking_node_id")?
+        .unwrap_or_else(|| "node.unknown".to_string());
+    let default_on_timeout = parse_optional_string_arg(args, TOOL_ASK_USER, "default_on_timeout")?
         .unwrap_or_else(|| "continue_with_best_effort".to_string());
-    let resume_token =
-        get_string_arg(args, "resume_token").unwrap_or_else(|| build_runtime_generated_id("resume"));
+    let resume_token = parse_optional_string_arg(args, TOOL_ASK_USER, "resume_token")?
+        .unwrap_or_else(|| build_runtime_generated_id("resume"));
     let payload = json!({
         "tool": TOOL_ASK_USER,
         "type": "ask_user",

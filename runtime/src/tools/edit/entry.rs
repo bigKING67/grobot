@@ -52,8 +52,7 @@ fn run_edit(
     context: &ToolContextResolved,
     args: &Map<String, Value>,
 ) -> Result<ToolCallOutput, ToolExecutionError> {
-    let path = get_string_arg(args, "path")
-        .ok_or_else(|| ToolExecutionError::new("invalid_tool_arguments", "edit.path is required"))?;
+    let path = parse_required_string_arg(args, TOOL_EDIT, "path", "edit.path is required")?;
     let edits = parse_edit_operations(args)?;
     let normalized_edits = normalize_edit_operations(&edits);
 

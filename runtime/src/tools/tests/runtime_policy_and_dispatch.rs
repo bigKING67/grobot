@@ -2,4 +2,5 @@
     include!("runtime_policy/search_index.rs");
     include!("runtime_policy/surface_dispatch_errors.rs");
     include!("runtime_policy/search_dispatch.rs");
+    include!("runtime_policy/tool_arg_validation.rs");
     include!("runtime_policy/runtime_summary.rs");

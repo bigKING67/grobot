@@ -519,12 +519,12 @@ fn run_kimi_files_delete(
     input: &TurnExecuteInput,
 ) -> Result<ToolCallOutput, ToolExecutionError> {
     let args = value_object(&call.arguments, "kimi_files_delete")?;
-    let file_id = get_string_arg(args, "file_id").ok_or_else(|| {
-        ToolExecutionError::new(
-            "invalid_tool_arguments",
-            "kimi_files_delete.file_id is required",
-        )
-    })?;
+    let file_id = parse_required_string_arg(
+        args,
+        "kimi_files_delete",
+        "file_id",
+        "kimi_files_delete.file_id is required",
+    )?;
     let (base_url, api_key, timeout_ms) = resolve_kimi_connection(input)?;
     let endpoint = format!("{}/files/{}", base_url, file_id);
     let client = Client::builder()

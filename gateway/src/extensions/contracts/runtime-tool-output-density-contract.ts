@@ -84,7 +84,7 @@ const implementationRequirements: readonly OutputDensityRequirement[] = [
     extraPaths: [
       {
         path: "runtime/src/tools/read/request.rs",
-        fragments: ["get_bool_arg(args, \"include_metadata\", true)"],
+        fragments: ["get_bool_arg(args, TOOL_READ, \"include_metadata\", true)?"],
       },
     ],
   },
