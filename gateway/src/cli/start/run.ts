@@ -59,6 +59,7 @@ import { runStartupSessionActions } from "./startup/session-actions";
 import { GLOBAL_TURN_GATE } from "../../orchestration/orchestrator/turn-gate";
 import { isRouteDecisionNamespaceInputError } from "../status/route-namespace";
 import { isCliNumericOptionInputError } from "../status/option-parsing";
+import { isMemoryStoreConfigInputError } from "../services/memory-store-config";
 
 export async function runStart(
   options: Record<string, OptionValue>,
@@ -77,6 +78,10 @@ export async function runStart(
       return 2;
     }
     if (isCliNumericOptionInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    if (isMemoryStoreConfigInputError(error)) {
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }

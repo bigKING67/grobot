@@ -276,6 +276,30 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(startInvalidRuntimeControlsPayload.has_start_banner, false);
   logStep("start-smoke-contract start-invalid-runtime-controls-reject-flow");
 
+  const startInvalidStorageControlsResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-invalid-storage-controls-reject-flow",
+    ["--repo-root", repoRoot],
+    { timeoutMs: 240_000 },
+  );
+  const startInvalidStorageControlsPayload = parseJsonOutput(
+    "start-smoke-contract start-invalid-storage-controls-reject-flow",
+    startInvalidStorageControlsResult.stdout,
+  );
+  assert.equal(startInvalidStorageControlsPayload.invalid_backend_exit_code, 2);
+  assert.equal(startInvalidStorageControlsPayload.invalid_backend_has_stable_error, true);
+  assert.equal(startInvalidStorageControlsPayload.missing_backend_exit_code, 2);
+  assert.equal(startInvalidStorageControlsPayload.missing_backend_has_stable_error, true);
+  assert.equal(startInvalidStorageControlsPayload.invalid_redis_fallback_exit_code, 2);
+  assert.equal(startInvalidStorageControlsPayload.invalid_redis_fallback_has_stable_error, true);
+  assert.equal(startInvalidStorageControlsPayload.invalid_redis_url_exit_code, 2);
+  assert.equal(startInvalidStorageControlsPayload.invalid_redis_url_has_stable_error, true);
+  assert.equal(startInvalidStorageControlsPayload.invalid_env_backend_exit_code, 2);
+  assert.equal(startInvalidStorageControlsPayload.invalid_env_backend_has_stable_error, true);
+  assert.equal(startInvalidStorageControlsPayload.hides_top_level_fatal, true);
+  assert.equal(startInvalidStorageControlsPayload.has_start_banner, false);
+  logStep("start-smoke-contract start-invalid-storage-controls-reject-flow");
+
   const statusInvalidRuntimeControlsResult = runContract(
     "start-smoke-contract.mjs",
     "status-invalid-runtime-controls-reject-flow",
@@ -445,6 +469,43 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(serveInvalidNamespacePayload.hides_top_level_fatal, true);
   assert.equal(serveInvalidNamespacePayload.has_serve_banner, false);
   logStep("serve-smoke-contract serve-invalid-namespace-reject-flow");
+
+  const serveInvalidConfigPort = await reserveFreePort();
+  const serveInvalidConfigWorkDir = makeTempDir("serve-invalid-config-work");
+  const serveInvalidConfigResult = runContract(
+    "management-config-contract.mjs",
+    "config-controls-reject-flow",
+    [
+      "--repo-root",
+      repoRoot,
+      "--work-dir",
+      serveInvalidConfigWorkDir,
+      "--bind",
+      `127.0.0.1:${serveInvalidConfigPort}`,
+    ],
+    { timeoutMs: 240_000 },
+  );
+  const serveInvalidConfigPayload = parseJsonOutput(
+    "management-config-contract config-controls-reject-flow",
+    serveInvalidConfigResult.stdout,
+  );
+  assert.equal(serveInvalidConfigPayload.invalid_config_policy_exit_code, 2);
+  assert.equal(serveInvalidConfigPayload.invalid_config_policy_has_stable_error, true);
+  assert.equal(serveInvalidConfigPayload.missing_config_policy_exit_code, 2);
+  assert.equal(serveInvalidConfigPayload.missing_config_policy_has_stable_error, true);
+  assert.equal(serveInvalidConfigPayload.invalid_session_store_exit_code, 2);
+  assert.equal(serveInvalidConfigPayload.invalid_session_store_has_stable_error, true);
+  assert.equal(serveInvalidConfigPayload.invalid_redis_fallback_exit_code, 2);
+  assert.equal(serveInvalidConfigPayload.invalid_redis_fallback_has_stable_error, true);
+  assert.equal(serveInvalidConfigPayload.invalid_redis_url_exit_code, 2);
+  assert.equal(serveInvalidConfigPayload.invalid_redis_url_has_stable_error, true);
+  assert.equal(serveInvalidConfigPayload.invalid_env_session_store_exit_code, 2);
+  assert.equal(serveInvalidConfigPayload.invalid_env_session_store_has_stable_error, true);
+  assert.equal(serveInvalidConfigPayload.invalid_env_config_policy_exit_code, 2);
+  assert.equal(serveInvalidConfigPayload.invalid_env_config_policy_has_stable_error, true);
+  assert.equal(serveInvalidConfigPayload.hides_top_level_fatal, true);
+  assert.equal(serveInvalidConfigPayload.ready_not_reached, true);
+  logStep("management-config-contract config-controls-reject-flow");
 
   const toolCallFailureResult = runContract(
     "runtime-smoke-contract.mjs",

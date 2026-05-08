@@ -9,11 +9,44 @@ import { createRunServeWire } from "./run-serve-wire";
 import { isRouteDecisionNamespaceInputError } from "../status/route-namespace";
 import { isBindConfigInputError } from "./bind-config";
 import { isCliNumericOptionInputError } from "../status/option-parsing";
+import { isManagementConfigInputError } from "../services/management-config";
+import { isMemoryStoreConfigInputError } from "../services/memory-store-config";
 
 export async function runServe(options: Record<string, OptionValue>): Promise<number> {
-  let context: ReturnType<typeof resolveRunServeContext>;
   try {
-    context = resolveRunServeContext(options);
+    const context = resolveRunServeContext(options);
+    const { bind } = context;
+    const mcpSessions = new Set<string>();
+    const mcpServerStates = new Map<string, MCPRuntimeState>();
+    const { runtimeState, managementRoutesContext } = await createRunServeWire({
+      options,
+      context,
+      mcpSessions,
+      mcpServerStates,
+    });
+
+    const server = createServer(async (request, response) => {
+      const handled = await dispatchManagementRoutes(request, response, managementRoutesContext);
+
+      if (handled) {
+        return;
+      }
+
+      const method = request.method ?? "GET";
+      const rawUrl = request.url ?? "/";
+      const path = rawUrl.split("?")[0] ?? "/";
+      writeJson(response, 404, {
+        error: "not_found",
+        path,
+        method,
+      });
+    });
+
+    return runServeServerLifecycle({
+      server,
+      bind,
+      getExecutionPlane: runtimeState.getExecutionPlane,
+    });
   } catch (error) {
     if (isRouteDecisionNamespaceInputError(error)) {
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
@@ -27,38 +60,10 @@ export async function runServe(options: Record<string, OptionValue>): Promise<nu
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }
+    if (isManagementConfigInputError(error) || isMemoryStoreConfigInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
     throw error;
   }
-  const { bind } = context;
-  const mcpSessions = new Set<string>();
-  const mcpServerStates = new Map<string, MCPRuntimeState>();
-  const { runtimeState, managementRoutesContext } = await createRunServeWire({
-    options,
-    context,
-    mcpSessions,
-    mcpServerStates,
-  });
-
-  const server = createServer(async (request, response) => {
-    const handled = await dispatchManagementRoutes(request, response, managementRoutesContext);
-
-    if (handled) {
-      return;
-    }
-
-    const method = request.method ?? "GET";
-    const rawUrl = request.url ?? "/";
-    const path = rawUrl.split("?")[0] ?? "/";
-    writeJson(response, 404, {
-      error: "not_found",
-      path,
-      method,
-    });
-  });
-
-  return runServeServerLifecycle({
-    server,
-    bind,
-    getExecutionPlane: runtimeState.getExecutionPlane,
-  });
 }

@@ -222,6 +222,103 @@ export function runStartInvalidRuntimeControlsRejectFlow(context) {
   };
 }
 
+export function runStartInvalidStorageControlsRejectFlow(context) {
+  const {
+    repoRoot,
+    createTempDir,
+    buildSmokeConfig,
+    writeConfig,
+    runCommand,
+    hasStartBannerMarker,
+  } = context;
+  const workDir = createTempDir("grobot-start-invalid-storage-controls-work");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const commonArgs = [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-subject",
+    "start-invalid-storage-controls-user",
+    "--message",
+    "invalid storage controls should not reach runtime",
+  ];
+  const invalidBackendResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--session-store",
+    "postgres",
+  ]);
+  const missingBackendResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--session-store",
+  ]);
+  const invalidRedisFallbackResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--session-store",
+    "redis",
+    "--allow-redis-fallback",
+    "maybe",
+  ]);
+  const invalidRedisUrlResult = runCommand(repoRoot, [
+    ...commonArgs,
+    "--session-store",
+    "redis",
+    "--redis-url",
+    "http://127.0.0.1:6379",
+  ]);
+  const invalidEnvBackendResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_SESSION_STORE: "sqlite",
+    },
+  );
+  const combinedOutput = [
+    invalidBackendResult.stdout,
+    invalidBackendResult.stderr,
+    missingBackendResult.stdout,
+    missingBackendResult.stderr,
+    invalidRedisFallbackResult.stdout,
+    invalidRedisFallbackResult.stderr,
+    invalidRedisUrlResult.stdout,
+    invalidRedisUrlResult.stderr,
+    invalidEnvBackendResult.stdout,
+    invalidEnvBackendResult.stderr,
+  ].join("\n");
+  return {
+    invalid_backend_exit_code: invalidBackendResult.exit_code,
+    invalid_backend_has_stable_error:
+      invalidBackendResult.stderr.includes("error: invalid_session_store:")
+      && invalidBackendResult.stderr.includes("session-store must be file, redis, or auto"),
+    missing_backend_exit_code: missingBackendResult.exit_code,
+    missing_backend_has_stable_error:
+      missingBackendResult.stderr.includes("error: invalid_session_store:")
+      && missingBackendResult.stderr.includes("session-store must not be empty"),
+    invalid_redis_fallback_exit_code: invalidRedisFallbackResult.exit_code,
+    invalid_redis_fallback_has_stable_error:
+      invalidRedisFallbackResult.stderr.includes("error: invalid_allow_redis_fallback:")
+      && invalidRedisFallbackResult.stderr.includes("allow-redis-fallback must be boolean"),
+    invalid_redis_url_exit_code: invalidRedisUrlResult.exit_code,
+    invalid_redis_url_has_stable_error:
+      invalidRedisUrlResult.stderr.includes("error: invalid_redis_url:")
+      && invalidRedisUrlResult.stderr.includes("redis-url must be a redis:// or rediss:// URL"),
+    invalid_env_backend_exit_code: invalidEnvBackendResult.exit_code,
+    invalid_env_backend_has_stable_error:
+      invalidEnvBackendResult.stderr.includes("error: invalid_session_store:")
+      && invalidEnvBackendResult.stderr.includes("session-store must be file, redis, or auto"),
+    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
+    has_start_banner: hasStartBannerMarker(combinedOutput),
+  };
+}
+
 export function runStartMessageProviderConfigTsRust(
   context,
   providerBaseUrl,

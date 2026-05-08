@@ -64,6 +64,12 @@ Error handling follows fail-fast plus explicit fallback boundaries:
    malformed booleans, limits, cursors, TTLs, and batch controls must return
    HTTP `400` JSON envelopes with stable `invalid_<field>` style errors instead
    of silently falling back or clamping.
+9. Runtime storage and management config controls must fail closed on explicit
+   invalid CLI/env/project values. Backend selectors, redis fallback booleans,
+   redis URLs, and management config-read policies may use defaults only when
+   omitted; malformed explicit values must return stable `invalid_<field>`
+   errors before `grobot start` starts a turn or `grobot serve` begins
+   listening.
 
 ---
 

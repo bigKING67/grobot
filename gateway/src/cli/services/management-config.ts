@@ -12,12 +12,44 @@ type ConfigReadPolicy =
   | typeof CONFIG_READ_POLICY_AUTH
   | typeof CONFIG_READ_POLICY_DISABLED;
 
+export class ManagementConfigInputError extends Error {
+  readonly code: string;
+  readonly field: string;
+
+  constructor(field: string, detail: string) {
+    super(detail);
+    this.name = "ManagementConfigInputError";
+    this.code = `invalid_${field.replace(/-/g, "_")}`;
+    this.field = field;
+  }
+}
+
+export function isManagementConfigInputError(
+  error: unknown,
+): error is ManagementConfigInputError {
+  return error instanceof ManagementConfigInputError;
+}
+
 export interface ResolvedConfigReadPolicy {
   configuredPolicy: ConfigReadPolicy;
   configuredSource: string;
   effectivePolicy: Exclude<ConfigReadPolicy, "auto">;
   reason: string;
 }
+
+type ConfigReadPolicyReadResult =
+  | {
+      ok: true;
+      value?: {
+        policy: ConfigReadPolicy;
+        source: string;
+      };
+    }
+  | {
+      ok: false;
+      field: string;
+      detail: string;
+    };
 
 function fileReadable(path: string): boolean {
   try {
@@ -138,22 +170,36 @@ function parseManagementTokenFromToml(rawToml: string): string | undefined {
   return undefined;
 }
 
-function readConfigReadPolicyFromToml(configTomlPath?: string): { policy: ConfigReadPolicy; source: string } | undefined {
+function readConfigReadPolicyFromToml(configTomlPath?: string): ConfigReadPolicyReadResult {
   if (!configTomlPath || !fileReadable(configTomlPath)) {
-    return undefined;
+    return { ok: true };
   }
   try {
     const raw = readFileSync(configTomlPath, "utf8");
-    const parsed = normalizeConfigReadPolicy(parseManagementConfigReadPolicy(raw));
+    const rawPolicy = parseManagementConfigReadPolicy(raw);
+    if (rawPolicy === undefined) {
+      return { ok: true };
+    }
+    const parsed = normalizeConfigReadPolicy(rawPolicy);
     if (!parsed) {
-      return undefined;
+      return {
+        ok: false,
+        field: "config-read-policy",
+        detail: "config-read-policy must be auto, public, auth, or disabled",
+      };
     }
     return {
-      policy: parsed,
-      source: `config_toml:${configTomlPath}`,
+      ok: true,
+      value: {
+        policy: parsed,
+        source: `config_toml:${configTomlPath}`,
+      },
     };
-  } catch {
-    return undefined;
+  } catch (error) {
+    if (isManagementConfigInputError(error)) {
+      throw error;
+    }
+    return { ok: true };
   }
 }
 
@@ -164,19 +210,38 @@ function resolveConfiguredConfigReadPolicy(
   policy: ConfigReadPolicy;
   source: string;
 } {
-  const fromCli = normalizeConfigReadPolicy(readOptionString(options, "config-read-policy"));
+  const hasCliPolicy = Object.prototype.hasOwnProperty.call(options, "config-read-policy");
+  const rawCliValue = options["config-read-policy"];
+  const rawCli = typeof rawCliValue === "string" ? rawCliValue.trim() : undefined;
+  const fromCli = normalizeConfigReadPolicy(rawCli);
+  if (hasCliPolicy && !fromCli) {
+    throw new ManagementConfigInputError(
+      "config-read-policy",
+      "config-read-policy must be auto, public, auth, or disabled",
+    );
+  }
   if (fromCli) {
     return { policy: fromCli, source: "cli" };
   }
-  const fromEnv = normalizeConfigReadPolicy(process.env.GROBOT_CONFIG_READ_POLICY);
+  const rawEnv = process.env.GROBOT_CONFIG_READ_POLICY;
+  const fromEnv = normalizeConfigReadPolicy(rawEnv);
+  if (rawEnv !== undefined && rawEnv.trim().length > 0 && !fromEnv) {
+    throw new ManagementConfigInputError(
+      "config-read-policy",
+      "config-read-policy must be auto, public, auth, or disabled",
+    );
+  }
   if (fromEnv) {
     return { policy: fromEnv, source: "env:GROBOT_CONFIG_READ_POLICY" };
   }
   const fromConfig = readConfigReadPolicyFromToml(configTomlPath);
-  if (fromConfig) {
+  if (!fromConfig.ok) {
+    throw new ManagementConfigInputError(fromConfig.field, fromConfig.detail);
+  }
+  if (fromConfig.value) {
     return {
-      policy: fromConfig.policy,
-      source: fromConfig.source,
+      policy: fromConfig.value.policy,
+      source: fromConfig.value.source,
     };
   }
   return {
