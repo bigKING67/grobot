@@ -37,7 +37,7 @@ export interface StatusRouteNamespace {
   sessionSubject: string;
 }
 
-export function resolveStatusRouteNamespace(input: {
+export function resolveCliRouteNamespace(input: {
   options: Record<string, OptionValue>;
   projectName: string;
   defaultSubject: string;
@@ -74,3 +74,5 @@ export function resolveStatusRouteNamespace(input: {
     sessionSubject: sessionSubjectOptionRaw?.trim() || input.defaultSubject,
   };
 }
+
+export const resolveStatusRouteNamespace = resolveCliRouteNamespace;

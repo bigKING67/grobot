@@ -1,5 +1,4 @@
 import { resolveExecutionPlaneConfig } from "../../orchestration/execution-plane";
-import { buildSessionKey } from "../../models/session-key";
 import { hasFlag, type OptionValue, readOptionString } from "../cli-args";
 import { readProviderPoolFromToml } from "../provider-probe";
 import {
@@ -23,8 +22,6 @@ import { createRunStartSessionStore } from "./session/store";
 import { sessionRegistryFilePath } from "./session-registry";
 import {
   resolveForkSession,
-  parsePlatform,
-  parseScope,
   resolveHandoffAutoOnExit,
   resolveHandoffRecentTurns,
   resolveHistoryTurns,
@@ -37,9 +34,6 @@ import {
   resolveRewindRequested,
   resolveRewindSelector,
   resolveRewindFiles,
-  resolveSessionPlatformOption,
-  resolveSessionScopeOption,
-  resolveSessionSubjectOption,
 } from "./session/options";
 import { buildHandoffPath } from "./handoff-file";
 import {
@@ -53,6 +47,7 @@ import {
 } from "./context/runtime-model-config";
 import { resolveRuntimeToolContext } from "./context/runtime-tool-context";
 import { readStatusLineConfigFromProjectToml } from "./context/status-line-config";
+import { resolveCliRouteNamespace } from "../status/route-namespace-options";
 
 export type {
   ResolvedRuntimeToolContext,
@@ -115,8 +110,6 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
   const experiencePoolPathRaw = process.env.GROBOT_EXPERIENCE_POOL_PATH?.trim();
   const experienceLegacyPoolPath = resolveLegacyExperiencePoolPath(homeDir);
   const experienceTeam = resolveExperienceTeam(options);
-  const subject =
-    resolveSessionSubjectOption(options) ?? process.env.USER ?? "user";
   const executionPlane = resolveExecutionPlaneConfig({
     gatewayImplArg: readOptionString(options, "gateway-impl"),
     runtimeImplArg: readOptionString(options, "runtime-impl"),
@@ -125,12 +118,15 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     projectTomlPath,
   });
 
-  const sessionNamespace = {
-    platform: parsePlatform(resolveSessionPlatformOption(options)),
-    tenant: readOptionString(options, "tenant") ?? projectName,
-    scope: parseScope(resolveSessionScopeOption(options)),
-    subject,
-  } as const;
+  const {
+    sessionNamespace,
+    sessionPreview: sessionNamespaceKey,
+    sessionSubject: subject,
+  } = resolveCliRouteNamespace({
+    options,
+    projectName,
+    defaultSubject: process.env.USER ?? "user",
+  });
   const experiencePoolPath =
     experiencePoolPathRaw && experiencePoolPathRaw.length > 0
       ? experiencePoolPathRaw
@@ -139,7 +135,6 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
           team: experienceTeam,
           user: sessionNamespace.subject,
         });
-  const sessionNamespaceKey = buildSessionKey(sessionNamespace);
   const sessionRegistryFilePathValue = sessionRegistryFilePath(
     projectStateRoot,
     sessionNamespaceKey,

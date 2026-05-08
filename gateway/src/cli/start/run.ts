@@ -57,6 +57,7 @@ import { createRuntimeInterruptController } from "./runtime-interrupt-controller
 import { createTurnExecutionController } from "./turn-execution-controller";
 import { runStartupSessionActions } from "./startup/session-actions";
 import { GLOBAL_TURN_GATE } from "../../orchestration/orchestrator/turn-gate";
+import { isRouteDecisionNamespaceInputError } from "../status/route-namespace";
 
 export async function runStart(
   options: Record<string, OptionValue>,
@@ -66,7 +67,16 @@ export async function runStart(
   const PROMPT_QUALITY_WINDOW_DEFAULT_SIZE = 20;
   const isTurnInterruptedCode = (code: number): boolean =>
     code === TURN_INTERRUPTED_EXIT_CODE;
-  const context = resolveRunStartContext(options);
+  let context: ReturnType<typeof resolveRunStartContext>;
+  try {
+    context = resolveRunStartContext(options);
+  } catch (error) {
+    if (isRouteDecisionNamespaceInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    throw error;
+  }
   const {
     homeDir,
     projectRoot,

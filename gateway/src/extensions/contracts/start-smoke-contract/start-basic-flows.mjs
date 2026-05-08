@@ -34,6 +34,103 @@ export function runStartMessageSmoke(context) {
   ]);
 }
 
+export function runStartInvalidNamespaceRejectFlow(context) {
+  const {
+    repoRoot,
+    createTempDir,
+    buildSmokeConfig,
+    writeConfig,
+    runCommand,
+    hasStartBannerMarker,
+  } = context;
+  const workDir = createTempDir("grobot-start-invalid-namespace-work");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const invalidTenantResult = runCommand(repoRoot, [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--tenant",
+    "bad:tenant",
+    "--session-subject",
+    "start-invalid-namespace-user",
+    "--message",
+    "invalid namespace should not reach runtime",
+  ]);
+  const invalidScopeResult = runCommand(repoRoot, [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-scope",
+    "room",
+    "--session-subject",
+    "start-invalid-namespace-user",
+    "--message",
+    "invalid namespace should not reach runtime",
+  ]);
+  const emptySubjectResult = runCommand(repoRoot, [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--tenant",
+    "grobot",
+    "--session-subject",
+    "",
+    "--message",
+    "invalid namespace should not reach runtime",
+  ]);
+  const combinedOutput = [
+    invalidTenantResult.stdout,
+    invalidTenantResult.stderr,
+    invalidScopeResult.stdout,
+    invalidScopeResult.stderr,
+    emptySubjectResult.stdout,
+    emptySubjectResult.stderr,
+  ].join("\n");
+  return {
+    invalid_tenant_exit_code: invalidTenantResult.exit_code,
+    invalid_tenant_has_stable_error:
+      invalidTenantResult.stderr.includes("error: invalid_session_tenant:")
+      && invalidTenantResult.stderr.includes("tenant must not contain ':'"),
+    invalid_scope_exit_code: invalidScopeResult.exit_code,
+    invalid_scope_has_stable_error:
+      invalidScopeResult.stderr.includes("error: invalid_session_scope:")
+      && invalidScopeResult.stderr.includes("session-scope must be one of: dm, group"),
+    empty_subject_exit_code: emptySubjectResult.exit_code,
+    empty_subject_has_stable_error:
+      emptySubjectResult.stderr.includes("error: invalid_session_subject:")
+      && emptySubjectResult.stderr.includes("session-subject must be non-empty"),
+    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
+    has_start_banner: hasStartBannerMarker(combinedOutput),
+  };
+}
+
 export function runStartMessageProviderConfigTsRust(
   context,
   providerBaseUrl,

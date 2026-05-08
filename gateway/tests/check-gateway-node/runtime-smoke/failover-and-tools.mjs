@@ -232,6 +232,26 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(providerFailureStatusPayload.default_text_has_last_provider_error, true);
   logStep("start-smoke-contract provider-failure-route-status-ts-rust");
 
+  const startInvalidNamespaceResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-invalid-namespace-reject-flow",
+    ["--repo-root", repoRoot],
+    { timeoutMs: 240_000 },
+  );
+  const startInvalidNamespacePayload = parseJsonOutput(
+    "start-smoke-contract start-invalid-namespace-reject-flow",
+    startInvalidNamespaceResult.stdout,
+  );
+  assert.equal(startInvalidNamespacePayload.invalid_tenant_exit_code, 2);
+  assert.equal(startInvalidNamespacePayload.invalid_tenant_has_stable_error, true);
+  assert.equal(startInvalidNamespacePayload.invalid_scope_exit_code, 2);
+  assert.equal(startInvalidNamespacePayload.invalid_scope_has_stable_error, true);
+  assert.equal(startInvalidNamespacePayload.empty_subject_exit_code, 2);
+  assert.equal(startInvalidNamespacePayload.empty_subject_has_stable_error, true);
+  assert.equal(startInvalidNamespacePayload.hides_top_level_fatal, true);
+  assert.equal(startInvalidNamespacePayload.has_start_banner, false);
+  logStep("start-smoke-contract start-invalid-namespace-reject-flow");
+
   const providerFailureCleanAlternateModel = await startMockModelServer();
   try {
     const providerFailureCleanAlternateResult = await runContractAsync(

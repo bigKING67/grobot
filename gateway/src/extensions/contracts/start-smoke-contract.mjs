@@ -57,6 +57,7 @@ import {
   runStartSessionMenuViewModelContract,
 } from "./start-smoke-contract/start-interactive-flows.mjs";
 import {
+  runStartInvalidNamespaceRejectFlow,
   runPackageLauncherRejectsPython,
   runStartImOnlyRejectFlow,
   runStartMessageProviderConfigTsRust,
@@ -87,6 +88,9 @@ function runCli(argv) {
       break;
     case "start-message-smoke":
       payload = runStartMessageSmoke(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-namespace-reject-flow":
+      payload = runStartInvalidNamespaceRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "start-message-provider-config-ts-rust":
       payload = runStartMessageProviderConfigTsRust(
