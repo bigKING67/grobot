@@ -91,6 +91,7 @@ import {
   serializeRuntimeHealthStatus,
 } from "./runtime-health-format";
 import { resolveRuntimeToolContextPreview } from "./runtime-tool-context-preview";
+import { isRuntimeToolControlInputError } from "../start/context/runtime-tool-controls";
 import { serializeRuntimeToolsStatus } from "./runtime-tool-json";
 import { buildRuntimeToolQualitySummary } from "./runtime-tool-quality";
 import { formatRuntimeToolStatusLines } from "./runtime-tool-status-lines";
@@ -298,13 +299,22 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   const runtimeToolRecoveryReadiness = runtimeToolRecoveryDecision.readiness;
   const runtimeToolRecoveryGate = runtimeToolRecoveryDecision.gate;
   const runtimeBinaryPath = executionPlane.runtimeImpl === "rust" ? resolveRuntimeBinaryPath() : undefined;
-  const runtimeToolContextPreview = resolveRuntimeToolContextPreview(
-    projectTomlPath,
-    runtimeBinaryPath,
-    runtimeToolRecoveryFeedback,
-    runtimeToolRecoveryGate,
-    runtimeToolSurfaceAdaptationSnapshot,
-  );
+  let runtimeToolContextPreview: ReturnType<typeof resolveRuntimeToolContextPreview>;
+  try {
+    runtimeToolContextPreview = resolveRuntimeToolContextPreview(
+      projectTomlPath,
+      runtimeBinaryPath,
+      runtimeToolRecoveryFeedback,
+      runtimeToolRecoveryGate,
+      runtimeToolSurfaceAdaptationSnapshot,
+    );
+  } catch (error) {
+    if (isRuntimeToolControlInputError(error)) {
+      writeStatusInputError(error, outputJson);
+      return 2;
+    }
+    throw error;
+  }
   const parsedScope = sessionNamespace.scope;
   const maskedApiKey = maskSecret(apiKey);
   const runtimeHealth =

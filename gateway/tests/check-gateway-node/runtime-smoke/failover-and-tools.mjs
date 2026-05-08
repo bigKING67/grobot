@@ -328,6 +328,30 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(sessionControlsPayload.has_start_banner, false);
   logStep("start-smoke-contract start-invalid-session-controls-reject-flow");
 
+  const toolLoopControlsResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-invalid-tool-loop-controls-reject-flow",
+    ["--repo-root", repoRoot],
+    { timeoutMs: 240_000 },
+  );
+  const toolLoopControlsPayload = parseJsonOutput(
+    "start-smoke-contract start-invalid-tool-loop-controls-reject-flow",
+    toolLoopControlsResult.stdout,
+  );
+  assert.equal(toolLoopControlsPayload.invalid_max_tool_rounds_exit_code, 2);
+  assert.equal(toolLoopControlsPayload.invalid_max_tool_rounds_has_stable_error, true);
+  assert.equal(toolLoopControlsPayload.over_max_tool_rounds_exit_code, 2);
+  assert.equal(toolLoopControlsPayload.over_max_tool_rounds_has_stable_error, true);
+  assert.equal(toolLoopControlsPayload.invalid_fallback_mode_exit_code, 2);
+  assert.equal(toolLoopControlsPayload.invalid_fallback_mode_has_stable_error, true);
+  assert.equal(toolLoopControlsPayload.over_recovery_rounds_exit_code, 2);
+  assert.equal(toolLoopControlsPayload.over_recovery_rounds_has_stable_error, true);
+  assert.equal(toolLoopControlsPayload.negative_recovery_rounds_exit_code, 2);
+  assert.equal(toolLoopControlsPayload.negative_recovery_rounds_has_stable_error, true);
+  assert.equal(toolLoopControlsPayload.hides_top_level_fatal, true);
+  assert.equal(toolLoopControlsPayload.has_start_banner, false);
+  logStep("start-smoke-contract start-invalid-tool-loop-controls-reject-flow");
+
   const statusInvalidRuntimeControlsResult = runContract(
     "start-smoke-contract.mjs",
     "status-invalid-runtime-controls-reject-flow",
@@ -353,6 +377,22 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(
     statusInvalidRuntimeControlsPayload.invalid_cache_window_json_detail,
     "cache-stats-window-ms must be a positive integer",
+  );
+  assert.equal(statusInvalidRuntimeControlsPayload.invalid_max_tool_rounds_json_exit_code, 2);
+  assert.equal(statusInvalidRuntimeControlsPayload.invalid_max_tool_rounds_json_error, "invalid_max_tool_rounds");
+  assert.equal(statusInvalidRuntimeControlsPayload.invalid_max_tool_rounds_json_field, "max-tool-rounds");
+  assert.equal(
+    statusInvalidRuntimeControlsPayload.invalid_max_tool_rounds_json_detail,
+    "max-tool-rounds must be an integer between 1 and 32",
+  );
+  assert.equal(statusInvalidRuntimeControlsPayload.invalid_fallback_mode_text_exit_code, 2);
+  assert.equal(statusInvalidRuntimeControlsPayload.invalid_fallback_mode_text_has_stable_error, true);
+  assert.equal(statusInvalidRuntimeControlsPayload.invalid_recovery_rounds_json_exit_code, 2);
+  assert.equal(statusInvalidRuntimeControlsPayload.invalid_recovery_rounds_json_error, "invalid_max_recovery_rounds");
+  assert.equal(statusInvalidRuntimeControlsPayload.invalid_recovery_rounds_json_field, "max-recovery-rounds");
+  assert.equal(
+    statusInvalidRuntimeControlsPayload.invalid_recovery_rounds_json_detail,
+    "max-recovery-rounds must be an integer between 0 and 8",
   );
   assert.equal(statusInvalidRuntimeControlsPayload.hides_top_level_fatal, true);
   logStep("start-smoke-contract status-invalid-runtime-controls-reject-flow");

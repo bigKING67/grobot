@@ -80,6 +80,12 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     those controls are omitted; malformed, missing-value, or out-of-range
     explicit CLI/env controls must exit `2` with stable `invalid_<field>`
     errors before session bootstrap or runtime turn execution.
+12. Runtime tool-loop controls must fail closed consistently across start and
+    status surfaces. `GROBOT_MAX_TOOL_ROUNDS`,
+    `GROBOT_NO_TOOL_FALLBACK_MODE`, and `GROBOT_MAX_RECOVERY_ROUNDS` may use
+    defaults only when omitted; malformed or out-of-range explicit env values
+    must return stable `invalid_<field>` errors instead of silently falling
+    back or clamping.
 
 ---
 

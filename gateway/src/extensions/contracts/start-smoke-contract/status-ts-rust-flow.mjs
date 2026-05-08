@@ -447,6 +447,29 @@ export function runStatusInvalidRuntimeControlsRejectFlow(context) {
     "-1",
   ]);
   const invalidCacheWindowJsonPayload = parseJsonObjectSafe(invalidCacheWindowJsonResult.stdout);
+  const invalidMaxToolRoundsJsonResult = runCommand(
+    repoRoot,
+    [...commonArgs, "--json"],
+    {
+      GROBOT_MAX_TOOL_ROUNDS: "many",
+    },
+  );
+  const invalidMaxToolRoundsJsonPayload = parseJsonObjectSafe(invalidMaxToolRoundsJsonResult.stdout);
+  const invalidFallbackModeTextResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_NO_TOOL_FALLBACK_MODE: "loose",
+    },
+  );
+  const invalidRecoveryRoundsJsonResult = runCommand(
+    repoRoot,
+    [...commonArgs, "--json"],
+    {
+      GROBOT_MAX_RECOVERY_ROUNDS: "9",
+    },
+  );
+  const invalidRecoveryRoundsJsonPayload = parseJsonObjectSafe(invalidRecoveryRoundsJsonResult.stdout);
   const combinedOutput = [
     invalidCircuitJsonResult.stdout,
     invalidCircuitJsonResult.stderr,
@@ -454,6 +477,12 @@ export function runStatusInvalidRuntimeControlsRejectFlow(context) {
     missingCircuitTextResult.stderr,
     invalidCacheWindowJsonResult.stdout,
     invalidCacheWindowJsonResult.stderr,
+    invalidMaxToolRoundsJsonResult.stdout,
+    invalidMaxToolRoundsJsonResult.stderr,
+    invalidFallbackModeTextResult.stdout,
+    invalidFallbackModeTextResult.stderr,
+    invalidRecoveryRoundsJsonResult.stdout,
+    invalidRecoveryRoundsJsonResult.stderr,
   ].join("\n");
   return {
     invalid_circuit_json_exit_code: invalidCircuitJsonResult.exit_code,
@@ -473,6 +502,24 @@ export function runStatusInvalidRuntimeControlsRejectFlow(context) {
     invalid_cache_window_json_detail:
       typeof invalidCacheWindowJsonPayload?.detail === "string"
         ? invalidCacheWindowJsonPayload.detail
+        : null,
+    invalid_max_tool_rounds_json_exit_code: invalidMaxToolRoundsJsonResult.exit_code,
+    invalid_max_tool_rounds_json_error: invalidMaxToolRoundsJsonPayload?.error ?? null,
+    invalid_max_tool_rounds_json_field: invalidMaxToolRoundsJsonPayload?.field ?? null,
+    invalid_max_tool_rounds_json_detail:
+      typeof invalidMaxToolRoundsJsonPayload?.detail === "string"
+        ? invalidMaxToolRoundsJsonPayload.detail
+        : null,
+    invalid_fallback_mode_text_exit_code: invalidFallbackModeTextResult.exit_code,
+    invalid_fallback_mode_text_has_stable_error:
+      invalidFallbackModeTextResult.stderr.includes("error: invalid_no_tool_fallback_mode:")
+      && invalidFallbackModeTextResult.stderr.includes("no-tool-fallback-mode must be off, safe, or strict"),
+    invalid_recovery_rounds_json_exit_code: invalidRecoveryRoundsJsonResult.exit_code,
+    invalid_recovery_rounds_json_error: invalidRecoveryRoundsJsonPayload?.error ?? null,
+    invalid_recovery_rounds_json_field: invalidRecoveryRoundsJsonPayload?.field ?? null,
+    invalid_recovery_rounds_json_detail:
+      typeof invalidRecoveryRoundsJsonPayload?.detail === "string"
+        ? invalidRecoveryRoundsJsonPayload.detail
         : null,
     hides_top_level_fatal: !combinedOutput.includes("fatal error"),
   };

@@ -31,6 +31,11 @@ import {
   findRuntimeToolSurfaceSchemaProfile,
   type RuntimeToolSurfaceProjectionDrift,
 } from "./runtime-tool-schema-projection";
+import {
+  resolveMaxRecoveryRounds,
+  resolveMaxToolRounds,
+  resolveNoToolFallbackMode,
+} from "../start/context/runtime-tool-controls";
 
 export interface RuntimeToolContextPreview {
   enabledTools: string[];
@@ -66,30 +71,9 @@ export function resolveRuntimeToolContextPreview(
   recoveryGate: RuntimeToolRecoveryReadinessGateDecision,
   adaptationSnapshot: RuntimeToolSurfaceAdaptationSnapshot,
 ): RuntimeToolContextPreview {
-  const maxToolRoundsRaw = process.env.GROBOT_MAX_TOOL_ROUNDS;
-  const parsedMaxToolRounds =
-    typeof maxToolRoundsRaw === "string" && /^\d+$/.test(maxToolRoundsRaw.trim())
-      ? Number.parseInt(maxToolRoundsRaw.trim(), 10)
-      : undefined;
-  const maxToolRounds =
-    typeof parsedMaxToolRounds === "number" && Number.isFinite(parsedMaxToolRounds)
-      ? Math.min(Math.max(parsedMaxToolRounds, 1), 32)
-      : 8;
-  const noToolFallbackModeRaw = process.env.GROBOT_NO_TOOL_FALLBACK_MODE?.trim().toLowerCase();
-  const noToolFallbackMode = noToolFallbackModeRaw === "off"
-    || noToolFallbackModeRaw === "safe"
-    || noToolFallbackModeRaw === "strict"
-    ? noToolFallbackModeRaw
-    : "safe";
-  const maxRecoveryRoundsRaw = process.env.GROBOT_MAX_RECOVERY_ROUNDS;
-  const parsedMaxRecoveryRounds =
-    typeof maxRecoveryRoundsRaw === "string" && /^\d+$/.test(maxRecoveryRoundsRaw.trim())
-      ? Number.parseInt(maxRecoveryRoundsRaw.trim(), 10)
-      : undefined;
-  const maxRecoveryRounds =
-    typeof parsedMaxRecoveryRounds === "number" && Number.isFinite(parsedMaxRecoveryRounds)
-      ? Math.min(Math.max(parsedMaxRecoveryRounds, 0), 8)
-      : 2;
+  const maxToolRounds = resolveMaxToolRounds();
+  const noToolFallbackMode = resolveNoToolFallbackMode();
+  const maxRecoveryRounds = resolveMaxRecoveryRounds();
   const runtimeToolDescribeDecision = resolveRuntimeToolDescribeDecision({
     runtimeBinaryPath: runtimeBinaryPath ?? null,
   });

@@ -433,6 +433,108 @@ export function runStartInvalidSessionControlsRejectFlow(context) {
   };
 }
 
+export function runStartInvalidToolLoopControlsRejectFlow(context) {
+  const {
+    repoRoot,
+    createTempDir,
+    buildSmokeConfig,
+    writeConfig,
+    runCommand,
+    hasStartBannerMarker,
+  } = context;
+  const workDir = createTempDir("grobot-start-invalid-tool-loop-controls-work");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const commonArgs = [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-subject",
+    "start-invalid-tool-loop-controls-user",
+    "--message",
+    "invalid tool loop controls should not reach runtime",
+  ];
+  const invalidMaxToolRoundsResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_MAX_TOOL_ROUNDS: "many",
+    },
+  );
+  const overMaxToolRoundsResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_MAX_TOOL_ROUNDS: "33",
+    },
+  );
+  const invalidFallbackModeResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_NO_TOOL_FALLBACK_MODE: "loose",
+    },
+  );
+  const overRecoveryRoundsResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_MAX_RECOVERY_ROUNDS: "9",
+    },
+  );
+  const negativeRecoveryRoundsResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_MAX_RECOVERY_ROUNDS: "-1",
+    },
+  );
+  const combinedOutput = [
+    invalidMaxToolRoundsResult.stdout,
+    invalidMaxToolRoundsResult.stderr,
+    overMaxToolRoundsResult.stdout,
+    overMaxToolRoundsResult.stderr,
+    invalidFallbackModeResult.stdout,
+    invalidFallbackModeResult.stderr,
+    overRecoveryRoundsResult.stdout,
+    overRecoveryRoundsResult.stderr,
+    negativeRecoveryRoundsResult.stdout,
+    negativeRecoveryRoundsResult.stderr,
+  ].join("\n");
+  return {
+    invalid_max_tool_rounds_exit_code: invalidMaxToolRoundsResult.exit_code,
+    invalid_max_tool_rounds_has_stable_error:
+      invalidMaxToolRoundsResult.stderr.includes("error: invalid_max_tool_rounds:")
+      && invalidMaxToolRoundsResult.stderr.includes("max-tool-rounds must be an integer between 1 and 32"),
+    over_max_tool_rounds_exit_code: overMaxToolRoundsResult.exit_code,
+    over_max_tool_rounds_has_stable_error:
+      overMaxToolRoundsResult.stderr.includes("error: invalid_max_tool_rounds:")
+      && overMaxToolRoundsResult.stderr.includes("max-tool-rounds must be an integer between 1 and 32"),
+    invalid_fallback_mode_exit_code: invalidFallbackModeResult.exit_code,
+    invalid_fallback_mode_has_stable_error:
+      invalidFallbackModeResult.stderr.includes("error: invalid_no_tool_fallback_mode:")
+      && invalidFallbackModeResult.stderr.includes("no-tool-fallback-mode must be off, safe, or strict"),
+    over_recovery_rounds_exit_code: overRecoveryRoundsResult.exit_code,
+    over_recovery_rounds_has_stable_error:
+      overRecoveryRoundsResult.stderr.includes("error: invalid_max_recovery_rounds:")
+      && overRecoveryRoundsResult.stderr.includes("max-recovery-rounds must be an integer between 0 and 8"),
+    negative_recovery_rounds_exit_code: negativeRecoveryRoundsResult.exit_code,
+    negative_recovery_rounds_has_stable_error:
+      negativeRecoveryRoundsResult.stderr.includes("error: invalid_max_recovery_rounds:")
+      && negativeRecoveryRoundsResult.stderr.includes("max-recovery-rounds must be an integer between 0 and 8"),
+    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
+    has_start_banner: hasStartBannerMarker(combinedOutput),
+  };
+}
+
 export function runStartMessageProviderConfigTsRust(
   context,
   providerBaseUrl,
