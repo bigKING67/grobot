@@ -7,6 +7,7 @@ import {
   normalizeMemoryClassification,
   normalizeMemoryKind,
   normalizeMemoryScope,
+  type MemoryScope,
 } from "../services/memory-lifecycle";
 import { requireManagementToken } from "./management-routes-auth";
 import { type ManagementRoutesContext } from "./management-routes-types";
@@ -17,6 +18,8 @@ import {
   bodyStringArray,
   queryBool,
   queryInt,
+  queryOptionalNonEmptyString,
+  type ParseInputResult,
   writeManagementInputError,
 } from "./management-input-parsing";
 
@@ -27,6 +30,52 @@ interface DispatchManagementMemoryRoutesInput {
   method: string;
   rawUrl: string;
   path: string;
+}
+
+function resolveMemoryQueryScope(
+  query: Record<string, string[]>,
+): ParseInputResult<MemoryScope> {
+  const scopeResult = queryOptionalNonEmptyString(query, "scope");
+  if (!scopeResult.ok) {
+    return scopeResult;
+  }
+  const scopeRaw = (scopeResult.value ?? MEMORY_SCOPE_AUTO).toLowerCase();
+  const scope = normalizeMemoryScope(scopeRaw);
+  if (!scope) {
+    return {
+      ok: false,
+      error: "invalid_scope",
+      field: "scope",
+      detail: scopeRaw,
+    };
+  }
+  return {
+    ok: true,
+    value: scope,
+  };
+}
+
+function resolveMemoryBodyScope(
+  body: Record<string, unknown>,
+): ParseInputResult<MemoryScope> {
+  const scopeResult = bodyOptionalNonEmptyString(body, "scope");
+  if (!scopeResult.ok) {
+    return scopeResult;
+  }
+  const scopeRaw = (scopeResult.value ?? MEMORY_SCOPE_AUTO).toLowerCase();
+  const scope = normalizeMemoryScope(scopeRaw);
+  if (!scope) {
+    return {
+      ok: false,
+      error: "invalid_scope",
+      field: "scope",
+      detail: scopeRaw,
+    };
+  }
+  return {
+    ok: true,
+    value: scope,
+  };
 }
 
 export async function dispatchManagementMemoryRoutes(
@@ -48,15 +97,11 @@ export async function dispatchManagementMemoryRoutes(
     }
 
     const query = context.parseQueryParams(rawUrl);
-    const scopeRaw = context.queryParamStr(query, "scope", MEMORY_SCOPE_AUTO).toLowerCase();
-    const scope = normalizeMemoryScope(scopeRaw);
-    if (!scope) {
-      context.writeJson(response, 400, {
-        error: "invalid_scope",
-        detail: scopeRaw,
-      });
-      return true;
+    const scopeResult = resolveMemoryQueryScope(query);
+    if (!scopeResult.ok) {
+      return writeManagementInputError(response, context, scopeResult);
     }
+    const scope = scopeResult.value;
 
     const cursorResult = context.queryParamCursor(query);
     if (cursorResult.error) {
@@ -141,15 +186,11 @@ export async function dispatchManagementMemoryRoutes(
     }
 
     const query = context.parseQueryParams(rawUrl);
-    const scopeRaw = context.queryParamStr(query, "scope", MEMORY_SCOPE_AUTO).toLowerCase();
-    const scope = normalizeMemoryScope(scopeRaw);
-    if (!scope) {
-      context.writeJson(response, 400, {
-        error: "invalid_scope",
-        detail: scopeRaw,
-      });
-      return true;
+    const scopeResult = resolveMemoryQueryScope(query);
+    if (!scopeResult.ok) {
+      return writeManagementInputError(response, context, scopeResult);
     }
+    const scope = scopeResult.value;
 
     const cursorResult = context.queryParamCursor(query);
     if (cursorResult.error) {
@@ -287,15 +328,11 @@ export async function dispatchManagementMemoryRoutes(
       return true;
     }
     const body = parsedBody.body;
-    const scopeRaw = String(body.scope ?? MEMORY_SCOPE_AUTO).toLowerCase();
-    const scope = normalizeMemoryScope(scopeRaw);
-    if (!scope) {
-      context.writeJson(response, 400, {
-        error: "invalid_scope",
-        detail: scopeRaw,
-      });
-      return true;
+    const scopeResult = resolveMemoryBodyScope(body);
+    if (!scopeResult.ok) {
+      return writeManagementInputError(response, context, scopeResult);
     }
+    const scope = scopeResult.value;
     const dryRunResult = bodyBool(body, "dry_run", false);
     if (!dryRunResult.ok) {
       return writeManagementInputError(response, context, dryRunResult);
@@ -388,15 +425,11 @@ export async function dispatchManagementMemoryRoutes(
         ids.push(id);
       }
     }
-    const scopeRaw = String(body.scope ?? MEMORY_SCOPE_AUTO).toLowerCase();
-    const scope = normalizeMemoryScope(scopeRaw);
-    if (!scope) {
-      context.writeJson(response, 400, {
-        error: "invalid_scope",
-        detail: scopeRaw,
-      });
-      return true;
+    const scopeResult = resolveMemoryBodyScope(body);
+    if (!scopeResult.ok) {
+      return writeManagementInputError(response, context, scopeResult);
     }
+    const scope = scopeResult.value;
 
     const dryRunResult = bodyBool(body, "dry_run", false);
     if (!dryRunResult.ok) {
@@ -473,15 +506,11 @@ export async function dispatchManagementMemoryRoutes(
     }
 
     const body = parsedBody.body;
-    const scopeRaw = String(body.scope ?? MEMORY_SCOPE_AUTO).toLowerCase();
-    const scope = normalizeMemoryScope(scopeRaw);
-    if (!scope) {
-      context.writeJson(response, 400, {
-        error: "invalid_scope",
-        detail: scopeRaw,
-      });
-      return true;
+    const scopeResult = resolveMemoryBodyScope(body);
+    if (!scopeResult.ok) {
+      return writeManagementInputError(response, context, scopeResult);
     }
+    const scope = scopeResult.value;
     const dryRunResult = bodyBool(body, "dry_run", false);
     if (!dryRunResult.ok) {
       return writeManagementInputError(response, context, dryRunResult);
@@ -535,15 +564,11 @@ export async function dispatchManagementMemoryRoutes(
     }
 
     const body = parsedBody.body;
-    const scopeRaw = String(body.scope ?? MEMORY_SCOPE_AUTO).toLowerCase();
-    const scope = normalizeMemoryScope(scopeRaw);
-    if (!scope) {
-      context.writeJson(response, 400, {
-        error: "invalid_scope",
-        detail: scopeRaw,
-      });
-      return true;
+    const scopeResult = resolveMemoryBodyScope(body);
+    if (!scopeResult.ok) {
+      return writeManagementInputError(response, context, scopeResult);
     }
+    const scope = scopeResult.value;
     const dryRunResult = bodyBool(body, "dry_run", false);
     if (!dryRunResult.ok) {
       return writeManagementInputError(response, context, dryRunResult);

@@ -216,6 +216,31 @@ export function bodyPositiveInt(
   };
 }
 
+export function queryOptionalNonEmptyString(
+  query: QueryParams,
+  key: string,
+): ParseInputResult<string | undefined> {
+  const values = query[key];
+  if (!Array.isArray(values) || values.length === 0) {
+    return {
+      ok: true,
+      value: undefined,
+    };
+  }
+  const raw = values[0];
+  if (typeof raw !== "string") {
+    return invalidInput(key, `${key} must be a non-empty string`);
+  }
+  const value = raw.trim();
+  if (!value) {
+    return invalidInput(key, `${key} must be a non-empty string`);
+  }
+  return {
+    ok: true,
+    value,
+  };
+}
+
 export function bodyOptionalNonEmptyString(
   body: Record<string, unknown>,
   key: string,

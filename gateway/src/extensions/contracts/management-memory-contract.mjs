@@ -201,7 +201,15 @@ async function runMemoryInputValidation(options) {
       timeoutMs: 1_000,
       headers,
     });
+    const invalidListScope = await requestJson(`${memoryUrl}?scope=`, {
+      timeoutMs: 1_000,
+      headers,
+    });
     const invalidExportIncludeSecret = await requestJson(`${exportUrl}?include_secret=maybe`, {
+      timeoutMs: 1_000,
+      headers,
+    });
+    const invalidExportScope = await requestJson(`${exportUrl}?scope=`, {
       timeoutMs: 1_000,
       headers,
     });
@@ -211,6 +219,15 @@ async function runMemoryInputValidation(options) {
       headers,
       body: jsonBody({
         dry_run: "maybe",
+        records: [{ text: "x" }],
+      }),
+    });
+    const invalidImportScope = await requestJson(importUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        scope: null,
         records: [{ text: "x" }],
       }),
     });
@@ -275,6 +292,15 @@ async function runMemoryInputValidation(options) {
         ids: ["x"],
       }),
     });
+    const invalidForgetScope = await requestJson(forgetUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        scope: 67,
+        ids: ["x"],
+      }),
+    });
     const invalidForgetId = await requestJson(forgetUrl, {
       method: "POST",
       timeoutMs: 1_000,
@@ -327,6 +353,14 @@ async function runMemoryInputValidation(options) {
         dry_run: {},
       }),
     });
+    const invalidLifecycleScope = await requestJson(lifecycleUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        scope: "",
+      }),
+    });
     const invalidBatchLimit = await requestJson(batchLifecycleUrl, {
       method: "POST",
       timeoutMs: 1_000,
@@ -334,6 +368,15 @@ async function runMemoryInputValidation(options) {
       body: jsonBody({
         dry_run: false,
         limit: "bad",
+        sessions: ["feishu:grobot:dm:memory-input-contract"],
+      }),
+    });
+    const invalidBatchScope = await requestJson(batchLifecycleUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        scope: null,
         sessions: ["feishu:grobot:dm:memory-input-contract"],
       }),
     });
@@ -399,12 +442,21 @@ async function runMemoryInputValidation(options) {
       invalid_list_include_archived_status: invalidListIncludeArchived.status,
       invalid_list_include_archived_error: invalidListIncludeArchived.body.error ?? null,
       invalid_list_include_archived_field: invalidListIncludeArchived.body.field ?? null,
+      invalid_list_scope_status: invalidListScope.status,
+      invalid_list_scope_error: invalidListScope.body.error ?? null,
+      invalid_list_scope_field: invalidListScope.body.field ?? null,
       invalid_export_include_secret_status: invalidExportIncludeSecret.status,
       invalid_export_include_secret_error: invalidExportIncludeSecret.body.error ?? null,
       invalid_export_include_secret_field: invalidExportIncludeSecret.body.field ?? null,
+      invalid_export_scope_status: invalidExportScope.status,
+      invalid_export_scope_error: invalidExportScope.body.error ?? null,
+      invalid_export_scope_field: invalidExportScope.body.field ?? null,
       invalid_import_dry_run_status: invalidImportDryRun.status,
       invalid_import_dry_run_error: invalidImportDryRun.body.error ?? null,
       invalid_import_dry_run_field: invalidImportDryRun.body.field ?? null,
+      invalid_import_scope_status: invalidImportScope.status,
+      invalid_import_scope_error: invalidImportScope.body.error ?? null,
+      invalid_import_scope_field: invalidImportScope.body.field ?? null,
       invalid_import_source_status: invalidImportSource.status,
       invalid_import_source_error: invalidImportSource.body.error ?? null,
       invalid_import_source_field: invalidImportSource.body.field ?? null,
@@ -429,6 +481,9 @@ async function runMemoryInputValidation(options) {
       invalid_forget_dry_run_status: invalidForgetDryRun.status,
       invalid_forget_dry_run_error: invalidForgetDryRun.body.error ?? null,
       invalid_forget_dry_run_field: invalidForgetDryRun.body.field ?? null,
+      invalid_forget_scope_status: invalidForgetScope.status,
+      invalid_forget_scope_error: invalidForgetScope.body.error ?? null,
+      invalid_forget_scope_field: invalidForgetScope.body.field ?? null,
       invalid_forget_id_status: invalidForgetId.status,
       invalid_forget_id_error: invalidForgetId.body.error ?? null,
       invalid_forget_id_field: invalidForgetId.body.field ?? null,
@@ -448,9 +503,15 @@ async function runMemoryInputValidation(options) {
       invalid_lifecycle_dry_run_status: invalidLifecycleDryRun.status,
       invalid_lifecycle_dry_run_error: invalidLifecycleDryRun.body.error ?? null,
       invalid_lifecycle_dry_run_field: invalidLifecycleDryRun.body.field ?? null,
+      invalid_lifecycle_scope_status: invalidLifecycleScope.status,
+      invalid_lifecycle_scope_error: invalidLifecycleScope.body.error ?? null,
+      invalid_lifecycle_scope_field: invalidLifecycleScope.body.field ?? null,
       invalid_batch_limit_status: invalidBatchLimit.status,
       invalid_batch_limit_error: invalidBatchLimit.body.error ?? null,
       invalid_batch_limit_field: invalidBatchLimit.body.field ?? null,
+      invalid_batch_scope_status: invalidBatchScope.status,
+      invalid_batch_scope_error: invalidBatchScope.body.error ?? null,
+      invalid_batch_scope_field: invalidBatchScope.body.field ?? null,
       oversized_batch_limit_status: oversizedBatchLimit.status,
       oversized_batch_limit_error: oversizedBatchLimit.body.error ?? null,
       oversized_batch_limit_field: oversizedBatchLimit.body.field ?? null,
