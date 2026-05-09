@@ -201,7 +201,23 @@ async function runMemoryInputValidation(options) {
       timeoutMs: 1_000,
       headers,
     });
+    const invalidListCursorEmpty = await requestJson(`${memoryUrl}?cursor=`, {
+      timeoutMs: 1_000,
+      headers,
+    });
+    const invalidListCursorAlpha = await requestJson(`${memoryUrl}?cursor=nope`, {
+      timeoutMs: 1_000,
+      headers,
+    });
+    const invalidListCursorOversized = await requestJson(`${memoryUrl}?cursor=200001`, {
+      timeoutMs: 1_000,
+      headers,
+    });
     const invalidListScope = await requestJson(`${memoryUrl}?scope=`, {
+      timeoutMs: 1_000,
+      headers,
+    });
+    const invalidListQueryEmpty = await requestJson(`${memoryUrl}?query=`, {
       timeoutMs: 1_000,
       headers,
     });
@@ -225,7 +241,15 @@ async function runMemoryInputValidation(options) {
       timeoutMs: 1_000,
       headers,
     });
+    const invalidExportCursorEmpty = await requestJson(`${exportUrl}?cursor=`, {
+      timeoutMs: 1_000,
+      headers,
+    });
     const invalidExportScope = await requestJson(`${exportUrl}?scope=`, {
+      timeoutMs: 1_000,
+      headers,
+    });
+    const invalidExportQueryEmpty = await requestJson(`${exportUrl}?query=`, {
       timeoutMs: 1_000,
       headers,
     });
@@ -458,9 +482,21 @@ async function runMemoryInputValidation(options) {
       invalid_list_include_archived_status: invalidListIncludeArchived.status,
       invalid_list_include_archived_error: invalidListIncludeArchived.body.error ?? null,
       invalid_list_include_archived_field: invalidListIncludeArchived.body.field ?? null,
+      invalid_list_cursor_empty_status: invalidListCursorEmpty.status,
+      invalid_list_cursor_empty_error: invalidListCursorEmpty.body.error ?? null,
+      invalid_list_cursor_empty_field: invalidListCursorEmpty.body.field ?? null,
+      invalid_list_cursor_alpha_status: invalidListCursorAlpha.status,
+      invalid_list_cursor_alpha_error: invalidListCursorAlpha.body.error ?? null,
+      invalid_list_cursor_alpha_field: invalidListCursorAlpha.body.field ?? null,
+      invalid_list_cursor_oversized_status: invalidListCursorOversized.status,
+      invalid_list_cursor_oversized_error: invalidListCursorOversized.body.error ?? null,
+      invalid_list_cursor_oversized_field: invalidListCursorOversized.body.field ?? null,
       invalid_list_scope_status: invalidListScope.status,
       invalid_list_scope_error: invalidListScope.body.error ?? null,
       invalid_list_scope_field: invalidListScope.body.field ?? null,
+      invalid_list_query_empty_status: invalidListQueryEmpty.status,
+      invalid_list_query_empty_error: invalidListQueryEmpty.body.error ?? null,
+      invalid_list_query_empty_field: invalidListQueryEmpty.body.field ?? null,
       invalid_list_kind_empty_status: invalidListKindEmpty.status,
       invalid_list_kind_empty_error: invalidListKindEmpty.body.error ?? null,
       invalid_list_kind_empty_field: invalidListKindEmpty.body.field ?? null,
@@ -476,9 +512,15 @@ async function runMemoryInputValidation(options) {
       invalid_export_include_secret_status: invalidExportIncludeSecret.status,
       invalid_export_include_secret_error: invalidExportIncludeSecret.body.error ?? null,
       invalid_export_include_secret_field: invalidExportIncludeSecret.body.field ?? null,
+      invalid_export_cursor_empty_status: invalidExportCursorEmpty.status,
+      invalid_export_cursor_empty_error: invalidExportCursorEmpty.body.error ?? null,
+      invalid_export_cursor_empty_field: invalidExportCursorEmpty.body.field ?? null,
       invalid_export_scope_status: invalidExportScope.status,
       invalid_export_scope_error: invalidExportScope.body.error ?? null,
       invalid_export_scope_field: invalidExportScope.body.field ?? null,
+      invalid_export_query_empty_status: invalidExportQueryEmpty.status,
+      invalid_export_query_empty_error: invalidExportQueryEmpty.body.error ?? null,
+      invalid_export_query_empty_field: invalidExportQueryEmpty.body.field ?? null,
       invalid_import_dry_run_status: invalidImportDryRun.status,
       invalid_import_dry_run_error: invalidImportDryRun.body.error ?? null,
       invalid_import_dry_run_field: invalidImportDryRun.body.field ?? null,

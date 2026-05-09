@@ -115,15 +115,6 @@ export interface ManagementRoutesContext {
   writeJson: (response: ServerResponse, statusCode: number, payload: Record<string, unknown>) => void;
   parseBearerToken: (headers: IncomingMessage["headers"]) => string | undefined;
   parseQueryParams: (rawUrl: string) => QueryParams;
-  queryParamStr: (query: QueryParams, key: string, defaultValue?: string) => string;
-  queryParamCursor: (
-    query: QueryParams,
-    key?: string,
-    maximum?: number,
-  ) => {
-    cursor: number;
-    error?: string;
-  };
   readBody: (request: IncomingMessage) => Promise<string>;
   readHeaderValue: (headers: IncomingMessage["headers"], key: string) => string | undefined;
   parseJsonObjectBody: (rawBody: string) =>

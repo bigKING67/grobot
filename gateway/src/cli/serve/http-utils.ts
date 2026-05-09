@@ -1,7 +1,5 @@
 import { IncomingMessage, ServerResponse } from "node:http";
 
-const MANAGEMENT_MEMORY_CURSOR_MAX = 200_000;
-
 export type QueryParams = Record<string, string[]>;
 
 export function parseQueryParams(rawUrl: string): QueryParams {
@@ -35,42 +33,6 @@ export function parseQueryParams(rawUrl: string): QueryParams {
     query[key] = items;
   }
   return query;
-}
-
-export function queryParamStr(query: QueryParams, key: string, defaultValue = ""): string {
-  const values = query[key];
-  if (Array.isArray(values) && values.length > 0) {
-    const value = values[0];
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value.trim();
-    }
-  }
-  return defaultValue;
-}
-
-export function queryParamCursor(
-  query: QueryParams,
-  key = "cursor",
-  maximum = MANAGEMENT_MEMORY_CURSOR_MAX,
-): {
-  cursor: number;
-  error?: string;
-} {
-  const raw = queryParamStr(query, key, "");
-  if (!raw) {
-    return { cursor: 0 };
-  }
-  if (!/^\d+$/.test(raw)) {
-    return { cursor: 0, error: "invalid_cursor" };
-  }
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return { cursor: 0, error: "invalid_cursor" };
-  }
-  if (parsed > Math.max(0, maximum)) {
-    return { cursor: 0, error: "cursor_too_large" };
-  }
-  return { cursor: parsed };
 }
 
 export function parseJsonObjectBody(rawBody: string): {
