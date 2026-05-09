@@ -1,17 +1,151 @@
-fn clamp_policy_usize(value: Option<usize>, default_value: usize, min: usize, max: usize) -> usize {
-    value.unwrap_or(default_value).clamp(min, max)
+fn config_invalid_error(
+    message: impl Into<String>,
+    source: &str,
+    required_config: &str,
+    recovery_hint: &str,
+) -> ToolExecutionError {
+    ToolExecutionError::new("config_invalid", message).with_data({
+        let mut data = Map::new();
+        data.insert("diagnostic_kind".to_string(), json!("config_invalid"));
+        data.insert("source".to_string(), json!(source));
+        data.insert("required_config".to_string(), json!(required_config));
+        data.insert("recovery_hint".to_string(), json!(recovery_hint));
+        Value::Object(data)
+    })
 }
 
-fn clamp_policy_u64(value: Option<u64>, default_value: u64, min: u64, max: u64) -> u64 {
-    value.unwrap_or(default_value).clamp(min, max)
+fn invalid_project_config_error(
+    path: &Path,
+    field: &str,
+    detail: impl Into<String>,
+) -> ToolExecutionError {
+    let detail = detail.into();
+    config_invalid_error(
+        format!("invalid project config `{field}`: {detail}"),
+        path.to_string_lossy().as_ref(),
+        field,
+        "fix .grobot/project.toml explicit values or remove the field to use defaults",
+    )
 }
 
-fn parse_toml_file<T>(path: &Path) -> Option<T>
+fn invalid_mcp_registry_error(
+    path: &Path,
+    field: &str,
+    detail: impl Into<String>,
+) -> ToolExecutionError {
+    let detail = detail.into();
+    config_invalid_error(
+        format!("invalid MCP registry `{field}`: {detail}"),
+        path.to_string_lossy().as_ref(),
+        field,
+        "fix the MCP registry entry or disable/remove the malformed server",
+    )
+}
+
+fn parse_toml_file<T>(path: &Path) -> Result<Option<T>, ToolExecutionError>
 where
     T: DeserializeOwned,
 {
-    let raw = fs::read_to_string(path).ok()?;
-    toml::from_str::<T>(&raw).ok()
+    let raw = match fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(config_invalid_error(
+                format!("failed to read TOML config `{}`: {error}", path.display()),
+                path.to_string_lossy().as_ref(),
+                path.to_string_lossy().as_ref(),
+                "fix config file permissions or remove the unreadable config file",
+            ));
+        }
+    };
+    toml::from_str::<T>(&raw).map(Some).map_err(|error| {
+        config_invalid_error(
+            format!("failed to parse TOML config `{}`: {error}", path.display()),
+            path.to_string_lossy().as_ref(),
+            path.to_string_lossy().as_ref(),
+            "fix malformed TOML syntax or remove the invalid explicit config file",
+        )
+    })
+}
+
+fn validate_policy_usize(
+    value: Option<usize>,
+    default_value: usize,
+    min: usize,
+    max: usize,
+    field: &str,
+    path: &Path,
+) -> Result<usize, ToolExecutionError> {
+    let Some(raw) = value else {
+        return Ok(default_value);
+    };
+    if raw < min || raw > max {
+        return Err(invalid_project_config_error(
+            path,
+            field,
+            format!("must be an integer between {min} and {max}"),
+        ));
+    }
+    Ok(raw)
+}
+
+fn validate_policy_u64(
+    value: Option<u64>,
+    default_value: u64,
+    min: u64,
+    max: u64,
+    field: &str,
+    path: &Path,
+) -> Result<u64, ToolExecutionError> {
+    let Some(raw) = value else {
+        return Ok(default_value);
+    };
+    if raw < min || raw > max {
+        return Err(invalid_project_config_error(
+            path,
+            field,
+            format!("must be an integer between {min} and {max}"),
+        ));
+    }
+    Ok(raw)
+}
+
+fn validate_optional_unique_non_empty_string_list(
+    values: Option<&Vec<String>>,
+    field: &str,
+    path: &Path,
+) -> Result<Vec<String>, ToolExecutionError> {
+    let Some(values) = values else {
+        return Ok(Vec::new());
+    };
+    if values.is_empty() {
+        return Err(invalid_project_config_error(
+            path,
+            field,
+            "must be a non-empty array of non-empty strings when specified",
+        ));
+    }
+    let mut normalized = Vec::new();
+    let mut seen = HashSet::new();
+    for (index, raw) in values.iter().enumerate() {
+        let value = raw.trim();
+        if value.is_empty() {
+            return Err(invalid_project_config_error(
+                path,
+                field,
+                format!("entry at index {index} must be a non-empty string"),
+            ));
+        }
+        if !seen.insert(value.to_string()) {
+            return Err(invalid_project_config_error(
+                path,
+                field,
+                "values must be unique",
+            ));
+        }
+        normalized.push(value.to_string());
+    }
+    Ok(normalized)
 }
 
 fn find_project_grobot_dir(work_dir: &Path) -> Option<PathBuf> {
@@ -57,24 +191,37 @@ fn merge_mcp_servers_from_file(
     source: &str,
     merged: &mut Vec<McpServerResolved>,
     index_by_name: &mut HashMap<String, usize>,
-) {
-    let parsed = match parse_toml_file::<McpServerRegistryFile>(path) {
-        Some(parsed) => parsed,
-        None => return,
+) -> Result<(), ToolExecutionError> {
+    let Some(parsed) = parse_toml_file::<McpServerRegistryFile>(path)? else {
+        return Ok(());
     };
-    for raw in parsed.servers {
+    for (entry_index, raw) in parsed.servers.into_iter().enumerate() {
         let name = normalize_name(&raw.name);
         let command = normalize_name(&raw.command);
         if name.is_empty() || command.is_empty() {
-            continue;
+            let field = if name.is_empty() {
+                "servers[].name"
+            } else {
+                "servers[].command"
+            };
+            return Err(invalid_mcp_registry_error(
+                path,
+                field,
+                format!("entry {entry_index} must define non-empty name and command"),
+            ));
         }
-        let args = raw
-            .args
-            .iter()
-            .map(|item| item.trim())
-            .filter(|item| !item.is_empty())
-            .map(|item| item.to_string())
-            .collect::<Vec<String>>();
+        let mut args = Vec::new();
+        for (arg_index, item) in raw.args.iter().enumerate() {
+            let normalized = item.trim();
+            if normalized.is_empty() {
+                return Err(invalid_mcp_registry_error(
+                    path,
+                    "servers[].args",
+                    format!("entry {entry_index} arg {arg_index} must be a non-empty string"),
+                ));
+            }
+            args.push(normalized.to_string());
+        }
         let resolved = McpServerResolved {
             name: name.clone(),
             command,
@@ -93,9 +240,12 @@ fn merge_mcp_servers_from_file(
             index_by_name.insert(name, index);
         }
     }
+    Ok(())
 }
 
-fn load_mcp_servers(context: &ToolContextResolved) -> Vec<McpServerResolved> {
+fn load_mcp_servers(
+    context: &ToolContextResolved,
+) -> Result<Vec<McpServerResolved>, ToolExecutionError> {
     let mut merged: Vec<McpServerResolved> = Vec::new();
     let mut index_by_name: HashMap<String, usize> = HashMap::new();
     if let Some(home) = env::var_os("HOME") {
@@ -108,7 +258,7 @@ fn load_mcp_servers(context: &ToolContextResolved) -> Vec<McpServerResolved> {
             "global",
             &mut merged,
             &mut index_by_name,
-        );
+        )?;
     }
     if let Some(project_grobot_dir) = find_project_grobot_dir(&context.work_dir) {
         let project_registry = project_grobot_dir.join("mcp.toml");
@@ -117,7 +267,7 @@ fn load_mcp_servers(context: &ToolContextResolved) -> Vec<McpServerResolved> {
             "project",
             &mut merged,
             &mut index_by_name,
-        );
+        )?;
     }
     for server in &mut merged {
         if !server.enabled {
@@ -133,71 +283,84 @@ fn load_mcp_servers(context: &ToolContextResolved) -> Vec<McpServerResolved> {
             server.ready_reason = "command_not_found".to_string();
         }
     }
-    merged
+    Ok(merged)
 }
 
-fn load_mcp_call_policy(context: &ToolContextResolved) -> McpCallPolicy {
+fn load_mcp_call_policy(
+    context: &ToolContextResolved,
+) -> Result<McpCallPolicy, ToolExecutionError> {
     let mut policy = default_mcp_call_policy();
     let Some(project_grobot_dir) = find_project_grobot_dir(&context.work_dir) else {
-        return policy;
+        return Ok(policy);
     };
     let project_toml = project_grobot_dir.join("project.toml");
-    let parsed = match parse_toml_file::<ProjectPolicyConfigFile>(&project_toml) {
-        Some(parsed) => parsed,
-        None => return policy,
+    let Some(parsed) = parse_toml_file::<ProjectPolicyConfigFile>(&project_toml)? else {
+        return Ok(policy);
     };
     let project_policy = parsed.tools.mcp;
-    let allow_tools = project_policy
-        .allow_tools
-        .iter()
-        .map(|item| item.trim())
-        .filter(|item| !item.is_empty())
-        .map(|item| item.to_string())
-        .collect::<Vec<String>>();
-    policy.max_concurrency_per_server = clamp_policy_usize(
+    let allow_tools = validate_optional_unique_non_empty_string_list(
+        project_policy.allow_tools.as_ref(),
+        "tools.mcp.allow_tools",
+        &project_toml,
+    )?;
+    policy.max_concurrency_per_server = validate_policy_usize(
         project_policy.max_concurrency_per_server,
         DEFAULT_MCP_MAX_CONCURRENCY_PER_SERVER,
         MIN_MCP_MAX_CONCURRENCY_PER_SERVER,
         MAX_MCP_MAX_CONCURRENCY_PER_SERVER,
-    );
-    policy.max_queue_per_server = clamp_policy_usize(
+        "tools.mcp.max_concurrency_per_server",
+        &project_toml,
+    )?;
+    policy.max_queue_per_server = validate_policy_usize(
         project_policy.max_queue_per_server,
         DEFAULT_MCP_MAX_QUEUE_PER_SERVER,
         MIN_MCP_MAX_QUEUE_PER_SERVER,
         MAX_MCP_MAX_QUEUE_PER_SERVER,
-    );
-    policy.failure_threshold = clamp_policy_usize(
+        "tools.mcp.max_queue_per_server",
+        &project_toml,
+    )?;
+    policy.failure_threshold = validate_policy_usize(
         project_policy.failure_threshold,
         DEFAULT_MCP_FAILURE_THRESHOLD,
         MIN_MCP_FAILURE_THRESHOLD,
         MAX_MCP_FAILURE_THRESHOLD,
-    );
-    policy.cooldown_secs = clamp_policy_u64(
+        "tools.mcp.failure_threshold",
+        &project_toml,
+    )?;
+    policy.cooldown_secs = validate_policy_u64(
         project_policy.cooldown_secs,
         DEFAULT_MCP_COOLDOWN_SECS,
         MIN_MCP_COOLDOWN_SECS,
         MAX_MCP_COOLDOWN_SECS,
-    );
-    policy.latency_sample_limit = clamp_policy_usize(
+        "tools.mcp.cooldown_secs",
+        &project_toml,
+    )?;
+    policy.latency_sample_limit = validate_policy_usize(
         project_policy.latency_sample_limit,
         DEFAULT_MCP_LATENCY_SAMPLE_LIMIT,
         MIN_MCP_LATENCY_SAMPLE_LIMIT,
         MAX_MCP_LATENCY_SAMPLE_LIMIT,
-    );
-    policy.call_timeout_ms = clamp_policy_u64(
+        "tools.mcp.latency_sample_limit",
+        &project_toml,
+    )?;
+    policy.call_timeout_ms = validate_policy_u64(
         project_policy.call_timeout_ms,
         DEFAULT_MCP_CALL_TIMEOUT_MS,
         MIN_MCP_CALL_TIMEOUT_MS,
         MAX_MCP_CALL_TIMEOUT_MS,
-    );
-    policy.session_idle_ttl_secs = clamp_policy_u64(
+        "tools.mcp.call_timeout_ms",
+        &project_toml,
+    )?;
+    policy.session_idle_ttl_secs = validate_policy_u64(
         project_policy.session_idle_ttl_secs,
         DEFAULT_MCP_SESSION_IDLE_TTL_SECS,
         MIN_MCP_SESSION_IDLE_TTL_SECS,
         MAX_MCP_SESSION_IDLE_TTL_SECS,
-    );
+        "tools.mcp.session_idle_ttl_secs",
+        &project_toml,
+    )?;
     policy.allow_tools = allow_tools;
-    policy
+    Ok(policy)
 }
 
 fn mcp_tool_allowed(policy: &McpCallPolicy, tool_name: &str) -> bool {

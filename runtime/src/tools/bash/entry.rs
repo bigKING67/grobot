@@ -3,7 +3,7 @@ fn run_bash(
     args: &Map<String, Value>,
 ) -> Result<ToolCallOutput, ToolExecutionError> {
     let request = parse_bash_request(args)?;
-    let policy = load_bash_runtime_policy(context);
+    let policy = load_bash_runtime_policy(context)?;
     validate_bash_command_security(&request.command)?;
     let policy_evaluation = evaluate_bash_policy(context, &request)?;
 

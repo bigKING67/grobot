@@ -626,7 +626,9 @@ fn terminate_bash_process_tree(child: &mut Child) {
     let _ = child.kill();
 }
 
-fn load_bash_runtime_policy(context: &ToolContextResolved) -> BashRuntimePolicy {
+fn load_bash_runtime_policy(
+    context: &ToolContextResolved,
+) -> Result<BashRuntimePolicy, ToolExecutionError> {
     let mut policy = BashRuntimePolicy {
         output_ttl_secs: DEFAULT_BASH_OUTPUT_TTL_SECS,
         output_max_files: DEFAULT_BASH_OUTPUT_MAX_FILES,
@@ -635,40 +637,47 @@ fn load_bash_runtime_policy(context: &ToolContextResolved) -> BashRuntimePolicy 
         audit_redact_secrets: DEFAULT_BASH_AUDIT_REDACT_SECRETS,
     };
     let Some(project_grobot_dir) = find_project_grobot_dir(&context.work_dir) else {
-        return policy;
+        return Ok(policy);
     };
     let project_toml = project_grobot_dir.join("project.toml");
-    let parsed = match parse_toml_file::<ProjectPolicyConfigFile>(&project_toml) {
-        Some(parsed) => parsed,
-        None => return policy,
+    let Some(parsed) = parse_toml_file::<ProjectPolicyConfigFile>(&project_toml)? else {
+        return Ok(policy);
     };
     let bash_policy = parsed.tools.bash;
-    policy.output_ttl_secs = clamp_policy_u64(
+    policy.output_ttl_secs = validate_policy_u64(
         bash_policy.output_ttl_secs,
         DEFAULT_BASH_OUTPUT_TTL_SECS,
         MIN_BASH_OUTPUT_TTL_SECS,
         MAX_BASH_OUTPUT_TTL_SECS,
-    );
-    policy.output_max_files = clamp_policy_usize(
+        "tools.bash.output_ttl_secs",
+        &project_toml,
+    )?;
+    policy.output_max_files = validate_policy_usize(
         bash_policy.output_max_files,
         DEFAULT_BASH_OUTPUT_MAX_FILES,
         MIN_BASH_OUTPUT_MAX_FILES,
         MAX_BASH_OUTPUT_MAX_FILES,
-    );
-    policy.audit_preview_chars = clamp_policy_usize(
+        "tools.bash.output_max_files",
+        &project_toml,
+    )?;
+    policy.audit_preview_chars = validate_policy_usize(
         bash_policy.audit_preview_chars,
         DEFAULT_BASH_AUDIT_PREVIEW_CHARS,
         MIN_BASH_AUDIT_PREVIEW_CHARS,
         MAX_BASH_AUDIT_PREVIEW_CHARS,
-    );
-    policy.audit_segment_chars = clamp_policy_usize(
+        "tools.bash.audit_preview_chars",
+        &project_toml,
+    )?;
+    policy.audit_segment_chars = validate_policy_usize(
         bash_policy.audit_segment_chars,
         DEFAULT_BASH_AUDIT_SEGMENT_CHARS,
         MIN_BASH_AUDIT_SEGMENT_CHARS,
         MAX_BASH_AUDIT_SEGMENT_CHARS,
-    );
+        "tools.bash.audit_segment_chars",
+        &project_toml,
+    )?;
     policy.audit_redact_secrets = bash_policy
         .audit_redact_secrets
         .unwrap_or(DEFAULT_BASH_AUDIT_REDACT_SECRETS);
-    policy
+    Ok(policy)
 }

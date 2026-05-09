@@ -156,12 +156,18 @@ pub(crate) fn overlap_guard_metrics_snapshot() -> Value {
     })
 }
 
-fn parse_u64_arg(args: &Map<String, Value>, key: &str, fallback: u64) -> u64 {
-    args.get(key).and_then(Value::as_u64).unwrap_or(fallback)
+fn parse_overlap_u64_arg(args: &Map<String, Value>, key: &str, fallback: u64) -> Option<u64> {
+    match args.get(key) {
+        None => Some(fallback),
+        Some(value) => value.as_u64(),
+    }
 }
 
-fn parse_bool_arg(args: &Map<String, Value>, key: &str, fallback: bool) -> bool {
-    args.get(key).and_then(Value::as_bool).unwrap_or(fallback)
+fn parse_overlap_bool_arg(args: &Map<String, Value>, key: &str, fallback: bool) -> Option<bool> {
+    match args.get(key) {
+        None => Some(fallback),
+        Some(value) => value.as_bool(),
+    }
 }
 
 fn is_broad_search_request(args: &Map<String, Value>) -> bool {
@@ -170,30 +176,55 @@ fn is_broad_search_request(args: &Map<String, Value>) -> bool {
         .and_then(Value::as_str)
         .map(str::trim)
         .unwrap_or(".");
-    let regex = parse_bool_arg(args, "regex", false);
-    let context_before = parse_u64_arg(args, "context_before", 0);
-    let context_after = parse_u64_arg(args, "context_after", 0);
+    let Some(regex) = parse_overlap_bool_arg(args, "regex", false) else {
+        return false;
+    };
+    let Some(context_before) = parse_overlap_u64_arg(args, "context_before", 0) else {
+        return false;
+    };
+    let Some(context_after) = parse_overlap_u64_arg(args, "context_after", 0) else {
+        return false;
+    };
     let scoped_path = path != ".";
     !scoped_path && !regex && context_before == 0 && context_after == 0
 }
 
 fn is_broad_semantic_search_request(args: &Map<String, Value>) -> bool {
-    let include_org = parse_bool_arg(args, "include_org", false);
-    let technical_terms = args
-        .get("technical_terms")
-        .and_then(Value::as_array)
-        .map(|rows| !rows.is_empty())
-        .unwrap_or(false);
-    let sources = args
-        .get("sources")
-        .and_then(Value::as_array)
-        .map(|rows| {
-            rows.iter()
-                .filter_map(Value::as_str)
-                .map(|item| item.trim().to_ascii_lowercase())
-                .filter(|item| !item.is_empty())
-                .collect::<HashSet<String>>()
-        });
+    let Some(include_org) = parse_overlap_bool_arg(args, "include_org", false) else {
+        return false;
+    };
+    let technical_terms = match args.get("technical_terms") {
+        None => false,
+        Some(Value::Array(rows)) => {
+            if rows.iter().any(|item| {
+                item.as_str()
+                    .map(str::trim)
+                    .map(str::is_empty)
+                    .unwrap_or(true)
+            }) {
+                return false;
+            }
+            !rows.is_empty()
+        }
+        Some(_) => return false,
+    };
+    let sources = match args.get("sources") {
+        None => None,
+        Some(Value::Array(rows)) => {
+            let mut set = HashSet::new();
+            for item in rows {
+                let Some(raw) = item.as_str() else {
+                    return false;
+                };
+                let normalized = raw.trim().to_ascii_lowercase();
+                if normalized.is_empty() || !set.insert(normalized) {
+                    return false;
+                }
+            }
+            Some(set)
+        }
+        Some(_) => return false,
+    };
     let broad_sources = match sources {
         None => true,
         Some(ref set) if set.is_empty() => true,

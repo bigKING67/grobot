@@ -511,6 +511,7 @@ grobot start \
 - Skills 路由阈值可在 `.grobot/project.toml` 的 `[skills.router]` 与 `[skills.runtime]` 配置（`score_threshold`、`min_score_gap`、`max_descriptors`、`descriptor_scan_lines`、`max_skill_block_chars`）。
 - Skills 路由观测可在 `.grobot/project.toml` 的 `[skills.observability]` 配置（`enabled`、`path`），每轮会写入 JSONL（包含 selected skill、score、hits、prompt preview 与阈值配置）。
 - MCP 会在启动时读取并合并：`~/.grobot/mcp/servers.toml`（全局） + `<repo>/.grobot/mcp.toml`（项目覆盖同名 server）。
+- MCP registry 与 `[tools.mcp]` 运行策略按 fail-closed 解析：显式 malformed TOML、空 `name/command/args`、非法 `enabled`、越界并发/超时/TTL、空白或重复 `allow_tools` 会直接报 `config_invalid`；只有字段省略时才使用默认值。
 - MCP 会在启动时做命令就绪度检查（ready/unready），并在 `status`、`serve`、`start`、`/mcp` 中显示原因。
   - `mcp_call` 会按 `initialize -> tools/list -> tools/call` 流程通过 stdio 调用 MCP server，并返回标准化结果预览（含 `is_error/content/structured_content_preview`）。
   - 同一 `start` 会话内，`mcp_call` 会复用已初始化的 MCP 进程（避免每次重启 server，降低时延）。

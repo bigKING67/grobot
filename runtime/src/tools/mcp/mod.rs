@@ -24,7 +24,7 @@ fn run_mcp_servers(
         "include_disabled",
         include_disabled_default,
     )?;
-    let policy = load_mcp_call_policy(context);
+    let policy = load_mcp_call_policy(context)?;
     let state_snapshots = {
         let mut store = lock_runtime_store()?;
         let now_epoch_secs = current_epoch_secs();
@@ -37,7 +37,7 @@ fn run_mcp_servers(
     };
     let mut servers_payload: Vec<Value> = Vec::new();
     let mut server_keys: Vec<String> = Vec::new();
-    let servers = load_mcp_servers(context);
+    let servers = load_mcp_servers(context)?;
     let mut total = 0usize;
     let mut enabled_count = 0usize;
     let mut ready_count = 0usize;
@@ -118,8 +118,8 @@ fn run_mcp_call(
         parse_required_string_arg(args, TOOL_MCP_CALL, "tool", "mcp_call.tool is required")?;
     let raw_arguments = args.get("arguments").cloned().unwrap_or_else(|| json!({}));
     let call_arguments = parse_mcp_call_arguments(&raw_arguments, &server_name, &tool_name)?;
-    let policy = load_mcp_call_policy(context);
-    let servers = load_mcp_servers(context);
+    let policy = load_mcp_call_policy(context)?;
+    let servers = load_mcp_servers(context)?;
     let server = servers
         .iter()
         .find(|candidate| candidate.name == server_name)

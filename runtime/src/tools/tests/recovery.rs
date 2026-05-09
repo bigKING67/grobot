@@ -191,7 +191,7 @@
                 .iter()
                 .filter_map(Value::as_str)
                 .collect::<Vec<&str>>(),
-            vec!["config_missing"]
+            vec!["config_missing", "config_invalid"]
         );
 
         let environment_fix = catalog

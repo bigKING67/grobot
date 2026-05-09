@@ -159,7 +159,7 @@ struct ProjectMcpPolicy {
     #[serde(default)]
     session_idle_ttl_secs: Option<u64>,
     #[serde(default)]
-    allow_tools: Vec<String>,
+    allow_tools: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Default)]

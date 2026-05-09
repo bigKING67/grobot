@@ -275,7 +275,7 @@ const TOOL_RECOVERY_CATALOG: &[ToolRecoveryCatalogRow] = &[
         false,
     ),
     ToolRecoveryCatalogRow::new(
-        &["config_missing"],
+        &["config_missing", "config_invalid"],
         "*",
         "ask_user",
         "ask_user_for_config_or_switch_provider",

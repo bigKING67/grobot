@@ -437,3 +437,62 @@
 
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
+
+    #[test]
+    fn overlap_guard_lets_strict_parsers_reject_malformed_controls() {
+        let workspace = make_temp_workspace("overlap-guard-malformed-controls");
+        fs::write(workspace.join("notes.txt"), "alpha\n").expect("write notes");
+        let executor = LocalToolExecutor;
+
+        let input = make_search_semantic_input(&workspace, "malformed-semantic-controls");
+        execute_tool_payload(
+            &executor,
+            &input,
+            TOOL_SEARCH,
+            json!({
+                "query": "alpha"
+            }),
+        )
+        .expect("first broad search should record overlap candidate");
+        let semantic_error = execute_tool_payload(
+            &executor,
+            &input,
+            TOOL_SEMANTIC_SEARCH,
+            json!({
+                "query": "alpha",
+                "include_org": "true"
+            }),
+        )
+        .expect_err("malformed semantic arg should reach semantic parser");
+        assert_eq!(semantic_error.error_class, "invalid_tool_arguments");
+        assert_eq!(
+            semantic_error.message,
+            "semantic_search.include_org must be a boolean"
+        );
+
+        let search_input = make_search_semantic_input(&workspace, "malformed-search-controls");
+        let _ = execute_tool_payload(
+            &executor,
+            &search_input,
+            TOOL_SEMANTIC_SEARCH,
+            json!({
+                "query": "alpha",
+                "include_org": true,
+                "timeout_ms": DEFAULT_SEMANTIC_TIMEOUT_MS
+            }),
+        );
+        let search_error = execute_tool_payload(
+            &executor,
+            &search_input,
+            TOOL_SEARCH,
+            json!({
+                "query": "alpha",
+                "regex": "false"
+            }),
+        )
+        .expect_err("malformed search arg should reach search parser");
+        assert_eq!(search_error.error_class, "invalid_tool_arguments");
+        assert_eq!(search_error.message, "search.regex must be a boolean");
+
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }

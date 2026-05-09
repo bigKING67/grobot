@@ -144,13 +144,13 @@ try {
     "only contextual gateway MCP refinements may be absent from runtime base catalog",
   );
 
-  const configMissingRow = describe.toolRecoveryCatalog.find((row) =>
-    row.errorClasses.length === 1
-    && row.errorClasses[0] === "config_missing"
+  const configRecoveryRow = describe.toolRecoveryCatalog.find((row) =>
+    row.errorClasses.includes("config_missing")
+    && row.errorClasses.includes("config_invalid")
     && row.recommendedNextAction === "ask_user_for_config_or_switch_provider");
-  expect(Boolean(configMissingRow), "config_missing recovery row exists");
-  expectEqual(configMissingRow?.stage, "ask_user", "config_missing recovery stage");
-  expectEqual(configMissingRow?.recoverable, false, "config_missing recovery recoverable");
+  expect(Boolean(configRecoveryRow), "config recovery row exists");
+  expectEqual(configRecoveryRow?.stage, "ask_user", "config recovery stage");
+  expectEqual(configRecoveryRow?.recoverable, false, "config recovery recoverable");
 
   const unknownRiskRow = describe.toolRecoveryCatalog.find((row) =>
     row.riskClass === "unknown" && row.recommendedNextAction === "avoid_unknown_tool");
