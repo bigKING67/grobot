@@ -353,5 +353,6 @@ mod tests {
     include!("tests/http_retry.rs");
     include!("tests/kimi_tooling.rs");
     include!("tests/tool_output_budget.rs");
+    include!("tests/tool_context_config.rs");
     include!("tests/fallback_and_tool_errors.rs");
 }

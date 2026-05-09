@@ -32,9 +32,9 @@ impl ModelExecutor for OpenAiCompatibleModelExecutor {
             })?;
 
         let mut messages = build_runtime_messages(input, &client, &config)?;
-        let max_tool_rounds = resolve_max_tool_rounds(input);
-        let max_recovery_rounds = resolve_max_recovery_rounds(input);
-        let no_tool_fallback_mode = resolve_no_tool_fallback_mode(input);
+        let max_tool_rounds = resolve_max_tool_rounds(input)?;
+        let max_recovery_rounds = resolve_max_recovery_rounds(input)?;
+        let no_tool_fallback_mode = resolve_no_tool_fallback_mode(input)?;
         let mut tool_rounds = 0usize;
         let mut recovery_rounds = 0usize;
         let mut telemetry_events: Vec<ModelTelemetryEvent> = Vec::new();

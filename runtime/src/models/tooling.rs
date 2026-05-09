@@ -315,14 +315,41 @@ fn is_kimi_tool_call_supported_without_local_context(
         )
 }
 
-fn resolve_max_tool_rounds(input: &TurnExecuteInput) -> usize {
-    let parsed = input
+fn invalid_tool_context_config_error(
+    field: &str,
+    raw_value: Value,
+    stage: &str,
+    message: impl Into<String>,
+    recovery_hint: &str,
+) -> ModelExecutionError {
+    model_error_with_fields(
+        model_diagnostic_error("config_invalid", message, "tool_context", stage, recovery_hint),
+        &[
+            ("field", json!(field)),
+            ("raw_value", raw_value),
+            ("required_config", json!(field)),
+        ],
+    )
+}
+
+fn resolve_max_tool_rounds(input: &TurnExecuteInput) -> Result<usize, ModelExecutionError> {
+    let Some(parsed) = input
         .tool_context
         .as_ref()
         .and_then(|context| context.max_tool_rounds)
-        .unwrap_or(8);
-    let clamped = parsed.clamp(1, 32);
-    clamped as usize
+    else {
+        return Ok(8);
+    };
+    if !(1..=32).contains(&parsed) {
+        return Err(invalid_tool_context_config_error(
+            "tool_context.max_tool_rounds",
+            json!(parsed),
+            "max_tool_rounds_validate_range",
+            "tool_context.max_tool_rounds must be an integer between 1 and 32",
+            "omit max_tool_rounds to use the runtime default, or provide a value within 1..32",
+        ));
+    }
+    Ok(parsed as usize)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -332,26 +359,47 @@ enum NoToolFallbackMode {
     Strict,
 }
 
-fn resolve_no_tool_fallback_mode(input: &TurnExecuteInput) -> NoToolFallbackMode {
-    let normalized = input
+fn resolve_no_tool_fallback_mode(
+    input: &TurnExecuteInput,
+) -> Result<NoToolFallbackMode, ModelExecutionError> {
+    let Some(raw) = input
         .tool_context
         .as_ref()
         .and_then(|context| context.no_tool_fallback_mode.as_ref())
-        .map(|value| value.trim().to_ascii_lowercase())
-        .unwrap_or_else(|| "safe".to_string());
+    else {
+        return Ok(NoToolFallbackMode::Safe);
+    };
+    let normalized = raw.trim().to_ascii_lowercase();
     match normalized.as_str() {
-        "off" => NoToolFallbackMode::Off,
-        "strict" => NoToolFallbackMode::Strict,
-        _ => NoToolFallbackMode::Safe,
+        "off" => Ok(NoToolFallbackMode::Off),
+        "safe" => Ok(NoToolFallbackMode::Safe),
+        "strict" => Ok(NoToolFallbackMode::Strict),
+        _ => Err(invalid_tool_context_config_error(
+            "tool_context.no_tool_fallback_mode",
+            json!(raw),
+            "no_tool_fallback_mode_validate",
+            "tool_context.no_tool_fallback_mode must be off, safe, or strict",
+            "omit no_tool_fallback_mode to use safe mode, or set off/safe/strict explicitly",
+        )),
     }
 }
 
-fn resolve_max_recovery_rounds(input: &TurnExecuteInput) -> usize {
-    let parsed = input
+fn resolve_max_recovery_rounds(input: &TurnExecuteInput) -> Result<usize, ModelExecutionError> {
+    let Some(parsed) = input
         .tool_context
         .as_ref()
         .and_then(|context| context.max_recovery_rounds)
-        .unwrap_or(2);
-    let clamped = parsed.clamp(0, 8);
-    clamped as usize
+    else {
+        return Ok(2);
+    };
+    if parsed > 8 {
+        return Err(invalid_tool_context_config_error(
+            "tool_context.max_recovery_rounds",
+            json!(parsed),
+            "max_recovery_rounds_validate_range",
+            "tool_context.max_recovery_rounds must be an integer between 0 and 8",
+            "omit max_recovery_rounds to use the runtime default, or provide a value within 0..8",
+        ));
+    }
+    Ok(parsed as usize)
 }
