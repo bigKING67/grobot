@@ -7,6 +7,8 @@ import {
   normalizeMemoryClassification,
   normalizeMemoryKind,
   normalizeMemoryScope,
+  type MemoryClassification,
+  type MemoryKind,
   type MemoryScope,
 } from "../services/memory-lifecycle";
 import { requireManagementToken } from "./management-routes-auth";
@@ -75,6 +77,64 @@ function resolveMemoryBodyScope(
   return {
     ok: true,
     value: scope,
+  };
+}
+
+function resolveMemoryQueryKind(
+  query: Record<string, string[]>,
+): ParseInputResult<MemoryKind | undefined> {
+  const kindResult = queryOptionalNonEmptyString(query, "kind");
+  if (!kindResult.ok) {
+    return kindResult;
+  }
+  if (kindResult.value === undefined) {
+    return {
+      ok: true,
+      value: undefined,
+    };
+  }
+  const kindRaw = kindResult.value.toLowerCase();
+  const kind = normalizeMemoryKind(kindRaw);
+  if (!kind) {
+    return {
+      ok: false,
+      error: "invalid_kind",
+      field: "kind",
+      detail: kindRaw,
+    };
+  }
+  return {
+    ok: true,
+    value: kind,
+  };
+}
+
+function resolveMemoryQueryClassification(
+  query: Record<string, string[]>,
+): ParseInputResult<MemoryClassification | undefined> {
+  const classificationResult = queryOptionalNonEmptyString(query, "classification");
+  if (!classificationResult.ok) {
+    return classificationResult;
+  }
+  if (classificationResult.value === undefined) {
+    return {
+      ok: true,
+      value: undefined,
+    };
+  }
+  const classificationRaw = classificationResult.value.toLowerCase();
+  const classification = normalizeMemoryClassification(classificationRaw);
+  if (!classification) {
+    return {
+      ok: false,
+      error: "invalid_classification",
+      field: "classification",
+      detail: classificationRaw,
+    };
+  }
+  return {
+    ok: true,
+    value: classification,
   };
 }
 
@@ -217,25 +277,17 @@ export async function dispatchManagementMemoryRoutes(
     const includeSecret = includeSecretResult.value;
     const effectiveIncludeRestricted = includeRestricted || includeSecret;
 
-    const kindRaw = context.queryParamStr(query, "kind", "").toLowerCase();
-    const kindFilter = kindRaw ? normalizeMemoryKind(kindRaw) : undefined;
-    if (kindRaw && !kindFilter) {
-      context.writeJson(response, 400, {
-        error: "invalid_kind",
-        detail: kindRaw,
-      });
-      return true;
+    const kindResult = resolveMemoryQueryKind(query);
+    if (!kindResult.ok) {
+      return writeManagementInputError(response, context, kindResult);
     }
+    const kindFilter = kindResult.value;
 
-    const classificationRaw = context.queryParamStr(query, "classification", "").toLowerCase();
-    const classificationFilter = classificationRaw ? normalizeMemoryClassification(classificationRaw) : undefined;
-    if (classificationRaw && !classificationFilter) {
-      context.writeJson(response, 400, {
-        error: "invalid_classification",
-        detail: classificationRaw,
-      });
-      return true;
+    const classificationResult = resolveMemoryQueryClassification(query);
+    if (!classificationResult.ok) {
+      return writeManagementInputError(response, context, classificationResult);
     }
+    const classificationFilter = classificationResult.value;
 
     const queryText = context.queryParamStr(query, "query", "");
     const limitResult = queryInt(query, "limit", 50, 1, 1000);

@@ -205,6 +205,22 @@ async function runMemoryInputValidation(options) {
       timeoutMs: 1_000,
       headers,
     });
+    const invalidListKindEmpty = await requestJson(`${memoryUrl}?kind=`, {
+      timeoutMs: 1_000,
+      headers,
+    });
+    const invalidListKindUnknown = await requestJson(`${memoryUrl}?kind=unknown`, {
+      timeoutMs: 1_000,
+      headers,
+    });
+    const invalidListClassificationEmpty = await requestJson(`${memoryUrl}?classification=`, {
+      timeoutMs: 1_000,
+      headers,
+    });
+    const invalidListClassificationUnknown = await requestJson(`${memoryUrl}?classification=topsecret`, {
+      timeoutMs: 1_000,
+      headers,
+    });
     const invalidExportIncludeSecret = await requestJson(`${exportUrl}?include_secret=maybe`, {
       timeoutMs: 1_000,
       headers,
@@ -445,6 +461,18 @@ async function runMemoryInputValidation(options) {
       invalid_list_scope_status: invalidListScope.status,
       invalid_list_scope_error: invalidListScope.body.error ?? null,
       invalid_list_scope_field: invalidListScope.body.field ?? null,
+      invalid_list_kind_empty_status: invalidListKindEmpty.status,
+      invalid_list_kind_empty_error: invalidListKindEmpty.body.error ?? null,
+      invalid_list_kind_empty_field: invalidListKindEmpty.body.field ?? null,
+      invalid_list_kind_unknown_status: invalidListKindUnknown.status,
+      invalid_list_kind_unknown_error: invalidListKindUnknown.body.error ?? null,
+      invalid_list_kind_unknown_field: invalidListKindUnknown.body.field ?? null,
+      invalid_list_classification_empty_status: invalidListClassificationEmpty.status,
+      invalid_list_classification_empty_error: invalidListClassificationEmpty.body.error ?? null,
+      invalid_list_classification_empty_field: invalidListClassificationEmpty.body.field ?? null,
+      invalid_list_classification_unknown_status: invalidListClassificationUnknown.status,
+      invalid_list_classification_unknown_error: invalidListClassificationUnknown.body.error ?? null,
+      invalid_list_classification_unknown_field: invalidListClassificationUnknown.body.field ?? null,
       invalid_export_include_secret_status: invalidExportIncludeSecret.status,
       invalid_export_include_secret_error: invalidExportIncludeSecret.body.error ?? null,
       invalid_export_include_secret_field: invalidExportIncludeSecret.body.field ?? null,

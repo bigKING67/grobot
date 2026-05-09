@@ -291,6 +291,18 @@ export async function runRuntimeDescribeFallbackSmoke() {
   assert.equal(memoryInputPayload.invalid_list_scope_status, 400);
   assert.equal(memoryInputPayload.invalid_list_scope_error, "invalid_scope");
   assert.equal(memoryInputPayload.invalid_list_scope_field, "scope");
+  assert.equal(memoryInputPayload.invalid_list_kind_empty_status, 400);
+  assert.equal(memoryInputPayload.invalid_list_kind_empty_error, "invalid_kind");
+  assert.equal(memoryInputPayload.invalid_list_kind_empty_field, "kind");
+  assert.equal(memoryInputPayload.invalid_list_kind_unknown_status, 400);
+  assert.equal(memoryInputPayload.invalid_list_kind_unknown_error, "invalid_kind");
+  assert.equal(memoryInputPayload.invalid_list_kind_unknown_field, "kind");
+  assert.equal(memoryInputPayload.invalid_list_classification_empty_status, 400);
+  assert.equal(memoryInputPayload.invalid_list_classification_empty_error, "invalid_classification");
+  assert.equal(memoryInputPayload.invalid_list_classification_empty_field, "classification");
+  assert.equal(memoryInputPayload.invalid_list_classification_unknown_status, 400);
+  assert.equal(memoryInputPayload.invalid_list_classification_unknown_error, "invalid_classification");
+  assert.equal(memoryInputPayload.invalid_list_classification_unknown_field, "classification");
   assert.equal(memoryInputPayload.invalid_export_include_secret_status, 400);
   assert.equal(memoryInputPayload.invalid_export_include_secret_error, "invalid_include_secret");
   assert.equal(memoryInputPayload.invalid_export_include_secret_field, "include_secret");
