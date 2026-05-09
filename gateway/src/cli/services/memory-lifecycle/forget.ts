@@ -27,9 +27,19 @@ export function forgetMemoryRows(
       },
     };
   }
+  if (normalizedIds.length > MANAGEMENT_MEMORY_MUTATION_BATCH_LIMIT) {
+    return {
+      ok: false,
+      result: {
+        error: "invalid_record_ids_batch_size",
+        record_id_count: normalizedIds.length,
+        batch_limit: MANAGEMENT_MEMORY_MUTATION_BATCH_LIMIT,
+      },
+    };
+  }
 
-  const targetIds = normalizedIds.slice(0, MANAGEMENT_MEMORY_MUTATION_BATCH_LIMIT);
-  const truncatedCount = Math.max(0, normalizedIds.length - targetIds.length);
+  const targetIds = normalizedIds;
+  const truncatedCount = 0;
   const store = memoryRecordsBySession.get(sessionId) ?? [];
   const forgottenIds: string[] = [];
   const alreadyArchivedIds: string[] = [];

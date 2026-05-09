@@ -42,9 +42,19 @@ export function importMemoryRows(
       },
     };
   }
+  if (rawRecords.length > MANAGEMENT_MEMORY_MUTATION_BATCH_LIMIT) {
+    return {
+      ok: false,
+      result: {
+        error: "invalid_record_batch_size",
+        record_count: rawRecords.length,
+        batch_limit: MANAGEMENT_MEMORY_MUTATION_BATCH_LIMIT,
+      },
+    };
+  }
 
-  const accepted = rawRecords.slice(0, MANAGEMENT_MEMORY_MUTATION_BATCH_LIMIT);
-  const truncatedCount = Math.max(0, rawRecords.length - accepted.length);
+  const accepted = rawRecords;
+  const truncatedCount = 0;
   const invalidRows: Array<Record<string, unknown>> = [];
   const normalizedRows: Array<Record<string, unknown>> = [];
   const scopeRoot = buildMemoryScopeRoot(sessionId, scope);

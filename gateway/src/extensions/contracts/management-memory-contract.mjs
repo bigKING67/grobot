@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
 
+const MANAGEMENT_MEMORY_MUTATION_BATCH_LIMIT = 200;
+
 function parseArgs(argv) {
   const command = argv[0] ?? "";
   if (!command) {
@@ -214,6 +216,17 @@ async function runMemoryInputValidation(options) {
         records: [{ text: "x" }],
       }),
     });
+    const oversizedImportRecords = await requestJson(importUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        records: Array.from(
+          { length: MANAGEMENT_MEMORY_MUTATION_BATCH_LIMIT + 1 },
+          (_, index) => ({ text: `oversized import ${String(index)}` }),
+        ),
+      }),
+    });
     const invalidForgetDryRun = await requestJson(forgetUrl, {
       method: "POST",
       timeoutMs: 1_000,
@@ -254,6 +267,17 @@ async function runMemoryInputValidation(options) {
       body: jsonBody({
         ids: ["x"],
         reason: "",
+      }),
+    });
+    const oversizedForgetIds = await requestJson(forgetUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        ids: Array.from(
+          { length: MANAGEMENT_MEMORY_MUTATION_BATCH_LIMIT + 1 },
+          (_, index) => `forget-${String(index)}`,
+        ),
       }),
     });
     const invalidLifecycleDryRun = await requestJson(lifecycleUrl, {
@@ -345,6 +369,10 @@ async function runMemoryInputValidation(options) {
       invalid_import_source_status: invalidImportSource.status,
       invalid_import_source_error: invalidImportSource.body.error ?? null,
       invalid_import_source_field: invalidImportSource.body.field ?? null,
+      oversized_import_records_status: oversizedImportRecords.status,
+      oversized_import_records_error: oversizedImportRecords.body.error ?? null,
+      oversized_import_records_detail_error: oversizedImportRecords.body.detail_error ?? null,
+      oversized_import_records_batch_limit: oversizedImportRecords.body.batch_limit ?? null,
       invalid_forget_dry_run_status: invalidForgetDryRun.status,
       invalid_forget_dry_run_error: invalidForgetDryRun.body.error ?? null,
       invalid_forget_dry_run_field: invalidForgetDryRun.body.field ?? null,
@@ -360,6 +388,10 @@ async function runMemoryInputValidation(options) {
       invalid_forget_reason_status: invalidForgetReason.status,
       invalid_forget_reason_error: invalidForgetReason.body.error ?? null,
       invalid_forget_reason_field: invalidForgetReason.body.field ?? null,
+      oversized_forget_ids_status: oversizedForgetIds.status,
+      oversized_forget_ids_error: oversizedForgetIds.body.error ?? null,
+      oversized_forget_ids_detail_error: oversizedForgetIds.body.detail_error ?? null,
+      oversized_forget_ids_batch_limit: oversizedForgetIds.body.batch_limit ?? null,
       invalid_lifecycle_dry_run_status: invalidLifecycleDryRun.status,
       invalid_lifecycle_dry_run_error: invalidLifecycleDryRun.body.error ?? null,
       invalid_lifecycle_dry_run_field: invalidLifecycleDryRun.body.field ?? null,

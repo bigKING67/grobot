@@ -297,6 +297,10 @@ export async function runRuntimeDescribeFallbackSmoke() {
   assert.equal(memoryInputPayload.invalid_import_source_status, 400);
   assert.equal(memoryInputPayload.invalid_import_source_error, "invalid_source");
   assert.equal(memoryInputPayload.invalid_import_source_field, "source");
+  assert.equal(memoryInputPayload.oversized_import_records_status, 400);
+  assert.equal(memoryInputPayload.oversized_import_records_error, "memory_import_failed");
+  assert.equal(memoryInputPayload.oversized_import_records_detail_error, "invalid_record_batch_size");
+  assert.equal(Number(memoryInputPayload.oversized_import_records_batch_limit), 200);
   assert.equal(memoryInputPayload.invalid_forget_dry_run_status, 400);
   assert.equal(memoryInputPayload.invalid_forget_dry_run_error, "invalid_dry_run");
   assert.equal(memoryInputPayload.invalid_forget_dry_run_field, "dry_run");
@@ -312,6 +316,10 @@ export async function runRuntimeDescribeFallbackSmoke() {
   assert.equal(memoryInputPayload.invalid_forget_reason_status, 400);
   assert.equal(memoryInputPayload.invalid_forget_reason_error, "invalid_reason");
   assert.equal(memoryInputPayload.invalid_forget_reason_field, "reason");
+  assert.equal(memoryInputPayload.oversized_forget_ids_status, 400);
+  assert.equal(memoryInputPayload.oversized_forget_ids_error, "memory_forget_failed");
+  assert.equal(memoryInputPayload.oversized_forget_ids_detail_error, "invalid_record_ids_batch_size");
+  assert.equal(Number(memoryInputPayload.oversized_forget_ids_batch_limit), 200);
   assert.equal(memoryInputPayload.invalid_lifecycle_dry_run_status, 400);
   assert.equal(memoryInputPayload.invalid_lifecycle_dry_run_error, "invalid_dry_run");
   assert.equal(memoryInputPayload.invalid_lifecycle_dry_run_field, "dry_run");
