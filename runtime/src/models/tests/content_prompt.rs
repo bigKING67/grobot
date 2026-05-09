@@ -249,6 +249,238 @@
     }
 
     #[test]
+    fn runtime_model_config_rejects_explicit_out_of_range_timeout_controls() {
+        let _guard = lock_env();
+        let _restore = apply_env(&[
+            (ENV_BASE_URL, Some("https://api.example.test/v1")),
+            (ENV_API_KEY, Some("runtime-test-key")),
+            (ENV_MODEL, Some("test-model")),
+            (ENV_RUNTIME_TIMEOUT_MS, Some("999")),
+        ]);
+        let env_error =
+            load_runtime_model_config(None).expect_err("env timeout below minimum should fail");
+        assert_eq!(env_error.error_class, "config_invalid");
+        let env_data = env_error.data.as_ref().expect("env timeout diagnostic data");
+        assert_eq!(
+            env_data["field"].as_str(),
+            Some(ENV_RUNTIME_TIMEOUT_MS)
+        );
+        assert_eq!(
+            env_data["stage"].as_str(),
+            Some("runtime_timeout_validate_range")
+        );
+
+        let model_config_input = RuntimeModelConfigInput {
+            base_url: Some("https://api.example.test/v1".to_string()),
+            api_key: Some("runtime-test-key".to_string()),
+            model: Some("test-model".to_string()),
+            timeout_ms: Some(999),
+            provider_kind: Some("openai_compatible".to_string()),
+            provider_options: None,
+        };
+        let override_error = load_runtime_model_config(Some(&model_config_input))
+            .expect_err("explicit model_config.timeout_ms below minimum should fail");
+        assert_eq!(override_error.error_class, "config_invalid");
+        let override_data = override_error
+            .data
+            .as_ref()
+            .expect("override timeout diagnostic data");
+        assert_eq!(
+            override_data["field"].as_str(),
+            Some("model_config.timeout_ms")
+        );
+        assert_eq!(
+            override_data["stage"].as_str(),
+            Some("runtime_timeout_override_validate_range")
+        );
+    }
+
+    #[test]
+    fn runtime_model_config_rejects_unknown_explicit_provider_kind() {
+        let model_config_input = RuntimeModelConfigInput {
+            base_url: Some("https://api.example.test/v1".to_string()),
+            api_key: Some("runtime-test-key".to_string()),
+            model: Some("test-model".to_string()),
+            timeout_ms: Some(5_000),
+            provider_kind: Some("moon".to_string()),
+            provider_options: None,
+        };
+        let error = load_runtime_model_config(Some(&model_config_input))
+            .expect_err("unknown provider_kind should fail closed");
+        assert_eq!(error.error_class, "config_invalid");
+        let data = error.data.as_ref().expect("provider kind diagnostic data");
+        assert_eq!(
+            data["field"].as_str(),
+            Some("model_config.provider_kind")
+        );
+        assert_eq!(data["raw_value"].as_str(), Some("moon"));
+        assert_eq!(data["stage"].as_str(), Some("provider_kind_validate"));
+    }
+
+    #[test]
+    fn runtime_kimi_options_reject_explicit_malformed_controls() {
+        fn expect_invalid_kimi_field(
+            kimi: RuntimeKimiOptionsInput,
+            expected_field: &str,
+            expected_stage: &str,
+        ) {
+            let model_config_input = RuntimeModelConfigInput {
+                base_url: Some("https://api.moonshot.cn/v1".to_string()),
+                api_key: Some("runtime-test-key".to_string()),
+                model: Some("kimi-k2.5".to_string()),
+                timeout_ms: Some(5_000),
+                provider_kind: Some("kimi".to_string()),
+                provider_options: Some(RuntimeProviderOptionsInput {
+                    kimi: Some(kimi),
+                }),
+            };
+            let error = load_runtime_model_config(Some(&model_config_input))
+                .expect_err("invalid kimi option should fail closed");
+            assert_eq!(error.error_class, "config_invalid");
+            let data = error.data.as_ref().expect("kimi option diagnostic data");
+            assert_eq!(data["field"].as_str(), Some(expected_field));
+            assert_eq!(data["stage"].as_str(), Some(expected_stage));
+        }
+
+        let base = RuntimeKimiOptionsInput {
+            web_search_mode: None,
+            disable_thinking_on_builtin_web_search: None,
+            official_tools_allowlist: None,
+            official_tool_formulas: None,
+            prompt_cache: None,
+            max_tokens: None,
+            stream: None,
+            temperature: None,
+            top_p: None,
+            files_enabled: None,
+            allow_file_admin: None,
+        };
+
+        expect_invalid_kimi_field(
+            RuntimeKimiOptionsInput {
+                web_search_mode: Some("always_on".to_string()),
+                ..base.clone()
+            },
+            "provider_options.kimi.web_search_mode",
+            "kimi_web_search_mode_validate",
+        );
+        expect_invalid_kimi_field(
+            RuntimeKimiOptionsInput {
+                official_tools_allowlist: Some(vec![]),
+                ..base.clone()
+            },
+            "provider_options.kimi.official_tools_allowlist",
+            "kimi_official_tools_allowlist_validate",
+        );
+        expect_invalid_kimi_field(
+            RuntimeKimiOptionsInput {
+                official_tools_allowlist: Some(vec![
+                    "web-search".to_string(),
+                    "web_search".to_string(),
+                ]),
+                ..base.clone()
+            },
+            "provider_options.kimi.official_tools_allowlist",
+            "kimi_official_tools_allowlist_validate",
+        );
+        expect_invalid_kimi_field(
+            RuntimeKimiOptionsInput {
+                max_tokens: Some(100),
+                ..base.clone()
+            },
+            "provider_options.kimi.max_tokens",
+            "kimi_max_tokens_validate_range",
+        );
+        expect_invalid_kimi_field(
+            RuntimeKimiOptionsInput {
+                temperature: Some(3.0),
+                ..base.clone()
+            },
+            "provider_options.kimi.temperature",
+            "kimi_temperature_validate_range",
+        );
+        expect_invalid_kimi_field(
+            RuntimeKimiOptionsInput {
+                top_p: Some(1.5),
+                ..base.clone()
+            },
+            "provider_options.kimi.top_p",
+            "kimi_top_p_validate_range",
+        );
+        expect_invalid_kimi_field(
+            RuntimeKimiOptionsInput {
+                prompt_cache: Some(RuntimePromptCacheOptionsInput {
+                    enabled: Some(true),
+                    strategy: Some("all_messages".to_string()),
+                    user_last_n: None,
+                    capability: None,
+                }),
+                ..base.clone()
+            },
+            "provider_options.kimi.prompt_cache.strategy",
+            "prompt_cache_strategy_validate",
+        );
+        expect_invalid_kimi_field(
+            RuntimeKimiOptionsInput {
+                prompt_cache: Some(RuntimePromptCacheOptionsInput {
+                    enabled: Some(true),
+                    strategy: None,
+                    user_last_n: Some(13),
+                    capability: None,
+                }),
+                ..base.clone()
+            },
+            "provider_options.kimi.prompt_cache.user_last_n",
+            "prompt_cache_user_last_n_validate_range",
+        );
+        expect_invalid_kimi_field(
+            RuntimeKimiOptionsInput {
+                prompt_cache: Some(RuntimePromptCacheOptionsInput {
+                    enabled: Some(true),
+                    strategy: None,
+                    user_last_n: None,
+                    capability: Some("openai_compatible".to_string()),
+                }),
+                ..base
+            },
+            "provider_options.kimi.prompt_cache.capability",
+            "prompt_cache_capability_validate",
+        );
+    }
+
+    #[test]
+    fn runtime_model_auto_cache_ttl_rejects_malformed_env() {
+        let _guard = lock_env();
+        let server = start_mock_http_server("200 OK", r#"{"data":[{"id":"model-a"}]}"#);
+        let model_config_input = RuntimeModelConfigInput {
+            base_url: Some(server.base_url.clone()),
+            api_key: Some("runtime-test-key".to_string()),
+            model: Some("auto".to_string()),
+            timeout_ms: Some(5_000),
+            provider_kind: Some("openai_compatible".to_string()),
+            provider_options: None,
+        };
+        let _restore = apply_env(&[(ENV_MODEL_AUTO_CACHE_TTL_SECS, Some("bad"))]);
+        let error = load_runtime_model_config(Some(&model_config_input))
+            .expect_err("malformed auto cache ttl should fail closed");
+        assert_eq!(error.error_class, "config_invalid");
+        let data = error.data.as_ref().expect("cache ttl diagnostic data");
+        assert_eq!(
+            data["env_key"].as_str(),
+            Some(ENV_MODEL_AUTO_CACHE_TTL_SECS)
+        );
+        assert_eq!(
+            data["stage"].as_str(),
+            Some("model_auto_cache_ttl_parse")
+        );
+        let calls = server.finish();
+        assert!(
+            calls.is_empty(),
+            "invalid cache TTL must fail before fetching /models"
+        );
+    }
+
+    #[test]
     fn pick_auto_model_prioritizes_kimi_k25_family() {
         let models = vec![
             "moonshot-v1-128k-vision-preview".to_string(),

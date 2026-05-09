@@ -60,6 +60,86 @@ fn read_required_env_or_override(
     read_required_env(key)
 }
 
+fn invalid_model_config_error(
+    field: &str,
+    raw_value: Value,
+    stage: &str,
+    message: impl Into<String>,
+    recovery_hint: &str,
+) -> ModelExecutionError {
+    model_error_with_fields(
+        model_diagnostic_error(
+            "config_invalid",
+            message,
+            "model_config",
+            stage,
+            recovery_hint,
+        ),
+        &[
+            ("field", json!(field)),
+            ("raw_value", raw_value),
+            ("required_config", json!(field)),
+        ],
+    )
+}
+
+fn validate_model_config_u64_range(
+    field: &str,
+    value: u64,
+    min: u64,
+    max: u64,
+    stage: &str,
+) -> Result<u64, ModelExecutionError> {
+    if value < min || value > max {
+        return Err(invalid_model_config_error(
+            field,
+            json!(value),
+            stage,
+            format!("{field} must be an integer between {min} and {max}"),
+            "omit the field to use the runtime default or provide a value within the documented range",
+        ));
+    }
+    Ok(value)
+}
+
+fn validate_model_config_u32_range(
+    field: &str,
+    value: u32,
+    min: u32,
+    max: u32,
+    stage: &str,
+) -> Result<u32, ModelExecutionError> {
+    if value < min || value > max {
+        return Err(invalid_model_config_error(
+            field,
+            json!(value),
+            stage,
+            format!("{field} must be an integer between {min} and {max}"),
+            "omit the field to use the runtime default or provide a value within the documented range",
+        ));
+    }
+    Ok(value)
+}
+
+fn validate_model_config_f64_range(
+    field: &str,
+    value: f64,
+    min: f64,
+    max: f64,
+    stage: &str,
+) -> Result<f64, ModelExecutionError> {
+    if !value.is_finite() || value < min || value > max {
+        return Err(invalid_model_config_error(
+            field,
+            json!(value),
+            stage,
+            format!("{field} must be a number between {min} and {max}"),
+            "omit the field to use the runtime default or provide a value within the documented range",
+        ));
+    }
+    Ok(value)
+}
+
 fn read_timeout_ms() -> Result<u64, ModelExecutionError> {
     let raw = env::var(ENV_RUNTIME_TIMEOUT_MS).unwrap_or_default();
     let trimmed = raw.trim();
@@ -78,27 +158,55 @@ fn read_timeout_ms() -> Result<u64, ModelExecutionError> {
             &[("env_key", json!(ENV_RUNTIME_TIMEOUT_MS)), ("raw_value", json!(trimmed))],
         )
     })?;
-    let clamped = parsed.clamp(MIN_RUNTIME_TIMEOUT_MS, MAX_RUNTIME_TIMEOUT_MS);
-    Ok(clamped)
+    validate_model_config_u64_range(
+        ENV_RUNTIME_TIMEOUT_MS,
+        parsed,
+        MIN_RUNTIME_TIMEOUT_MS,
+        MAX_RUNTIME_TIMEOUT_MS,
+        "runtime_timeout_validate_range",
+    )
 }
 
 fn read_timeout_ms_with_override(
     override_value: Option<u64>,
 ) -> Result<u64, ModelExecutionError> {
     if let Some(parsed) = override_value {
-        return Ok(parsed.clamp(MIN_RUNTIME_TIMEOUT_MS, MAX_RUNTIME_TIMEOUT_MS));
+        return validate_model_config_u64_range(
+            "model_config.timeout_ms",
+            parsed,
+            MIN_RUNTIME_TIMEOUT_MS,
+            MAX_RUNTIME_TIMEOUT_MS,
+            "runtime_timeout_override_validate_range",
+        );
     }
     read_timeout_ms()
 }
 
-fn parse_cache_ttl_secs() -> u64 {
+fn parse_cache_ttl_secs() -> Result<u64, ModelExecutionError> {
     let raw = env::var(ENV_MODEL_AUTO_CACHE_TTL_SECS).unwrap_or_default();
     let trimmed = raw.trim();
     if trimmed.is_empty() {
-        return DEFAULT_MODEL_AUTO_CACHE_TTL_SECS;
+        return Ok(DEFAULT_MODEL_AUTO_CACHE_TTL_SECS);
     }
-    let parsed = trimmed.parse::<u64>().unwrap_or(DEFAULT_MODEL_AUTO_CACHE_TTL_SECS);
-    parsed.min(86_400)
+    let parsed = trimmed.parse::<u64>().map_err(|_| {
+        model_error_with_fields(
+            model_diagnostic_error(
+                "config_invalid",
+                format!("invalid model auto cache ttl in {ENV_MODEL_AUTO_CACHE_TTL_SECS}: {trimmed}"),
+                "model_config",
+                "model_auto_cache_ttl_parse",
+                "set GROBOT_MODEL_AUTO_CACHE_TTL_SECS to an integer number of seconds between 0 and 86400",
+            ),
+            &[("env_key", json!(ENV_MODEL_AUTO_CACHE_TTL_SECS)), ("raw_value", json!(trimmed))],
+        )
+    })?;
+    validate_model_config_u64_range(
+        ENV_MODEL_AUTO_CACHE_TTL_SECS,
+        parsed,
+        0,
+        86_400,
+        "model_auto_cache_ttl_validate_range",
+    )
 }
 
 fn now_epoch_millis() -> u128 {
@@ -113,107 +221,160 @@ fn model_catalog_cache() -> &'static Mutex<HashMap<String, ModelCatalogCacheEntr
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn parse_provider_kind(raw_kind: Option<&str>, base_url: &str, raw_model: &str) -> ProviderKind {
+fn parse_provider_kind(
+    raw_kind: Option<&str>,
+    base_url: &str,
+    raw_model: &str,
+) -> Result<ProviderKind, ModelExecutionError> {
     let normalized = raw_kind
         .map(str::trim)
         .map(str::to_ascii_lowercase)
         .unwrap_or_default();
     if normalized == "kimi" {
-        return ProviderKind::Kimi;
+        return Ok(ProviderKind::Kimi);
     }
     if normalized == "openai_compatible" || normalized == "openai-compatible" {
-        return ProviderKind::OpenAiCompatible;
+        return Ok(ProviderKind::OpenAiCompatible);
+    }
+    if !normalized.is_empty() {
+        return Err(invalid_model_config_error(
+            "model_config.provider_kind",
+            json!(raw_kind.unwrap_or_default()),
+            "provider_kind_validate",
+            "model_config.provider_kind must be kimi, openai_compatible, or openai-compatible",
+            "omit provider_kind to derive it from base_url/model, or set it to kimi/openai_compatible",
+        ));
     }
     let model = raw_model.trim().to_ascii_lowercase();
     if base_url.to_ascii_lowercase().contains("moonshot.cn")
         || model.starts_with("kimi")
         || model.starts_with("moonshot")
     {
-        return ProviderKind::Kimi;
+        return Ok(ProviderKind::Kimi);
     }
-    ProviderKind::OpenAiCompatible
+    Ok(ProviderKind::OpenAiCompatible)
 }
 
-fn parse_kimi_web_search_mode(raw: Option<&str>) -> KimiWebSearchMode {
+fn parse_kimi_web_search_mode(raw: Option<&str>) -> Result<KimiWebSearchMode, ModelExecutionError> {
     let normalized = raw
         .map(str::trim)
         .map(str::to_ascii_lowercase)
         .unwrap_or_default();
     match normalized.as_str() {
-        "builtin_only" => KimiWebSearchMode::BuiltinOnly,
-        "official_only" => KimiWebSearchMode::OfficialOnly,
-        "off" => KimiWebSearchMode::Off,
-        "builtin_preferred" => KimiWebSearchMode::BuiltinPreferred,
-        _ => KimiWebSearchMode::BuiltinPreferred,
+        "" | "builtin_preferred" => Ok(KimiWebSearchMode::BuiltinPreferred),
+        "builtin_only" => Ok(KimiWebSearchMode::BuiltinOnly),
+        "official_only" => Ok(KimiWebSearchMode::OfficialOnly),
+        "off" => Ok(KimiWebSearchMode::Off),
+        _ => Err(invalid_model_config_error(
+            "provider_options.kimi.web_search_mode",
+            json!(raw.unwrap_or_default()),
+            "kimi_web_search_mode_validate",
+            "provider_options.kimi.web_search_mode must be builtin_preferred, builtin_only, official_only, or off",
+            "omit web_search_mode to use builtin_preferred, or set one of the supported values",
+        )),
     }
 }
 
-fn parse_prompt_cache_strategy(raw: Option<&str>) -> PromptCacheStrategy {
+fn parse_prompt_cache_strategy(raw: Option<&str>) -> Result<PromptCacheStrategy, ModelExecutionError> {
     let normalized = raw
         .map(str::trim)
         .map(str::to_ascii_lowercase)
         .unwrap_or_default();
     match normalized.as_str() {
-        "user_last_n" => PromptCacheStrategy::UserLastN,
-        _ => PromptCacheStrategy::UserLastN,
+        "" | "user_last_n" => Ok(PromptCacheStrategy::UserLastN),
+        _ => Err(invalid_model_config_error(
+            "provider_options.kimi.prompt_cache.strategy",
+            json!(raw.unwrap_or_default()),
+            "prompt_cache_strategy_validate",
+            "provider_options.kimi.prompt_cache.strategy must be user_last_n",
+            "omit prompt_cache.strategy to use user_last_n, or set it to user_last_n",
+        )),
     }
 }
 
-fn parse_prompt_cache_capability(raw: Option<&str>) -> PromptCacheCapability {
+fn parse_prompt_cache_capability(
+    raw: Option<&str>,
+) -> Result<PromptCacheCapability, ModelExecutionError> {
     let normalized = raw
         .map(str::trim)
         .map(str::to_ascii_lowercase)
         .unwrap_or_default();
     match normalized.as_str() {
         "anthropic_compatible" | "anthropic-compatible" => {
-            PromptCacheCapability::AnthropicCompatible
+            Ok(PromptCacheCapability::AnthropicCompatible)
         }
-        "unsupported" | "none" | "off" => PromptCacheCapability::Unsupported,
-        _ => PromptCacheCapability::Unsupported,
+        "" | "unsupported" | "none" | "off" => Ok(PromptCacheCapability::Unsupported),
+        _ => Err(invalid_model_config_error(
+            "provider_options.kimi.prompt_cache.capability",
+            json!(raw.unwrap_or_default()),
+            "prompt_cache_capability_validate",
+            "provider_options.kimi.prompt_cache.capability must be anthropic_compatible or unsupported",
+            "omit prompt_cache.capability to use unsupported, or set a supported capability",
+        )),
     }
 }
 
-fn normalize_kimi_max_tokens(raw: Option<u32>) -> u32 {
+fn normalize_kimi_max_tokens(raw: Option<u32>) -> Result<u32, ModelExecutionError> {
     const DEFAULT_KIMI_MAX_TOKENS: u32 = 262_144;
     const MIN_KIMI_MAX_TOKENS: u32 = 1_024;
-    let value = raw.unwrap_or(DEFAULT_KIMI_MAX_TOKENS);
-    value.clamp(MIN_KIMI_MAX_TOKENS, DEFAULT_KIMI_MAX_TOKENS)
+    let Some(value) = raw else {
+        return Ok(DEFAULT_KIMI_MAX_TOKENS);
+    };
+    validate_model_config_u32_range(
+        "provider_options.kimi.max_tokens",
+        value,
+        MIN_KIMI_MAX_TOKENS,
+        DEFAULT_KIMI_MAX_TOKENS,
+        "kimi_max_tokens_validate_range",
+    )
 }
 
-fn normalize_kimi_temperature(raw: Option<f64>) -> f64 {
+fn normalize_kimi_temperature(raw: Option<f64>) -> Result<f64, ModelExecutionError> {
     const DEFAULT_KIMI_TEMPERATURE: f64 = 1.0;
     let Some(value) = raw else {
-        return DEFAULT_KIMI_TEMPERATURE;
+        return Ok(DEFAULT_KIMI_TEMPERATURE);
     };
-    if !value.is_finite() {
-        return DEFAULT_KIMI_TEMPERATURE;
-    }
-    value.clamp(0.0, 2.0)
+    validate_model_config_f64_range(
+        "provider_options.kimi.temperature",
+        value,
+        0.0,
+        2.0,
+        "kimi_temperature_validate_range",
+    )
 }
 
-fn normalize_kimi_top_p(raw: Option<f64>) -> f64 {
+fn normalize_kimi_top_p(raw: Option<f64>) -> Result<f64, ModelExecutionError> {
     const DEFAULT_KIMI_TOP_P: f64 = 0.95;
     let Some(value) = raw else {
-        return DEFAULT_KIMI_TOP_P;
+        return Ok(DEFAULT_KIMI_TOP_P);
     };
-    if !value.is_finite() {
-        return DEFAULT_KIMI_TOP_P;
-    }
-    value.clamp(0.0, 1.0)
+    validate_model_config_f64_range(
+        "provider_options.kimi.top_p",
+        value,
+        0.0,
+        1.0,
+        "kimi_top_p_validate_range",
+    )
 }
 
-fn normalize_prompt_cache_user_last_n(raw: Option<u32>) -> usize {
+fn normalize_prompt_cache_user_last_n(raw: Option<u32>) -> Result<usize, ModelExecutionError> {
     const DEFAULT_PROMPT_CACHE_USER_LAST_N: usize = 2;
     const MIN_PROMPT_CACHE_USER_LAST_N: usize = 1;
     const MAX_PROMPT_CACHE_USER_LAST_N: usize = 12;
     let Some(value) = raw else {
-        return DEFAULT_PROMPT_CACHE_USER_LAST_N;
+        return Ok(DEFAULT_PROMPT_CACHE_USER_LAST_N);
     };
     let normalized = value as usize;
-    normalized.clamp(
-        MIN_PROMPT_CACHE_USER_LAST_N,
-        MAX_PROMPT_CACHE_USER_LAST_N,
-    )
+    if normalized < MIN_PROMPT_CACHE_USER_LAST_N || normalized > MAX_PROMPT_CACHE_USER_LAST_N {
+        return Err(invalid_model_config_error(
+            "provider_options.kimi.prompt_cache.user_last_n",
+            json!(value),
+            "prompt_cache_user_last_n_validate_range",
+            "provider_options.kimi.prompt_cache.user_last_n must be an integer between 1 and 12",
+            "omit prompt_cache.user_last_n to use the runtime default, or set a value between 1 and 12",
+        ));
+    }
+    Ok(normalized)
 }
 
 fn default_kimi_official_tools_allowlist() -> Vec<String> {
@@ -226,51 +387,89 @@ fn default_kimi_official_tools_allowlist() -> Vec<String> {
     ]
 }
 
-fn resolve_kimi_options(input_config: Option<&RuntimeModelConfigInput>) -> KimiProviderOptions {
+fn normalize_kimi_official_tools_allowlist(
+    raw: Option<&Vec<String>>,
+) -> Result<Vec<String>, ModelExecutionError> {
+    let Some(raw_values) = raw else {
+        return Ok(default_kimi_official_tools_allowlist());
+    };
+    if raw_values.is_empty() {
+        return Err(invalid_model_config_error(
+            "provider_options.kimi.official_tools_allowlist",
+            json!(raw_values),
+            "kimi_official_tools_allowlist_validate",
+            "provider_options.kimi.official_tools_allowlist must be a non-empty array of strings",
+            "omit official_tools_allowlist to use the runtime default, or provide unique non-empty tool names",
+        ));
+    }
+    let mut seen = HashSet::new();
+    let mut normalized = Vec::with_capacity(raw_values.len());
+    for item in raw_values {
+        let canonical = canonical_kimi_tool_name(item);
+        if canonical.is_empty() {
+            return Err(invalid_model_config_error(
+                "provider_options.kimi.official_tools_allowlist",
+                json!(raw_values),
+                "kimi_official_tools_allowlist_validate",
+                "provider_options.kimi.official_tools_allowlist entries must be non-empty strings",
+                "omit official_tools_allowlist to use the runtime default, or provide unique non-empty tool names",
+            ));
+        }
+        if !seen.insert(canonical.clone()) {
+            return Err(invalid_model_config_error(
+                "provider_options.kimi.official_tools_allowlist",
+                json!(raw_values),
+                "kimi_official_tools_allowlist_validate",
+                "provider_options.kimi.official_tools_allowlist values must be unique",
+                "omit official_tools_allowlist to use the runtime default, or remove duplicate tool names",
+            ));
+        }
+        normalized.push(canonical);
+    }
+    Ok(normalized)
+}
+
+fn resolve_kimi_options(input_config: Option<&RuntimeModelConfigInput>) -> Result<KimiProviderOptions, ModelExecutionError> {
     let input_kimi = input_config
         .and_then(|config| config.provider_options.as_ref())
         .and_then(|options| options.kimi.as_ref());
-    let allowlist = input_kimi
-        .and_then(|options| options.official_tools_allowlist.clone())
-        .unwrap_or_else(default_kimi_official_tools_allowlist);
+    let allowlist = normalize_kimi_official_tools_allowlist(
+        input_kimi.and_then(|options| options.official_tools_allowlist.as_ref()),
+    )?;
     let prompt_cache_input = input_kimi.and_then(|options| options.prompt_cache.as_ref());
-    KimiProviderOptions {
+    Ok(KimiProviderOptions {
         web_search_mode: parse_kimi_web_search_mode(
             input_kimi.and_then(|options| options.web_search_mode.as_deref()),
-        ),
+        )?,
         disable_thinking_on_builtin_web_search: input_kimi
             .and_then(|options| options.disable_thinking_on_builtin_web_search)
             .unwrap_or(true),
-        official_tools_allowlist: allowlist
-            .into_iter()
-            .map(|item| canonical_kimi_tool_name(&item))
-            .filter(|item| !item.is_empty())
-            .collect(),
+        official_tools_allowlist: allowlist,
         prompt_cache: PromptCacheOptions {
             enabled: prompt_cache_input
                 .and_then(|options| options.enabled)
                 .unwrap_or(false),
             strategy: parse_prompt_cache_strategy(
                 prompt_cache_input.and_then(|options| options.strategy.as_deref()),
-            ),
+            )?,
             user_last_n: normalize_prompt_cache_user_last_n(
                 prompt_cache_input.and_then(|options| options.user_last_n),
-            ),
+            )?,
             capability: parse_prompt_cache_capability(
                 prompt_cache_input.and_then(|options| options.capability.as_deref()),
-            ),
+            )?,
         },
-        max_tokens: normalize_kimi_max_tokens(input_kimi.and_then(|options| options.max_tokens)),
+        max_tokens: normalize_kimi_max_tokens(input_kimi.and_then(|options| options.max_tokens))?,
         stream: input_kimi.and_then(|options| options.stream).unwrap_or(true),
-        temperature: normalize_kimi_temperature(input_kimi.and_then(|options| options.temperature)),
-        top_p: normalize_kimi_top_p(input_kimi.and_then(|options| options.top_p)),
+        temperature: normalize_kimi_temperature(input_kimi.and_then(|options| options.temperature))?,
+        top_p: normalize_kimi_top_p(input_kimi.and_then(|options| options.top_p))?,
         files_enabled: input_kimi
             .and_then(|options| options.files_enabled)
             .unwrap_or(true),
         allow_file_admin: input_kimi
             .and_then(|options| options.allow_file_admin)
             .unwrap_or(false),
-    }
+    })
 }
 
 fn parse_model_ids_from_catalog(payload: &Value) -> Vec<String> {
@@ -370,7 +569,7 @@ fn load_model_catalog_with_cache(
     api_key: &str,
     timeout_ms: u64,
 ) -> Result<Vec<String>, ModelExecutionError> {
-    let cache_ttl_secs = parse_cache_ttl_secs();
+    let cache_ttl_secs = parse_cache_ttl_secs()?;
     let cache_key = format!("{base_url}|{api_key}");
     let now_millis = now_epoch_millis();
     if cache_ttl_secs > 0 {
@@ -490,7 +689,7 @@ fn load_runtime_model_config(
         input_config.and_then(|config| config.provider_kind.as_deref()),
         &base_url,
         &raw_model,
-    );
+    )?;
     let model = resolve_model_with_auto(raw_model, &base_url, &api_key, timeout_ms, provider_kind)?;
     Ok(RuntimeModelConfig {
         base_url,
@@ -499,7 +698,7 @@ fn load_runtime_model_config(
         timeout_ms,
         provider_kind,
         provider_options: RuntimeProviderOptions {
-            kimi: resolve_kimi_options(input_config),
+            kimi: resolve_kimi_options(input_config)?,
         },
     })
 }

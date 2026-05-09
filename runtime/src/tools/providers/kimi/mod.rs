@@ -159,19 +159,60 @@ fn kimi_client_init_error(
     )
 }
 
-fn resolve_kimi_timeout_ms(input: &TurnExecuteInput) -> u64 {
-    let from_model = input
-        .model_config
-        .as_ref()
-        .and_then(|config| config.timeout_ms)
-        .unwrap_or(15_000);
-    from_model.clamp(1_000, 120_000)
+fn kimi_config_invalid_error(
+    field: &str,
+    raw_value: Value,
+    stage: &str,
+    message: impl Into<String>,
+    recovery_hint: &str,
+) -> ToolExecutionError {
+    kimi_tool_error_with_fields(
+        kimi_tool_error(
+            "config_invalid",
+            message,
+            "config_invalid",
+            "provider_options.kimi.official_tools",
+            stage,
+            recovery_hint,
+        ),
+        &[
+            ("field", json!(field)),
+            ("raw_value", raw_value),
+            ("required_config", json!(field)),
+        ],
+    )
 }
 
-fn is_kimi_provider(input: &TurnExecuteInput) -> bool {
+fn invalid_kimi_provider_kind_error(raw_kind: &str) -> ToolExecutionError {
+    kimi_config_invalid_error(
+        "model_config.provider_kind",
+        json!(raw_kind),
+        "provider_kind_validate",
+        "model_config.provider_kind must be kimi, openai_compatible, or openai-compatible",
+        "omit provider_kind to derive it from base_url, or set it to kimi/openai_compatible",
+    )
+}
+
+fn validate_kimi_timeout_ms(input: &TurnExecuteInput) -> Result<u64, ToolExecutionError> {
+    let Some(from_model) = input.model_config.as_ref().and_then(|config| config.timeout_ms) else {
+        return Ok(15_000);
+    };
+    if !(1_000..=120_000).contains(&from_model) {
+        return Err(kimi_config_invalid_error(
+            "model_config.timeout_ms",
+            json!(from_model),
+            "runtime_timeout_validate_range",
+            "model_config.timeout_ms must be an integer between 1000 and 120000",
+            "omit model_config.timeout_ms to use the runtime default, or provide a value within 1000..120000",
+        ));
+    }
+    Ok(from_model)
+}
+
+fn is_kimi_provider(input: &TurnExecuteInput) -> Result<bool, ToolExecutionError> {
     let model_config = match input.model_config.as_ref() {
         Some(config) => config,
-        None => return false,
+        None => return Ok(false),
     };
     let explicit_kind = model_config
         .provider_kind
@@ -179,20 +220,28 @@ fn is_kimi_provider(input: &TurnExecuteInput) -> bool {
         .map(|value| value.trim().to_ascii_lowercase())
         .unwrap_or_default();
     if explicit_kind == "kimi" {
-        return true;
+        return Ok(true);
     }
     if explicit_kind == "openai_compatible" || explicit_kind == "openai-compatible" {
-        return false;
+        return Ok(false);
+    }
+    if !explicit_kind.is_empty() {
+        return Err(invalid_kimi_provider_kind_error(
+            model_config
+                .provider_kind
+                .as_deref()
+                .unwrap_or_default(),
+        ));
     }
     let base_url = model_config
         .base_url
         .as_ref()
         .map(|value| value.to_ascii_lowercase())
         .unwrap_or_default();
-    base_url.contains("moonshot.cn")
+    Ok(base_url.contains("moonshot.cn"))
 }
 
-fn resolve_kimi_web_search_mode(input: &TurnExecuteInput) -> KimiWebSearchMode {
+fn resolve_kimi_web_search_mode(input: &TurnExecuteInput) -> Result<KimiWebSearchMode, ToolExecutionError> {
     let normalized = input
         .model_config
         .as_ref()
@@ -202,34 +251,69 @@ fn resolve_kimi_web_search_mode(input: &TurnExecuteInput) -> KimiWebSearchMode {
         .map(|value| value.trim().to_ascii_lowercase())
         .unwrap_or_else(|| "builtin_preferred".to_string());
     match normalized.as_str() {
-        "builtin_only" => KimiWebSearchMode::BuiltinOnly,
-        "official_only" => KimiWebSearchMode::OfficialOnly,
-        "off" => KimiWebSearchMode::Off,
-        _ => KimiWebSearchMode::BuiltinPreferred,
+        "builtin_preferred" => Ok(KimiWebSearchMode::BuiltinPreferred),
+        "builtin_only" => Ok(KimiWebSearchMode::BuiltinOnly),
+        "official_only" => Ok(KimiWebSearchMode::OfficialOnly),
+        "off" => Ok(KimiWebSearchMode::Off),
+        _ => Err(kimi_config_invalid_error(
+            "provider_options.kimi.web_search_mode",
+            json!(normalized),
+            "kimi_web_search_mode_validate",
+            "provider_options.kimi.web_search_mode must be builtin_preferred, builtin_only, official_only, or off",
+            "omit web_search_mode to use builtin_preferred, or set one of the supported values",
+        )),
     }
 }
 
-fn resolve_kimi_official_allowlist(input: &TurnExecuteInput) -> Vec<String> {
-    let from_config = input
+fn resolve_kimi_official_allowlist(input: &TurnExecuteInput) -> Result<Vec<String>, ToolExecutionError> {
+    let Some(from_config) = input
         .model_config
         .as_ref()
         .and_then(|config| config.provider_options.as_ref())
         .and_then(|options| options.kimi.as_ref())
-        .and_then(|options| options.official_tools_allowlist.clone())
-        .unwrap_or_else(|| {
-            vec![
+        .and_then(|options| options.official_tools_allowlist.as_ref()) else {
+            return Ok(vec![
                 "web-search".to_string(),
                 "date".to_string(),
                 "fetch".to_string(),
                 "rethink".to_string(),
                 "code_runner".to_string(),
-            ]
-        });
-    from_config
-        .into_iter()
-        .map(|item| canonical_kimi_tool_name(&item))
-        .filter(|item| !item.is_empty())
-        .collect()
+            ]);
+        };
+    if from_config.is_empty() {
+        return Err(kimi_config_invalid_error(
+            "provider_options.kimi.official_tools_allowlist",
+            json!(from_config),
+            "kimi_official_tools_allowlist_validate",
+            "provider_options.kimi.official_tools_allowlist must be a non-empty array of strings",
+            "omit official_tools_allowlist to use the runtime default, or provide unique non-empty tool names",
+        ));
+    }
+    let mut seen = HashSet::new();
+    let mut normalized = Vec::with_capacity(from_config.len());
+    for item in from_config {
+        let canonical = canonical_kimi_tool_name(item);
+        if canonical.is_empty() {
+            return Err(kimi_config_invalid_error(
+                "provider_options.kimi.official_tools_allowlist",
+                json!(from_config),
+                "kimi_official_tools_allowlist_validate",
+                "provider_options.kimi.official_tools_allowlist entries must be non-empty strings",
+                "omit official_tools_allowlist to use the runtime default, or provide unique non-empty tool names",
+            ));
+        }
+        if !seen.insert(canonical.clone()) {
+            return Err(kimi_config_invalid_error(
+                "provider_options.kimi.official_tools_allowlist",
+                json!(from_config),
+                "kimi_official_tools_allowlist_validate",
+                "provider_options.kimi.official_tools_allowlist values must be unique",
+                "omit official_tools_allowlist to use the runtime default, or remove duplicate tool names",
+            ));
+        }
+        normalized.push(canonical);
+    }
+    Ok(normalized)
 }
 
 fn resolve_kimi_allow_file_admin(input: &TurnExecuteInput) -> bool {
@@ -252,7 +336,7 @@ fn resolve_kimi_files_enabled(input: &TurnExecuteInput) -> bool {
         .unwrap_or(true)
 }
 
-fn resolve_kimi_formula_map(input: &TurnExecuteInput) -> HashMap<String, String> {
+fn resolve_kimi_formula_map(input: &TurnExecuteInput) -> Result<HashMap<String, String>, ToolExecutionError> {
     let mut map = HashMap::new();
     map.insert("web_search".to_string(), "moonshot/web-search:latest".to_string());
     map.insert("date".to_string(), "moonshot/date:latest".to_string());
@@ -269,24 +353,49 @@ fn resolve_kimi_formula_map(input: &TurnExecuteInput) -> HashMap<String, String>
         .and_then(|options| options.kimi.as_ref())
         .and_then(|options| options.official_tool_formulas.as_ref())
     {
-        if let Some(mapping) = custom.as_object() {
-            for (raw_name, raw_uri) in mapping {
-                let tool_name = canonical_kimi_tool_name(raw_name);
-                if tool_name.is_empty() {
-                    continue;
-                }
-                let Some(uri) = raw_uri.as_str() else {
-                    continue;
-                };
-                let normalized_uri = uri.trim();
-                if normalized_uri.is_empty() {
-                    continue;
-                }
-                map.insert(tool_name, normalized_uri.to_string());
+        let Some(mapping) = custom.as_object() else {
+            return Err(kimi_config_invalid_error(
+                "provider_options.kimi.official_tool_formulas",
+                custom.clone(),
+                "kimi_official_tool_formulas_validate",
+                "provider_options.kimi.official_tool_formulas must be an object map of non-empty tool names to non-empty formula URIs",
+                "omit official_tool_formulas to use runtime defaults, or provide a valid object map",
+            ));
+        };
+        for (raw_name, raw_uri) in mapping {
+            let tool_name = canonical_kimi_tool_name(raw_name);
+            if tool_name.is_empty() {
+                return Err(kimi_config_invalid_error(
+                    "provider_options.kimi.official_tool_formulas",
+                    custom.clone(),
+                    "kimi_official_tool_formulas_validate",
+                    "provider_options.kimi.official_tool_formulas keys must be non-empty tool names",
+                    "omit official_tool_formulas to use runtime defaults, or provide a valid object map",
+                ));
             }
+            let Some(uri) = raw_uri.as_str() else {
+                return Err(kimi_config_invalid_error(
+                    "provider_options.kimi.official_tool_formulas",
+                    custom.clone(),
+                    "kimi_official_tool_formulas_validate",
+                    "provider_options.kimi.official_tool_formulas values must be strings",
+                    "omit official_tool_formulas to use runtime defaults, or provide string formula URIs",
+                ));
+            };
+            let normalized_uri = uri.trim();
+            if normalized_uri.is_empty() {
+                return Err(kimi_config_invalid_error(
+                    "provider_options.kimi.official_tool_formulas",
+                    custom.clone(),
+                    "kimi_official_tool_formulas_validate",
+                    "provider_options.kimi.official_tool_formulas values must be non-empty strings",
+                    "omit official_tool_formulas to use runtime defaults, or provide non-empty formula URIs",
+                ));
+            }
+            map.insert(tool_name, normalized_uri.to_string());
         }
     }
-    map
+    Ok(map)
 }
 
 fn resolve_kimi_connection(input: &TurnExecuteInput) -> Result<(String, String, u64), ToolExecutionError> {
@@ -324,7 +433,7 @@ fn resolve_kimi_connection(input: &TurnExecuteInput) -> Result<(String, String, 
     Ok((
         base_url.trim_end_matches('/').to_string(),
         api_key.to_string(),
-        resolve_kimi_timeout_ms(input),
+        validate_kimi_timeout_ms(input)?,
     ))
 }
 
@@ -332,7 +441,7 @@ fn run_kimi_builtin_web_search(
     call: &ToolCallInput,
     input: &TurnExecuteInput,
 ) -> Result<ToolCallOutput, ToolExecutionError> {
-    match resolve_kimi_web_search_mode(input) {
+    match resolve_kimi_web_search_mode(input)? {
         KimiWebSearchMode::OfficialOnly | KimiWebSearchMode::Off => Err(ToolExecutionError::new(
             "tool_disabled",
             "kimi builtin $web_search is disabled by web_search_mode",
@@ -578,14 +687,19 @@ fn execute_kimi_tool_call(
     call: &ToolCallInput,
     input: &TurnExecuteInput,
 ) -> Option<Result<ToolCallOutput, ToolExecutionError>> {
-    if !is_kimi_provider(input) {
-        return None;
+    match is_kimi_provider(input) {
+        Ok(true) => {}
+        Ok(false) => return None,
+        Err(error) => return Some(Err(error)),
     }
     let normalized_name = canonical_kimi_tool_name(&call.name);
     if call.name.trim() == "$web_search" {
         return Some(run_kimi_builtin_web_search(call, input));
     }
-    let web_search_mode = resolve_kimi_web_search_mode(input);
+    let web_search_mode = match resolve_kimi_web_search_mode(input) {
+        Ok(value) => value,
+        Err(error) => return Some(Err(error)),
+    };
     if normalized_name == "web_search" {
         if matches!(
             web_search_mode,
@@ -627,11 +741,17 @@ fn execute_kimi_tool_call(
         }
         return Some(run_kimi_files_delete(call, input));
     }
-    let allowlist = resolve_kimi_official_allowlist(input);
+    let allowlist = match resolve_kimi_official_allowlist(input) {
+        Ok(value) => value,
+        Err(error) => return Some(Err(error)),
+    };
     if !allowlist.iter().any(|item| item == &normalized_name) {
         return None;
     }
-    let formulas = resolve_kimi_formula_map(input);
+    let formulas = match resolve_kimi_formula_map(input) {
+        Ok(value) => value,
+        Err(error) => return Some(Err(error)),
+    };
     let formula_uri = formulas.get(&normalized_name).cloned().or_else(|| {
         if normalized_name == "web_search" {
             Some("moonshot/web-search:latest".to_string())

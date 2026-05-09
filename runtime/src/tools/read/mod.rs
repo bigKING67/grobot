@@ -228,20 +228,26 @@ fn run_read(
         return Ok(ToolCallOutput::from_payload(payload));
     }
 
-    if matches!(kind, ReadKind::Pdf | ReadKind::Image | ReadKind::Video) && is_kimi_provider(input) {
-        if !is_kimi_k25_read_route(input) {
-            return Err(config_missing_tool_error(
-                "kimi media read requires model kimi-k2.5",
-                "kimi-k2.5",
-                "read.media",
-            ));
-        }
-        if !resolve_kimi_files_enabled(input) {
-            return Err(config_missing_tool_error(
-                "kimi media read requires provider_options.kimi.files_enabled=true",
-                "provider_options.kimi.files_enabled=true",
-                "read.media",
-            ));
+    if matches!(kind, ReadKind::Pdf | ReadKind::Image | ReadKind::Video) {
+        match is_kimi_provider(input) {
+            Ok(true) => {
+                if !is_kimi_k25_read_route(input) {
+                    return Err(config_missing_tool_error(
+                        "kimi media read requires model kimi-k2.5",
+                        "kimi-k2.5",
+                        "read.media",
+                    ));
+                }
+                if !resolve_kimi_files_enabled(input) {
+                    return Err(config_missing_tool_error(
+                        "kimi media read requires provider_options.kimi.files_enabled=true",
+                        "provider_options.kimi.files_enabled=true",
+                        "read.media",
+                    ));
+                }
+            }
+            Ok(false) => {}
+            Err(error) => return Err(error),
         }
     }
 

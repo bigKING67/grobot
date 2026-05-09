@@ -1,5 +1,5 @@
 fn is_kimi_k25_read_route(input: &TurnExecuteInput) -> bool {
-    if !is_kimi_provider(input) {
+    if !matches!(is_kimi_provider(input), Ok(true)) {
         return false;
     }
     let model = input

@@ -9,7 +9,7 @@ mod tests {
         PromptCacheOptions, PromptCacheStrategy,
         should_disable_thinking_for_kimi_builtin_web_search, build_tool_start_event, ModelExecutor,
         OpenAiCompatibleModelExecutor, ProviderKind, ENV_API_KEY, ENV_BASE_URL, ENV_MODEL,
-        ENV_RUNTIME_TIMEOUT_MS, TOOL_MESSAGE_BROWSER_MAX_CHARS,
+        ENV_MODEL_AUTO_CACHE_TTL_SECS, ENV_RUNTIME_TIMEOUT_MS, TOOL_MESSAGE_BROWSER_MAX_CHARS,
     };
     use crate::models::engine::{
         RuntimeKimiOptionsInput, RuntimeModelConfigInput, RuntimePromptCacheOptionsInput,

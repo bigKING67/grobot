@@ -5,7 +5,7 @@ use crate::tools::tools::{
 use reqwest::blocking::multipart::{Form, Part};
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
