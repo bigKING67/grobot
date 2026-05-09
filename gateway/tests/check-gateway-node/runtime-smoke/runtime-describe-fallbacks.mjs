@@ -306,6 +306,18 @@ export async function runRuntimeDescribeFallbackSmoke() {
   assert.equal(memoryInputPayload.oversized_batch_limit_status, 400);
   assert.equal(memoryInputPayload.oversized_batch_limit_error, "invalid_limit");
   assert.equal(memoryInputPayload.oversized_batch_limit_field, "limit");
+  assert.equal(memoryInputPayload.invalid_batch_sessions_type_status, 400);
+  assert.equal(memoryInputPayload.invalid_batch_sessions_type_error, "invalid_sessions");
+  assert.equal(memoryInputPayload.invalid_batch_sessions_type_field, "sessions");
+  assert.equal(memoryInputPayload.invalid_batch_sessions_entry_status, 400);
+  assert.equal(memoryInputPayload.invalid_batch_sessions_entry_error, "invalid_sessions");
+  assert.equal(memoryInputPayload.invalid_batch_sessions_entry_field, "sessions");
+  assert.equal(memoryInputPayload.invalid_batch_session_prefix_status, 400);
+  assert.equal(memoryInputPayload.invalid_batch_session_prefix_error, "invalid_session_prefix");
+  assert.equal(memoryInputPayload.invalid_batch_session_prefix_field, "session_prefix");
+  assert.equal(memoryInputPayload.invalid_batch_session_prefixes_entry_status, 400);
+  assert.equal(memoryInputPayload.invalid_batch_session_prefixes_entry_error, "invalid_session_prefixes");
+  assert.equal(memoryInputPayload.invalid_batch_session_prefixes_entry_field, "session_prefixes");
   assert.equal(memoryInputPayload.valid_list_status, 200);
   assert.equal(memoryInputPayload.valid_list_limit, 1);
   assert.equal(memoryInputPayload.valid_list_include_archived, true);

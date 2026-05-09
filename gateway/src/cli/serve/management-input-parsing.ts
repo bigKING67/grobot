@@ -215,3 +215,60 @@ export function bodyPositiveInt(
     value: parsed,
   };
 }
+
+export function bodyOptionalNonEmptyString(
+  body: Record<string, unknown>,
+  key: string,
+): ParseInputResult<string | undefined> {
+  const raw = body[key];
+  if (raw === undefined) {
+    return {
+      ok: true,
+      value: undefined,
+    };
+  }
+  if (typeof raw !== "string") {
+    return invalidInput(key, `${key} must be a non-empty string`);
+  }
+  const value = raw.trim();
+  if (!value) {
+    return invalidInput(key, `${key} must be a non-empty string`);
+  }
+  return {
+    ok: true,
+    value,
+  };
+}
+
+export function bodyStringArray(
+  body: Record<string, unknown>,
+  key: string,
+): ParseInputResult<string[]> {
+  const raw = body[key];
+  if (raw === undefined) {
+    return {
+      ok: true,
+      value: [],
+    };
+  }
+  if (!Array.isArray(raw)) {
+    return invalidInput(key, `${key} must be an array of non-empty strings`);
+  }
+  const values: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string") {
+      return invalidInput(key, `${key} entries must be non-empty strings`);
+    }
+    const cleaned = item.trim();
+    if (!cleaned) {
+      return invalidInput(key, `${key} entries must be non-empty strings`);
+    }
+    if (!values.includes(cleaned)) {
+      values.push(cleaned);
+    }
+  }
+  return {
+    ok: true,
+    value: values,
+  };
+}

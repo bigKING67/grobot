@@ -242,6 +242,42 @@ async function runMemoryInputValidation(options) {
         sessions: ["feishu:grobot:dm:memory-input-contract"],
       }),
     });
+    const invalidBatchSessionsType = await requestJson(batchLifecycleUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        dry_run: false,
+        sessions: "feishu:grobot:dm:memory-input-contract",
+      }),
+    });
+    const invalidBatchSessionsEntry = await requestJson(batchLifecycleUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        dry_run: false,
+        sessions: ["feishu:grobot:dm:memory-input-contract", 67],
+      }),
+    });
+    const invalidBatchSessionPrefix = await requestJson(batchLifecycleUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        dry_run: false,
+        session_prefix: "",
+      }),
+    });
+    const invalidBatchSessionPrefixesEntry = await requestJson(batchLifecycleUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        dry_run: false,
+        session_prefixes: ["feishu:grobot:dm", ""],
+      }),
+    });
     const validList = await requestJson(`${memoryUrl}?limit=1&include_archived=true`, {
       timeoutMs: 1_000,
       headers,
@@ -276,6 +312,18 @@ async function runMemoryInputValidation(options) {
       oversized_batch_limit_status: oversizedBatchLimit.status,
       oversized_batch_limit_error: oversizedBatchLimit.body.error ?? null,
       oversized_batch_limit_field: oversizedBatchLimit.body.field ?? null,
+      invalid_batch_sessions_type_status: invalidBatchSessionsType.status,
+      invalid_batch_sessions_type_error: invalidBatchSessionsType.body.error ?? null,
+      invalid_batch_sessions_type_field: invalidBatchSessionsType.body.field ?? null,
+      invalid_batch_sessions_entry_status: invalidBatchSessionsEntry.status,
+      invalid_batch_sessions_entry_error: invalidBatchSessionsEntry.body.error ?? null,
+      invalid_batch_sessions_entry_field: invalidBatchSessionsEntry.body.field ?? null,
+      invalid_batch_session_prefix_status: invalidBatchSessionPrefix.status,
+      invalid_batch_session_prefix_error: invalidBatchSessionPrefix.body.error ?? null,
+      invalid_batch_session_prefix_field: invalidBatchSessionPrefix.body.field ?? null,
+      invalid_batch_session_prefixes_entry_status: invalidBatchSessionPrefixesEntry.status,
+      invalid_batch_session_prefixes_entry_error: invalidBatchSessionPrefixesEntry.body.error ?? null,
+      invalid_batch_session_prefixes_entry_field: invalidBatchSessionPrefixesEntry.body.field ?? null,
       valid_list_status: validList.status,
       valid_list_limit: validList.body.limit ?? null,
       valid_list_include_archived: validList.body.include_archived ?? null,

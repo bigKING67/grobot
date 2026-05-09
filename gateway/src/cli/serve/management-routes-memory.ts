@@ -12,7 +12,9 @@ import { requireManagementToken } from "./management-routes-auth";
 import { type ManagementRoutesContext } from "./management-routes-types";
 import {
   bodyBool,
+  bodyOptionalNonEmptyString,
   bodyPositiveInt,
+  bodyStringArray,
   queryBool,
   queryInt,
   writeManagementInputError,
@@ -538,32 +540,27 @@ export async function dispatchManagementMemoryRoutes(
     }
     const dryRun = dryRunResult.value;
 
-    const sessions: string[] = [];
-    if (Array.isArray(body.sessions)) {
-      for (const sessionId of body.sessions) {
-        if (typeof sessionId !== "string") {
-          continue;
-        }
-        const cleaned = sessionId.trim();
-        if (cleaned && !sessions.includes(cleaned)) {
-          sessions.push(cleaned);
-        }
-      }
+    const sessionsResult = bodyStringArray(body, "sessions");
+    if (!sessionsResult.ok) {
+      return writeManagementInputError(response, context, sessionsResult);
     }
+    const sessions = sessionsResult.value;
 
     const sessionPrefixes: string[] = [];
-    if (typeof body.session_prefix === "string" && body.session_prefix.trim().length > 0) {
-      sessionPrefixes.push(body.session_prefix.trim());
+    const sessionPrefixResult = bodyOptionalNonEmptyString(body, "session_prefix");
+    if (!sessionPrefixResult.ok) {
+      return writeManagementInputError(response, context, sessionPrefixResult);
     }
-    if (Array.isArray(body.session_prefixes)) {
-      for (const prefix of body.session_prefixes) {
-        if (typeof prefix !== "string") {
-          continue;
-        }
-        const cleaned = prefix.trim();
-        if (cleaned && !sessionPrefixes.includes(cleaned)) {
-          sessionPrefixes.push(cleaned);
-        }
+    if (sessionPrefixResult.value !== undefined) {
+      sessionPrefixes.push(sessionPrefixResult.value);
+    }
+    const sessionPrefixesResult = bodyStringArray(body, "session_prefixes");
+    if (!sessionPrefixesResult.ok) {
+      return writeManagementInputError(response, context, sessionPrefixesResult);
+    }
+    for (const prefix of sessionPrefixesResult.value) {
+      if (!sessionPrefixes.includes(prefix)) {
+        sessionPrefixes.push(prefix);
       }
     }
 
