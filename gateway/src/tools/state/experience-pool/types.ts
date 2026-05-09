@@ -109,7 +109,7 @@ export interface ExperienceSearchInput {
   team?: string;
   user?: string;
   query: string;
-  limit: number;
+  limit?: number;
   includeStates?: ExperienceRecordState[];
 }
 

@@ -15,7 +15,7 @@ interface CreateExperiencePoolRuntimeInput {
   poolPath: string;
   legacyPoolPath?: string;
   publishMode: ExperiencePublishMode;
-  recallLimit: number;
+  recallLimit?: number;
   teamDefault?: string;
 }
 
@@ -86,7 +86,7 @@ export interface ExperiencePoolRuntime {
     team?: string;
     user?: string;
     query: string;
-    limit: number;
+    limit?: number;
     includeStates?: ExperienceRecordState[];
   }): ExperienceSearchMatch[];
   listRecords(tenant?: string, team?: string, user?: string): ExperienceRecord[];
@@ -94,8 +94,20 @@ export interface ExperiencePoolRuntime {
   setRecordState(id: string, state: ExperienceRecordState, reason?: string): ExperienceRecord | undefined;
 }
 
-function clampInt(value: number, minimum: number, maximum: number): number {
-  return Math.min(maximum, Math.max(minimum, Math.floor(value)));
+const DEFAULT_EXPERIENCE_RECALL_LIMIT = 2;
+const MIN_EXPERIENCE_RECALL_LIMIT = 1;
+const MAX_EXPERIENCE_RECALL_LIMIT = 6;
+
+function resolveRuntimeRecallLimit(value: number | undefined): number {
+  if (value === undefined) {
+    return DEFAULT_EXPERIENCE_RECALL_LIMIT;
+  }
+  if (!Number.isSafeInteger(value) || value < MIN_EXPERIENCE_RECALL_LIMIT || value > MAX_EXPERIENCE_RECALL_LIMIT) {
+    throw new RangeError(
+      `invalid_experience_recall_limit: experience-recall-limit must be an integer between ${MIN_EXPERIENCE_RECALL_LIMIT} and ${MAX_EXPERIENCE_RECALL_LIMIT}`,
+    );
+  }
+  return value;
 }
 
 interface SessionExperienceScope {
@@ -265,7 +277,7 @@ export function createExperiencePoolRuntime(
   input: CreateExperiencePoolRuntimeInput,
 ): ExperiencePoolRuntime {
   const store = new FileBackedExperiencePoolStore(input.poolPath, input.legacyPoolPath);
-  const recallLimit = clampInt(input.recallLimit, 1, 6);
+  const recallLimit = resolveRuntimeRecallLimit(input.recallLimit);
   const teamDefault = input.teamDefault?.trim() || "default";
 
   return {

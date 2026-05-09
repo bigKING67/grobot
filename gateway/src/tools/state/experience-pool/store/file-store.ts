@@ -65,6 +65,27 @@ import {
   uniqueTrimmed,
 } from "./utils";
 
+const DEFAULT_EXPERIENCE_SEARCH_LIMIT = 3;
+const MIN_EXPERIENCE_SEARCH_LIMIT = 1;
+const MAX_EXPERIENCE_SEARCH_LIMIT = 20;
+
+function invalidExperienceSearchInput(field: string, detail: string): RangeError {
+  return new RangeError(`invalid_experience_search_${field}: ${detail}`);
+}
+
+function resolveExperienceSearchLimit(raw: number | undefined): number {
+  if (raw === undefined) {
+    return DEFAULT_EXPERIENCE_SEARCH_LIMIT;
+  }
+  if (!Number.isSafeInteger(raw) || raw < MIN_EXPERIENCE_SEARCH_LIMIT || raw > MAX_EXPERIENCE_SEARCH_LIMIT) {
+    throw invalidExperienceSearchInput(
+      "limit",
+      `limit must be an integer between ${MIN_EXPERIENCE_SEARCH_LIMIT} and ${MAX_EXPERIENCE_SEARCH_LIMIT}`,
+    );
+  }
+  return raw;
+}
+
 export class FileBackedExperiencePoolStore {
   private readonly path: string;
 
@@ -134,6 +155,7 @@ export class FileBackedExperiencePoolStore {
   }
 
   public search(input: ExperienceSearchInput): ExperienceSearchMatch[] {
+    const limit = resolveExperienceSearchLimit(input.limit);
     const profile = buildQueryProfile(input.query);
     if (!profile.rawQuery) {
       return [];
@@ -148,7 +170,6 @@ export class FileBackedExperiencePoolStore {
       .map((record) => scoreRecordForQuery(record, profile))
       .filter((match) => match.score >= (profile.tokens.length <= 2 ? 22 : 30))
       .sort((left, right) => right.score - left.score);
-    const limit = Math.min(Math.max(input.limit, 1), 20);
     return scored.slice(0, limit).map((match) => ({
       record: cloneRecord(match.record),
       score: match.score,

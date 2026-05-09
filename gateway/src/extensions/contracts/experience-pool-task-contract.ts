@@ -116,6 +116,69 @@ try {
     limit: 3,
     includeStates: ["active", "quarantined"],
   });
+  const defaultLimitSearch = store.search({
+    tenant: "tenant-a",
+    team: "default",
+    user: "alice",
+    query: "登录 401 token refresh 重试",
+    includeStates: ["active", "quarantined"],
+  });
+  const invalidSearchLimitsRejected = [
+    () => store.search({
+      tenant: "tenant-a",
+      team: "default",
+      user: "alice",
+      query: "登录 401 token refresh 重试",
+      limit: 0,
+    }),
+    () => store.search({
+      tenant: "tenant-a",
+      team: "default",
+      user: "alice",
+      query: "登录 401 token refresh 重试",
+      limit: 21,
+    }),
+    () => store.search({
+      tenant: "tenant-a",
+      team: "default",
+      user: "alice",
+      query: "登录 401 token refresh 重试",
+      limit: 1.5,
+    }),
+  ].every((action) => {
+    try {
+      action();
+      return false;
+    } catch (error) {
+      return error instanceof RangeError
+        && error.message.includes("invalid_experience_search_limit");
+    }
+  });
+  const invalidRuntimeRecallLimitsRejected = [
+    () => createExperiencePoolRuntime({
+      poolPath,
+      publishMode: "auto",
+      recallLimit: 0,
+    }),
+    () => createExperiencePoolRuntime({
+      poolPath,
+      publishMode: "auto",
+      recallLimit: 7,
+    }),
+    () => createExperiencePoolRuntime({
+      poolPath,
+      publishMode: "auto",
+      recallLimit: 1.5,
+    }),
+  ].every((action) => {
+    try {
+      action();
+      return false;
+    } catch (error) {
+      return error instanceof RangeError
+        && error.message.includes("invalid_experience_recall_limit");
+    }
+  });
 
   const reloaded = new FileBackedExperiencePoolStore(poolPath);
   const roundtrip = reloaded.getRecordById(created.record.id);
@@ -153,6 +216,9 @@ try {
         && item.providerFailureDiagnostics?.diagnosticKind === "upstream_http_error"
       ) ?? false,
     search_prefers_task_overlap: search[0]?.record.id === created.record.id,
+    search_default_limit_works_without_silent_clamp: defaultLimitSearch[0]?.record.id === created.record.id,
+    search_rejects_invalid_explicit_limits: invalidSearchLimitsRejected,
+    runtime_rejects_invalid_explicit_recall_limits: invalidRuntimeRecallLimitsRejected,
     search_matches_provider_failure_diagnostic:
       diagnosticSearch[0]?.record.id === created.record.id
       && (diagnosticSearch[0]?.matchedTaskSignals ?? []).some((item) => item.includes("provider_failure")),
