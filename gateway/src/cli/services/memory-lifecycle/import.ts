@@ -17,14 +17,98 @@ import {
 } from "./contract";
 import {
   buildMemoryScopeRoot,
-  clampUnitNumber,
   generateMemoryRecordId,
   normalizeMemoryClassification,
-  normalizeMemoryEvidenceRef,
   normalizeMemoryKind,
   normalizeMemoryLevel,
   normalizeMemoryState,
 } from "./normalize";
+
+type RowError = Record<string, string>;
+
+const EVIDENCE_REF_FIELDS = ["trace_id", "turn_id", "tool_call_id", "source"] as const;
+
+function parseImportUnitNumber(raw: unknown, defaultValue: number, field: string): {
+  value: number;
+  error?: RowError;
+} {
+  if (raw === undefined) {
+    return {
+      value: defaultValue,
+    };
+  }
+  if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0 || raw > 1) {
+    return {
+      value: defaultValue,
+      error: {
+        field,
+        reason: "must be number in range [0,1]",
+      },
+    };
+  }
+  return {
+    value: raw,
+  };
+}
+
+function parseImportEvidenceRef(raw: unknown): {
+  value: Record<string, string> | undefined;
+  errors: RowError[];
+} {
+  if (raw === undefined) {
+    return {
+      value: undefined,
+      errors: [],
+    };
+  }
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return {
+      value: undefined,
+      errors: [
+        {
+          field: "evidence_ref",
+          reason: "must be object",
+        },
+      ],
+    };
+  }
+
+  const record = raw as Record<string, unknown>;
+  const value: Record<string, string> = {};
+  const errors: RowError[] = [];
+  for (const field of EVIDENCE_REF_FIELDS) {
+    const fieldValue = record[field];
+    if (fieldValue === undefined) {
+      continue;
+    }
+    if (typeof fieldValue !== "string") {
+      errors.push({
+        field: `evidence_ref.${field}`,
+        reason: "must be string",
+      });
+      continue;
+    }
+    const cleaned = fieldValue.trim();
+    if (!cleaned) {
+      errors.push({
+        field: `evidence_ref.${field}`,
+        reason: "must be non-empty string",
+      });
+      continue;
+    }
+    value[field] = cleaned;
+  }
+  if (Object.keys(value).length === 0 && errors.length === 0) {
+    errors.push({
+      field: "evidence_ref",
+      reason: "must include at least one non-empty field",
+    });
+  }
+  return {
+    value: Object.keys(value).length > 0 ? value : undefined,
+    errors,
+  };
+}
 
 export function importMemoryRows(
   memoryRecordsBySession: Map<string, Record<string, unknown>[]>,
@@ -74,7 +158,7 @@ export function importMemoryRows(
       continue;
     }
     const row = rawRow as Record<string, unknown>;
-    const rowErrors: Array<Record<string, string>> = [];
+    const rowErrors: RowError[] = [];
 
     const text = typeof row.text === "string" ? row.text.trim() : "";
     if (!text) {
@@ -144,19 +228,13 @@ export function importMemoryRows(
       }
     }
 
-    const importanceParsed = clampUnitNumber(row.importance, 0.6);
-    if (row.importance !== undefined && !importanceParsed.valid) {
-      rowErrors.push({
-        field: "importance",
-        reason: "must be number in range [0,1]",
-      });
+    const importanceParsed = parseImportUnitNumber(row.importance, 0.6, "importance");
+    if (importanceParsed.error) {
+      rowErrors.push(importanceParsed.error);
     }
-    const confidenceParsed = clampUnitNumber(row.confidence, 0.6);
-    if (row.confidence !== undefined && !confidenceParsed.valid) {
-      rowErrors.push({
-        field: "confidence",
-        reason: "must be number in range [0,1]",
-      });
+    const confidenceParsed = parseImportUnitNumber(row.confidence, 0.6, "confidence");
+    if (confidenceParsed.error) {
+      rowErrors.push(confidenceParsed.error);
     }
 
     const tags: string[] = [];
@@ -177,7 +255,14 @@ export function importMemoryRows(
             continue;
           }
           const cleanedTag = item.trim();
-          if (cleanedTag && !tags.includes(cleanedTag)) {
+          if (!cleanedTag) {
+            rowErrors.push({
+              field: `tags[${String(tagIdx)}]`,
+              reason: "must be non-empty string",
+            });
+            continue;
+          }
+          if (!tags.includes(cleanedTag)) {
             tags.push(cleanedTag);
           }
         }
@@ -276,13 +361,9 @@ export function importMemoryRows(
       }
     }
 
-    const evidenceRef = normalizeMemoryEvidenceRef(row.evidence_ref);
-    if (row.evidence_ref !== undefined && !evidenceRef) {
-      rowErrors.push({
-        field: "evidence_ref",
-        reason: "must include at least one non-empty field",
-      });
-    }
+    const evidenceRefResult = parseImportEvidenceRef(row.evidence_ref);
+    const evidenceRef = evidenceRefResult.value;
+    rowErrors.push(...evidenceRefResult.errors);
     if (memoryLevel !== MEMORY_LEVEL_L1 && !executionVerified) {
       rowErrors.push({
         field: "execution_verified",

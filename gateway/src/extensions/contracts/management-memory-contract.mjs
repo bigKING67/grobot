@@ -125,6 +125,13 @@ function jsonBody(payload) {
   return JSON.stringify(payload);
 }
 
+function firstInvalidRowField(response) {
+  const row = Array.isArray(response.body.invalid_rows) ? response.body.invalid_rows[0] : null;
+  const errors = row && Array.isArray(row.errors) ? row.errors : [];
+  const first = errors[0];
+  return first && typeof first.field === "string" ? first.field : null;
+}
+
 async function runMemoryInputValidation(options) {
   const repoRoot = requireOption(options, "repo-root");
   const workDir = requireOption(options, "work-dir");
@@ -214,6 +221,38 @@ async function runMemoryInputValidation(options) {
       body: jsonBody({
         source: "",
         records: [{ text: "x" }],
+      }),
+    });
+    const invalidImportImportance = await requestJson(importUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        records: [{ text: "x", importance: "0.8" }],
+      }),
+    });
+    const invalidImportTagsEntry = await requestJson(importUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        records: [{ text: "x", tags: ["good", ""] }],
+      }),
+    });
+    const invalidImportEvidenceRef = await requestJson(importUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        records: [{ text: "x", evidence_ref: { trace_id: "" } }],
+      }),
+    });
+    const validImportDefaults = await requestJson(importUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        records: [{ text: "valid defaulted memory row" }],
       }),
     });
     const oversizedImportRecords = await requestJson(importUrl, {
@@ -369,6 +408,20 @@ async function runMemoryInputValidation(options) {
       invalid_import_source_status: invalidImportSource.status,
       invalid_import_source_error: invalidImportSource.body.error ?? null,
       invalid_import_source_field: invalidImportSource.body.field ?? null,
+      invalid_import_importance_status: invalidImportImportance.status,
+      invalid_import_importance_error: invalidImportImportance.body.error ?? null,
+      invalid_import_importance_detail_error: invalidImportImportance.body.detail_error ?? null,
+      invalid_import_importance_field: firstInvalidRowField(invalidImportImportance),
+      invalid_import_tags_entry_status: invalidImportTagsEntry.status,
+      invalid_import_tags_entry_error: invalidImportTagsEntry.body.error ?? null,
+      invalid_import_tags_entry_detail_error: invalidImportTagsEntry.body.detail_error ?? null,
+      invalid_import_tags_entry_field: firstInvalidRowField(invalidImportTagsEntry),
+      invalid_import_evidence_ref_status: invalidImportEvidenceRef.status,
+      invalid_import_evidence_ref_error: invalidImportEvidenceRef.body.error ?? null,
+      invalid_import_evidence_ref_detail_error: invalidImportEvidenceRef.body.detail_error ?? null,
+      invalid_import_evidence_ref_field: firstInvalidRowField(invalidImportEvidenceRef),
+      valid_import_defaults_status: validImportDefaults.status,
+      valid_import_defaults_imported_count: validImportDefaults.body.imported_count ?? null,
       oversized_import_records_status: oversizedImportRecords.status,
       oversized_import_records_error: oversizedImportRecords.body.error ?? null,
       oversized_import_records_detail_error: oversizedImportRecords.body.detail_error ?? null,
