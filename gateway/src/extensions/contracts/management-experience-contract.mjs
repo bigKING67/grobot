@@ -205,6 +205,43 @@ async function runExperienceInputValidation(options) {
       timeoutMs: 1_000,
       headers,
     });
+    const experienceStateUrl = `${experienceUrl}/missing-record/state`;
+    const invalidStateEmpty = await requestJson(experienceStateUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: JSON.stringify({ state: "" }),
+    });
+    const invalidStateUnknown = await requestJson(experienceStateUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: JSON.stringify({ state: "archived" }),
+    });
+    const invalidStateNumber = await requestJson(experienceStateUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: JSON.stringify({ state: 67 }),
+    });
+    const invalidReasonEmpty = await requestJson(experienceStateUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: JSON.stringify({ state: "quarantined", reason: "" }),
+    });
+    const invalidReasonNumber = await requestJson(experienceStateUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: JSON.stringify({ state: "quarantined", reason: 67 }),
+    });
+    const validStateMissingRecord = await requestJson(experienceStateUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: JSON.stringify({ state: "quarantined" }),
+    });
     const validList = await requestJson(`${experienceUrl}?limit=1&states=active,quarantined`, {
       timeoutMs: 1_000,
       headers,
@@ -239,6 +276,23 @@ async function runExperienceInputValidation(options) {
       invalid_query_empty_status: invalidQueryEmpty.status,
       invalid_query_empty_error: invalidQueryEmpty.body.error ?? null,
       invalid_query_empty_field: invalidQueryEmpty.body.field ?? null,
+      invalid_state_empty_status: invalidStateEmpty.status,
+      invalid_state_empty_error: invalidStateEmpty.body.error ?? null,
+      invalid_state_empty_field: invalidStateEmpty.body.field ?? null,
+      invalid_state_unknown_status: invalidStateUnknown.status,
+      invalid_state_unknown_error: invalidStateUnknown.body.error ?? null,
+      invalid_state_unknown_field: invalidStateUnknown.body.field ?? null,
+      invalid_state_number_status: invalidStateNumber.status,
+      invalid_state_number_error: invalidStateNumber.body.error ?? null,
+      invalid_state_number_field: invalidStateNumber.body.field ?? null,
+      invalid_reason_empty_status: invalidReasonEmpty.status,
+      invalid_reason_empty_error: invalidReasonEmpty.body.error ?? null,
+      invalid_reason_empty_field: invalidReasonEmpty.body.field ?? null,
+      invalid_reason_number_status: invalidReasonNumber.status,
+      invalid_reason_number_error: invalidReasonNumber.body.error ?? null,
+      invalid_reason_number_field: invalidReasonNumber.body.field ?? null,
+      valid_state_missing_record_status: validStateMissingRecord.status,
+      valid_state_missing_record_error: validStateMissingRecord.body.error ?? null,
       valid_list_status: validList.status,
       valid_list_mode: validList.body.mode ?? null,
       valid_list_total_type: typeof validList.body.total,

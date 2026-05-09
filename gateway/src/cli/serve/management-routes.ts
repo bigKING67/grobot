@@ -2,7 +2,14 @@ import { type IncomingMessage, type ServerResponse } from "node:http";
 import { dispatchManagementMemoryRoutes } from "./management-routes-memory";
 import { requireManagementToken } from "./management-routes-auth";
 import { type ManagementRoutesContext } from "./management-routes-types";
-import { queryCsvEnum, queryInt, queryOptionalNonEmptyString, writeManagementInputError } from "./management-input-parsing";
+import {
+  bodyOptionalNonEmptyString,
+  queryCsvEnum,
+  queryInt,
+  queryOptionalNonEmptyString,
+  type ParseInputResult,
+  writeManagementInputError,
+} from "./management-input-parsing";
 import { type ExperienceRecordState } from "../../tools/state/experience-pool/types";
 import { CLI_PRODUCT_ENGINE } from "../product-identity";
 import { serializeRouteDecisionSummary } from "../status/route-status";
@@ -11,6 +18,34 @@ export type { ManagementRoutesContext } from "./management-routes-types";
 
 const EXPERIENCE_RECORD_STATES: readonly ExperienceRecordState[] = ["active", "quarantined", "disabled"];
 const EXPERIENCE_STATES_DETAIL = "states must be comma separated: active,quarantined,disabled";
+const EXPERIENCE_STATE_DETAIL = "state must be active | quarantined | disabled";
+
+function resolveExperienceBodyState(
+  body: Record<string, unknown>,
+): ParseInputResult<ExperienceRecordState> {
+  const raw = body.state;
+  if (typeof raw !== "string") {
+    return {
+      ok: false,
+      error: "invalid_state",
+      field: "state",
+      detail: EXPERIENCE_STATE_DETAIL,
+    };
+  }
+  const stateRaw = raw.trim();
+  if (stateRaw === "active" || stateRaw === "quarantined" || stateRaw === "disabled") {
+    return {
+      ok: true,
+      value: stateRaw,
+    };
+  }
+  return {
+    ok: false,
+    error: "invalid_state",
+    field: "state",
+    detail: EXPERIENCE_STATE_DETAIL,
+  };
+}
 
 function resolveInterruptTtlSecs(rawBody: string): {
   ok: true;
@@ -455,16 +490,15 @@ export async function dispatchManagementRoutes(
       });
       return true;
     }
-    const stateRaw = typeof parsedBody.body.state === "string" ? parsedBody.body.state.trim() : "";
-    if (stateRaw !== "active" && stateRaw !== "quarantined" && stateRaw !== "disabled") {
-      context.writeJson(response, 400, {
-        error: "invalid_state",
-        detail: "state must be active | quarantined | disabled",
-      });
-      return true;
+    const stateResult = resolveExperienceBodyState(parsedBody.body);
+    if (!stateResult.ok) {
+      return writeManagementInputError(response, context, stateResult);
     }
-    const reason = typeof parsedBody.body.reason === "string" ? parsedBody.body.reason.trim() : undefined;
-    const updated = context.setExperienceRecordState(id, stateRaw, reason);
+    const reasonResult = bodyOptionalNonEmptyString(parsedBody.body, "reason");
+    if (!reasonResult.ok) {
+      return writeManagementInputError(response, context, reasonResult);
+    }
+    const updated = context.setExperienceRecordState(id, stateResult.value, reasonResult.value);
     if (!updated) {
       context.writeJson(response, 404, {
         error: "experience_not_found",
