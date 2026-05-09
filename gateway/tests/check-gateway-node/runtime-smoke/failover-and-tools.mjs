@@ -29,7 +29,8 @@ export async function runRuntimeFailoverAndToolSmoke() {
     repoRoot,
   ]);
   const rejectPayload = parseJsonOutput("start-smoke-contract package-launcher-rejects-python", rejectResult.stdout);
-  assert.equal(rejectPayload.exit_code, 2);
+  assert.deepEqual([rejectPayload.exit_code, rejectPayload.empty_gateway_exit_code, rejectPayload.missing_gateway_exit_code, rejectPayload.empty_runtime_exit_code, rejectPayload.missing_runtime_exit_code], [2, 2, 2, 2, 2]);
+  assert.equal(rejectPayload.malformed_impl_errors_are_stable, true);
   logStep("start-smoke-contract package-launcher-rejects-python");
 
   const failoverRejectResult = runContract("start-smoke-contract.mjs", "failover-rejects-python", ["--repo-root", repoRoot]);

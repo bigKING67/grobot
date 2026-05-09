@@ -183,6 +183,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     `--management-token` may fall back to env/config only when omitted;
     explicit empty or missing values must exit `2` with stable
     `invalid_<field>` errors instead of silently using a lower-priority source.
+24. CLI execution-plane implementation selectors must fail closed on malformed
+    explicit values. `--gateway-impl` and `--runtime-impl` may use project
+    execution defaults only when omitted; explicit empty, missing, or
+    unsupported values must exit `2` under the TS+Rust hard-cut error umbrella
+    instead of falling back to `ts` / `rust`.
 
 ---
 

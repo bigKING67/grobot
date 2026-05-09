@@ -173,7 +173,14 @@ export async function runRuntimeDescribeFallbackSmoke() {
     "start-smoke-contract status-reject-python-gateway",
     pythonGatewayRejectResult.stdout,
   );
-  assert.equal(pythonGatewayRejectPayload.exit_code, 2);
+  assert.deepEqual([
+    pythonGatewayRejectPayload.exit_code,
+    pythonGatewayRejectPayload.empty_gateway_exit_code,
+    pythonGatewayRejectPayload.missing_gateway_exit_code,
+    pythonGatewayRejectPayload.empty_runtime_exit_code,
+    pythonGatewayRejectPayload.missing_runtime_exit_code,
+  ], [2, 2, 2, 2, 2]);
+  assert.equal(pythonGatewayRejectPayload.malformed_impl_errors_are_stable, true);
   logStep("start-smoke-contract status-reject-python-gateway");
 
   const legacyEnvRejectResult = runContract("start-smoke-contract.mjs", "status-reject-legacy-env", ["--repo-root", repoRoot]);

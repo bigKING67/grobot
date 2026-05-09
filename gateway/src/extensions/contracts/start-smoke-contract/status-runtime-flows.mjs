@@ -522,7 +522,32 @@ export function runStatusRejectLegacyFlag(context) {
 
 export function runStatusRejectPythonGateway(context) {
   const { repoRoot, runCommand } = context;
-  return runCommand(repoRoot, ["./grobot", "status", "--gateway-impl", "python"]);
+  const pythonGatewayResult = runCommand(repoRoot, ["./grobot", "status", "--gateway-impl", "python"]);
+  const emptyGatewayResult = runCommand(repoRoot, ["./grobot", "status", "--gateway-impl", ""]);
+  const missingGatewayResult = runCommand(repoRoot, ["./grobot", "status", "--gateway-impl"]);
+  const emptyRuntimeResult = runCommand(repoRoot, ["./grobot", "status", "--runtime-impl", ""]);
+  const missingRuntimeResult = runCommand(repoRoot, ["./grobot", "status", "--runtime-impl"]);
+  const combinedOutput = [
+    pythonGatewayResult.stderr,
+    emptyGatewayResult.stderr,
+    missingGatewayResult.stderr,
+    emptyRuntimeResult.stderr,
+    missingRuntimeResult.stderr,
+  ].join("\n");
+  return {
+    ...pythonGatewayResult,
+    python_gateway_exit_code: pythonGatewayResult.exit_code,
+    empty_gateway_exit_code: emptyGatewayResult.exit_code,
+    missing_gateway_exit_code: missingGatewayResult.exit_code,
+    empty_runtime_exit_code: emptyRuntimeResult.exit_code,
+    missing_runtime_exit_code: missingRuntimeResult.exit_code,
+    malformed_impl_errors_are_stable:
+      emptyGatewayResult.stderr.includes("invalid --gateway-impl value: <empty>")
+      && missingGatewayResult.stderr.includes("invalid --gateway-impl value: <missing>")
+      && emptyRuntimeResult.stderr.includes("invalid --runtime-impl value: <empty>")
+      && missingRuntimeResult.stderr.includes("invalid --runtime-impl value: <missing>"),
+    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
+  };
 }
 
 export function runStatusRejectLegacyEnv(context) {

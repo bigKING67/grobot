@@ -178,6 +178,29 @@ function isTruthyString(value: string | undefined): boolean {
   );
 }
 
+type HardCutExecutionOption =
+  | { kind: "omitted" }
+  | { kind: "invalid"; displayValue: "<missing>" | "<empty>" }
+  | { kind: "value"; value: string };
+
+function readHardCutExecutionOption(
+  options: Record<string, OptionValue>,
+  key: string,
+): HardCutExecutionOption {
+  if (!Object.prototype.hasOwnProperty.call(options, key)) {
+    return { kind: "omitted" };
+  }
+  const value = options[key];
+  if (typeof value !== "string") {
+    return { kind: "invalid", displayValue: "<missing>" };
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return { kind: "invalid", displayValue: "<empty>" };
+  }
+  return { kind: "value", value: trimmed };
+}
+
 export function validateHardCutExecutionOptions(options: Record<string, OptionValue>): string[] {
   const errors: string[] = [];
   if (hasFlag(options, "legacy-python-cli")) {
@@ -187,9 +210,12 @@ export function validateHardCutExecutionOptions(options: Record<string, OptionVa
     errors.push("GROBOT_LEGACY_PYTHON is no longer supported");
   }
 
-  const gatewayRaw = readOptionString(options, "gateway-impl");
-  if (gatewayRaw) {
-    const gatewayValue = gatewayRaw.trim().toLowerCase();
+  const gatewayImpl = readHardCutExecutionOption(options, "gateway-impl");
+  if (gatewayImpl.kind === "invalid") {
+    errors.push(`invalid --gateway-impl value: ${gatewayImpl.displayValue}`);
+  } else if (gatewayImpl.kind === "value") {
+    const gatewayRaw = gatewayImpl.value;
+    const gatewayValue = gatewayRaw.toLowerCase();
     if (gatewayValue === "python") {
       errors.push("--gateway-impl=python is no longer supported");
     } else if (gatewayValue !== "ts") {
@@ -197,9 +223,12 @@ export function validateHardCutExecutionOptions(options: Record<string, OptionVa
     }
   }
 
-  const runtimeRaw = readOptionString(options, "runtime-impl");
-  if (runtimeRaw) {
-    const runtimeValue = runtimeRaw.trim().toLowerCase();
+  const runtimeImpl = readHardCutExecutionOption(options, "runtime-impl");
+  if (runtimeImpl.kind === "invalid") {
+    errors.push(`invalid --runtime-impl value: ${runtimeImpl.displayValue}`);
+  } else if (runtimeImpl.kind === "value") {
+    const runtimeRaw = runtimeImpl.value;
+    const runtimeValue = runtimeRaw.toLowerCase();
     if (runtimeValue === "python") {
       errors.push("--runtime-impl=python is no longer supported");
     } else if (runtimeValue !== "rust") {
