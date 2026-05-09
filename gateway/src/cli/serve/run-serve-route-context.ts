@@ -6,12 +6,9 @@ import { readMaskedFile } from "../services/redaction";
 import { type ExperiencePoolRuntime } from "../services/experience-pool-runtime";
 import {
   parseBearerToken,
-  parseBodyBool,
   parseJsonObjectBody,
   parseQueryParams,
-  queryParamBool,
   queryParamCursor,
-  queryParamInt,
   queryParamStr,
   readBody,
   readHeaderValue,
@@ -162,13 +159,10 @@ export function createRunServeRouteContext(
     parseBearerToken,
     parseQueryParams,
     queryParamStr,
-    queryParamBool,
-    queryParamInt,
     queryParamCursor,
     readBody,
     readHeaderValue,
     parseJsonObjectBody,
-    parseBodyBool,
     utf8ByteLength,
   };
 }

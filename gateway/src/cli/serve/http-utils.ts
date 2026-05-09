@@ -48,45 +48,6 @@ export function queryParamStr(query: QueryParams, key: string, defaultValue = ""
   return defaultValue;
 }
 
-function parseBoolValue(raw: string | undefined, defaultValue: boolean): boolean {
-  if (typeof raw !== "string" || raw.trim().length === 0) {
-    return defaultValue;
-  }
-  const normalized = raw.trim().toLowerCase();
-  if (normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on") {
-    return true;
-  }
-  if (normalized === "false" || normalized === "0" || normalized === "no" || normalized === "off") {
-    return false;
-  }
-  return defaultValue;
-}
-
-export function queryParamBool(query: QueryParams, key: string, defaultValue: boolean): boolean {
-  const values = query[key];
-  if (Array.isArray(values) && values.length > 0) {
-    return parseBoolValue(values[0], defaultValue);
-  }
-  return defaultValue;
-}
-
-export function queryParamInt(
-  query: QueryParams,
-  key: string,
-  defaultValue: number,
-  minimum: number,
-  maximum: number,
-): number {
-  const values = query[key];
-  if (Array.isArray(values) && values.length > 0) {
-    const parsed = Number.parseInt(values[0], 10);
-    if (Number.isFinite(parsed)) {
-      return Math.max(minimum, Math.min(maximum, parsed));
-    }
-  }
-  return Math.max(minimum, Math.min(maximum, defaultValue));
-}
-
 export function queryParamCursor(
   query: QueryParams,
   key = "cursor",
@@ -110,25 +71,6 @@ export function queryParamCursor(
     return { cursor: 0, error: "cursor_too_large" };
   }
   return { cursor: parsed };
-}
-
-export function parseBodyBool(raw: unknown, defaultValue: boolean): boolean {
-  if (typeof raw === "boolean") {
-    return raw;
-  }
-  if (typeof raw === "number") {
-    if (raw === 1) {
-      return true;
-    }
-    if (raw === 0) {
-      return false;
-    }
-    return defaultValue;
-  }
-  if (typeof raw === "string") {
-    return parseBoolValue(raw, defaultValue);
-  }
-  return defaultValue;
 }
 
 export function parseJsonObjectBody(rawBody: string): {

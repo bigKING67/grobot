@@ -116,8 +116,6 @@ export interface ManagementRoutesContext {
   parseBearerToken: (headers: IncomingMessage["headers"]) => string | undefined;
   parseQueryParams: (rawUrl: string) => QueryParams;
   queryParamStr: (query: QueryParams, key: string, defaultValue?: string) => string;
-  queryParamBool: (query: QueryParams, key: string, defaultValue: boolean) => boolean;
-  queryParamInt: (query: QueryParams, key: string, defaultValue: number, minimum: number, maximum: number) => number;
   queryParamCursor: (
     query: QueryParams,
     key?: string,
@@ -137,6 +135,5 @@ export interface ManagementRoutesContext {
         ok: false;
         detail: string;
       };
-  parseBodyBool: (raw: unknown, defaultValue: boolean) => boolean;
   utf8ByteLength: (value: string) => number;
 }
