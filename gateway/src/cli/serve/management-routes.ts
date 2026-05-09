@@ -2,7 +2,7 @@ import { type IncomingMessage, type ServerResponse } from "node:http";
 import { dispatchManagementMemoryRoutes } from "./management-routes-memory";
 import { requireManagementToken } from "./management-routes-auth";
 import { type ManagementRoutesContext } from "./management-routes-types";
-import { queryCsvEnum, queryInt, writeManagementInputError } from "./management-input-parsing";
+import { queryCsvEnum, queryInt, queryOptionalNonEmptyString, writeManagementInputError } from "./management-input-parsing";
 import { type ExperienceRecordState } from "../../tools/state/experience-pool/types";
 import { CLI_PRODUCT_ENGINE } from "../product-identity";
 import { serializeRouteDecisionSummary } from "../status/route-status";
@@ -256,10 +256,26 @@ export async function dispatchManagementRoutes(
     }
 
     const query = context.parseQueryParams(rawUrl);
-    const tenant = context.queryParamStr(query, "tenant", context.projectName).trim();
-    const team = context.queryParamStr(query, "team", context.getExperiencePoolState().teamDefault).trim();
-    const user = context.queryParamStr(query, "user", "").trim();
-    const q = context.queryParamStr(query, "q", "").trim();
+    const tenantResult = queryOptionalNonEmptyString(query, "tenant");
+    if (!tenantResult.ok) {
+      return writeManagementInputError(response, context, tenantResult);
+    }
+    const teamResult = queryOptionalNonEmptyString(query, "team");
+    if (!teamResult.ok) {
+      return writeManagementInputError(response, context, teamResult);
+    }
+    const userResult = queryOptionalNonEmptyString(query, "user");
+    if (!userResult.ok) {
+      return writeManagementInputError(response, context, userResult);
+    }
+    const queryResult = queryOptionalNonEmptyString(query, "q");
+    if (!queryResult.ok) {
+      return writeManagementInputError(response, context, queryResult);
+    }
+    const tenant = tenantResult.value ?? context.projectName;
+    const team = teamResult.value ?? context.getExperiencePoolState().teamDefault;
+    const user = userResult.value;
+    const q = queryResult.value;
     const limitResult = queryInt(query, "limit", 10, 1, 100);
     if (!limitResult.ok) {
       return writeManagementInputError(response, context, limitResult);

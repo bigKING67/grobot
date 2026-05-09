@@ -427,6 +427,18 @@ export async function runRuntimeDescribeFallbackSmoke() {
   assert.equal(experienceInputPayload.invalid_states_empty_status, 400);
   assert.equal(experienceInputPayload.invalid_states_empty_error, "invalid_states");
   assert.equal(experienceInputPayload.invalid_states_empty_field, "states");
+  assert.equal(experienceInputPayload.invalid_tenant_empty_status, 400);
+  assert.equal(experienceInputPayload.invalid_tenant_empty_error, "invalid_tenant");
+  assert.equal(experienceInputPayload.invalid_tenant_empty_field, "tenant");
+  assert.equal(experienceInputPayload.invalid_team_empty_status, 400);
+  assert.equal(experienceInputPayload.invalid_team_empty_error, "invalid_team");
+  assert.equal(experienceInputPayload.invalid_team_empty_field, "team");
+  assert.equal(experienceInputPayload.invalid_user_empty_status, 400);
+  assert.equal(experienceInputPayload.invalid_user_empty_error, "invalid_user");
+  assert.equal(experienceInputPayload.invalid_user_empty_field, "user");
+  assert.equal(experienceInputPayload.invalid_query_empty_status, 400);
+  assert.equal(experienceInputPayload.invalid_query_empty_error, "invalid_q");
+  assert.equal(experienceInputPayload.invalid_query_empty_field, "q");
   assert.equal(experienceInputPayload.valid_list_status, 200);
   assert.equal(experienceInputPayload.valid_list_mode, "list");
   assert.equal(experienceInputPayload.valid_list_total_type, "number");

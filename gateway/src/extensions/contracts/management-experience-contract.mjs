@@ -189,6 +189,22 @@ async function runExperienceInputValidation(options) {
       timeoutMs: 1_000,
       headers,
     });
+    const invalidTenantEmpty = await requestJson(`${experienceUrl}?tenant=`, {
+      timeoutMs: 1_000,
+      headers,
+    });
+    const invalidTeamEmpty = await requestJson(`${experienceUrl}?team=`, {
+      timeoutMs: 1_000,
+      headers,
+    });
+    const invalidUserEmpty = await requestJson(`${experienceUrl}?user=`, {
+      timeoutMs: 1_000,
+      headers,
+    });
+    const invalidQueryEmpty = await requestJson(`${experienceUrl}?q=`, {
+      timeoutMs: 1_000,
+      headers,
+    });
     const validList = await requestJson(`${experienceUrl}?limit=1&states=active,quarantined`, {
       timeoutMs: 1_000,
       headers,
@@ -211,6 +227,18 @@ async function runExperienceInputValidation(options) {
       invalid_states_empty_status: invalidStatesEmpty.status,
       invalid_states_empty_error: invalidStatesEmpty.body.error ?? null,
       invalid_states_empty_field: invalidStatesEmpty.body.field ?? null,
+      invalid_tenant_empty_status: invalidTenantEmpty.status,
+      invalid_tenant_empty_error: invalidTenantEmpty.body.error ?? null,
+      invalid_tenant_empty_field: invalidTenantEmpty.body.field ?? null,
+      invalid_team_empty_status: invalidTeamEmpty.status,
+      invalid_team_empty_error: invalidTeamEmpty.body.error ?? null,
+      invalid_team_empty_field: invalidTeamEmpty.body.field ?? null,
+      invalid_user_empty_status: invalidUserEmpty.status,
+      invalid_user_empty_error: invalidUserEmpty.body.error ?? null,
+      invalid_user_empty_field: invalidUserEmpty.body.field ?? null,
+      invalid_query_empty_status: invalidQueryEmpty.status,
+      invalid_query_empty_error: invalidQueryEmpty.body.error ?? null,
+      invalid_query_empty_field: invalidQueryEmpty.body.field ?? null,
       valid_list_status: validList.status,
       valid_list_mode: validList.body.mode ?? null,
       valid_list_total_type: typeof validList.body.total,
