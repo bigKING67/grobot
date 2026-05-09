@@ -277,6 +277,13 @@ export function runStartInvalidRuntimeControlsRejectFlow(context) {
       GROBOT_CONTEXT_GRAPH_CACHE_WINDOW_SIZE: "201",
     },
   );
+  const invalidEnvAskUserPendingTtlResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_ASK_USER_PENDING_TTL_MINUTES: "1abc",
+    },
+  );
   const combinedOutput = [
     invalidTimeoutResult.stdout,
     invalidTimeoutResult.stderr,
@@ -294,6 +301,8 @@ export function runStartInvalidRuntimeControlsRejectFlow(context) {
     invalidEnvMemoryMaintenanceIntervalResult.stderr,
     invalidEnvContextGraphWindowResult.stdout,
     invalidEnvContextGraphWindowResult.stderr,
+    invalidEnvAskUserPendingTtlResult.stdout,
+    invalidEnvAskUserPendingTtlResult.stderr,
   ].join("\n");
   return {
     invalid_timeout_exit_code: invalidTimeoutResult.exit_code,
@@ -328,6 +337,10 @@ export function runStartInvalidRuntimeControlsRejectFlow(context) {
     invalid_env_context_graph_window_has_stable_error:
       invalidEnvContextGraphWindowResult.stderr.includes("error: invalid_context_graph_cache_window_size:")
       && invalidEnvContextGraphWindowResult.stderr.includes("context-graph-cache-window-size must be an integer between 1 and 200"),
+    invalid_env_ask_user_pending_ttl_exit_code: invalidEnvAskUserPendingTtlResult.exit_code,
+    invalid_env_ask_user_pending_ttl_has_stable_error:
+      invalidEnvAskUserPendingTtlResult.stderr.includes("error: invalid_ask_user_pending_ttl_minutes:")
+      && invalidEnvAskUserPendingTtlResult.stderr.includes("ask-user-pending-ttl-minutes must be an integer between 1 and 10080"),
     hides_top_level_fatal: !combinedOutput.includes("fatal error"),
     has_start_banner: hasStartBannerMarker(combinedOutput),
   };

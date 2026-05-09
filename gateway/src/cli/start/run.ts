@@ -25,7 +25,10 @@ import { createRunStartWire } from "./wire";
 import { createRunStartPlanMode } from "./plan-mode";
 import { createRunStartRewindStore } from "./rewind-store";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./turn";
-import { createGaMechanismRuntime } from "../services/ga-mechanism-runtime";
+import {
+  createGaMechanismRuntime,
+  isGaMechanismRuntimeConfigInputError,
+} from "../services/ga-mechanism-runtime";
 import { createExperiencePoolRuntime } from "../services/experience-pool-runtime";
 import {
   applyMemoryDecayAutotuneToPolicy,
@@ -298,7 +301,16 @@ export async function runStart(
   const rewindStore = createRunStartRewindStore({
     workDir,
   });
-  const gaMechanismRuntime = createGaMechanismRuntime();
+  let gaMechanismRuntime: ReturnType<typeof createGaMechanismRuntime>;
+  try {
+    gaMechanismRuntime = createGaMechanismRuntime();
+  } catch (error) {
+    if (isGaMechanismRuntimeConfigInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    throw error;
+  }
   gaMechanismRuntime.hydrateSession(
     runtimeState.getSessionKey(),
     runtimeState.getGaState(),

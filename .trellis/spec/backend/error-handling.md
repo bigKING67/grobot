@@ -195,6 +195,12 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     omitted; invalid booleans, non-integer values, or out-of-range integers
     must exit `2` with stable `invalid_<field>` errors before memory
     maintenance or runtime turn execution starts.
+26. Ask-user pending TTL controls must fail closed on malformed explicit env
+    values. `GROBOT_ASK_USER_PENDING_TTL_MINUTES` may use the default only
+    when omitted or empty; malformed, zero, or out-of-range explicit values
+    must exit `2` with stable `invalid_ask_user_pending_ttl_minutes` before
+    GA mechanism runtime bootstrap, pending ask expiry, or runtime turn
+    execution starts.
 
 ---
 

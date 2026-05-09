@@ -1,5 +1,8 @@
 import {
   ASK_USER_PENDING_MAX_AGE_MS_DEFAULT,
+  ASK_USER_PENDING_TTL_MINUTES_MAX,
+  ASK_USER_PENDING_TTL_MINUTES_MIN,
+  GaMechanismRuntimeConfigInputError,
   type GaEvidenceRef,
 } from "./contract";
 
@@ -51,14 +54,29 @@ export function parseTimestampMs(value: string): number | undefined {
   return parsed;
 }
 
-export function resolveAskUserPendingMaxAgeMs(): number {
-  const rawMinutes = process.env.GROBOT_ASK_USER_PENDING_TTL_MINUTES;
-  if (typeof rawMinutes !== "string") {
+export function resolveAskUserPendingMaxAgeMs(
+  rawMinutes = process.env.GROBOT_ASK_USER_PENDING_TTL_MINUTES,
+): number {
+  if (rawMinutes === undefined || rawMinutes.trim().length === 0) {
     return ASK_USER_PENDING_MAX_AGE_MS_DEFAULT;
   }
-  const parsedMinutes = Number.parseInt(rawMinutes, 10);
-  if (!Number.isFinite(parsedMinutes) || parsedMinutes <= 0) {
-    return ASK_USER_PENDING_MAX_AGE_MS_DEFAULT;
+  const normalized = rawMinutes.trim();
+  if (!/^\d+$/.test(normalized)) {
+    throw new GaMechanismRuntimeConfigInputError(
+      "ask-user-pending-ttl-minutes",
+      `ask-user-pending-ttl-minutes must be an integer between ${String(ASK_USER_PENDING_TTL_MINUTES_MIN)} and ${String(ASK_USER_PENDING_TTL_MINUTES_MAX)}`,
+    );
+  }
+  const parsedMinutes = Number.parseInt(normalized, 10);
+  if (
+    !Number.isSafeInteger(parsedMinutes) ||
+    parsedMinutes < ASK_USER_PENDING_TTL_MINUTES_MIN ||
+    parsedMinutes > ASK_USER_PENDING_TTL_MINUTES_MAX
+  ) {
+    throw new GaMechanismRuntimeConfigInputError(
+      "ask-user-pending-ttl-minutes",
+      `ask-user-pending-ttl-minutes must be an integer between ${String(ASK_USER_PENDING_TTL_MINUTES_MIN)} and ${String(ASK_USER_PENDING_TTL_MINUTES_MAX)}`,
+    );
   }
   return parsedMinutes * 60 * 1000;
 }

@@ -8,6 +8,26 @@ export const REFLECTION_MIN_FAILURES = 2;
 export const ASK_USER_HINT_COOLDOWN_MS = 2 * 60 * 1000;
 export const ASK_USER_HINT_FAILURE_THRESHOLD = 2;
 export const ASK_USER_PENDING_MAX_AGE_MS_DEFAULT = 6 * 60 * 60 * 1000;
+export const ASK_USER_PENDING_TTL_MINUTES_MIN = 1;
+export const ASK_USER_PENDING_TTL_MINUTES_MAX = 7 * 24 * 60;
+
+export class GaMechanismRuntimeConfigInputError extends Error {
+  readonly code: string;
+  readonly field: string;
+
+  constructor(field: string, detail: string) {
+    super(detail);
+    this.name = "GaMechanismRuntimeConfigInputError";
+    this.code = `invalid_${field.replace(/-/g, "_")}`;
+    this.field = field;
+  }
+}
+
+export function isGaMechanismRuntimeConfigInputError(
+  error: unknown,
+): error is GaMechanismRuntimeConfigInputError {
+  return error instanceof GaMechanismRuntimeConfigInputError;
+}
 
 export type GaMemoryLevel = "L1" | "L2" | "L3" | "L4";
 export type GaSourceEventType =
