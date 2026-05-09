@@ -50,6 +50,71 @@
     }
 
     #[test]
+    fn parse_kimi_stream_payload_rejects_malformed_tool_call_shapes() {
+        let malformed_streams = [
+            (
+                "missing_tool_call_id",
+                concat!(
+                    "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,\"type\":\"function\",\"function\":{\"name\":\"list\",\"arguments\":\"{}\"}}]}}]}\n",
+                    "data: [DONE]\n",
+                ),
+                "stream_tool_call_id_parse",
+            ),
+            (
+                "missing_tool_call_arguments",
+                concat!(
+                    "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"list\"}}]}}]}\n",
+                    "data: [DONE]\n",
+                ),
+                "stream_tool_call_arguments_parse",
+            ),
+            (
+                "missing_tool_call_type",
+                concat!(
+                    "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"list\",\"arguments\":\"{}\"}}]}}]}\n",
+                    "data: [DONE]\n",
+                ),
+                "stream_tool_call_type_parse",
+            ),
+            (
+                "tool_call_not_object",
+                concat!(
+                    "data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[\"not-object\"]}}]}\n",
+                    "data: [DONE]\n",
+                ),
+                "stream_tool_call_validate_object",
+            ),
+            (
+                "missing_tool_call_index",
+                concat!(
+                    "data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"list\",\"arguments\":\"{}\"}}]}}]}\n",
+                    "data: [DONE]\n",
+                ),
+                "stream_tool_call_index_parse",
+            ),
+        ];
+
+        for (case_name, stream_body, expected_stage) in malformed_streams {
+            let error = parse_model_response_payload(stream_body, ProviderKind::Kimi)
+                .unwrap_err();
+            assert_eq!(error.error_class, "upstream_invalid_response", "{case_name}");
+            let data = error.data.as_ref().expect("kimi stream error data");
+            assert_eq!(
+                data["diagnostic_kind"].as_str(),
+                Some("upstream_invalid_response"),
+                "{case_name}"
+            );
+            assert_eq!(
+                data["source"].as_str(),
+                Some("model.kimi_stream"),
+                "{case_name}"
+            );
+            assert_eq!(data["stage"].as_str(), Some(expected_stage), "{case_name}");
+            assert_eq!(data["provider"].as_str(), Some("kimi"), "{case_name}");
+        }
+    }
+
+    #[test]
     fn executor_injects_reasoning_content_for_kimi_tool_call_message() {
         let _env_guard = lock_env();
         let server = start_mock_http_server_sequence(&[

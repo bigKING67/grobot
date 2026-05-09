@@ -1,7 +1,16 @@
 fn parse_tool_arguments(raw: &str, tool_name: &str) -> Result<Value, ModelExecutionError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
-        return Ok(json!({}));
+        return Err(model_error_with_fields(
+            model_diagnostic_error(
+                "invalid_tool_arguments",
+                format!("tool arguments must be a non-empty JSON object string ({tool_name})"),
+                "model.tooling",
+                "tool_arguments_validate_non_empty",
+                "retry with tool_call.function.arguments encoded as a JSON object string such as {}",
+            ),
+            &[("tool_name", json!(tool_name))],
+        ));
     }
     let parsed: Value = serde_json::from_str(trimmed).map_err(|error| {
         model_error_with_fields(
@@ -30,6 +39,17 @@ fn parse_tool_arguments(raw: &str, tool_name: &str) -> Result<Value, ModelExecut
     Ok(parsed)
 }
 
+fn invalid_tool_call_response_error(
+    message: impl Into<String>,
+    stage: &str,
+    fields: &[(&str, Value)],
+) -> ModelExecutionError {
+    model_error_with_fields(
+        model_invalid_response_error(message, "model.tooling", stage),
+        fields,
+    )
+}
+
 fn extract_tool_calls(response: &Value) -> Result<Vec<ToolCallInput>, ModelExecutionError> {
     let choices = response
         .get("choices")
@@ -55,14 +75,31 @@ fn extract_tool_calls(response: &Value) -> Result<Vec<ToolCallInput>, ModelExecu
             "tool_calls_message_parse",
         )
     })?;
-    let Some(raw_calls) = message.get("tool_calls").and_then(Value::as_array) else {
+    let Some(raw_calls_value) = message.get("tool_calls") else {
         return Ok(Vec::new());
     };
+    if raw_calls_value.is_null() {
+        return Ok(Vec::new());
+    };
+    let raw_calls = raw_calls_value.as_array().ok_or_else(|| {
+        invalid_tool_call_response_error(
+            "choices[0].message.tool_calls must be an array when present",
+            "tool_calls_validate_array",
+            &[("raw_value", raw_calls_value.clone())],
+        )
+    })?;
     let mut calls: Vec<ToolCallInput> = Vec::new();
     for (index, raw_call) in raw_calls.iter().enumerate() {
-        let Some(call_object) = raw_call.as_object() else {
-            continue;
-        };
+        let call_object = raw_call.as_object().ok_or_else(|| {
+            invalid_tool_call_response_error(
+                "tool_calls entries must be objects",
+                "tool_call_validate_object",
+                &[
+                    ("tool_call_index", json!(index)),
+                    ("raw_value", raw_call.clone()),
+                ],
+            )
+        })?;
         let function = call_object
             .get("function")
             .and_then(Value::as_object)
@@ -76,6 +113,28 @@ fn extract_tool_calls(response: &Value) -> Result<Vec<ToolCallInput>, ModelExecu
                     &[("tool_call_index", json!(index))],
                 )
             })?;
+        let call_type = call_object
+            .get("type")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                invalid_tool_call_response_error(
+                    "tool_call.type is missing",
+                    "tool_call_type_parse",
+                    &[("tool_call_index", json!(index))],
+                )
+            })?;
+        if call_type != "function" {
+            return Err(invalid_tool_call_response_error(
+                "tool_call.type must be function",
+                "tool_call_type_validate",
+                &[
+                    ("tool_call_index", json!(index)),
+                    ("raw_value", json!(call_type)),
+                ],
+            ));
+        }
         let name = function
             .get("name")
             .and_then(Value::as_str)
@@ -98,11 +157,31 @@ fn extract_tool_calls(response: &Value) -> Result<Vec<ToolCallInput>, ModelExecu
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(ToString::to_string)
-            .unwrap_or_else(|| format!("call_{}", index + 1));
-        let arguments_raw = function
-            .get("arguments")
-            .and_then(Value::as_str)
-            .unwrap_or("{}");
+            .ok_or_else(|| {
+                invalid_tool_call_response_error(
+                    "tool_call.id is missing",
+                    "tool_call_id_parse",
+                    &[("tool_call_index", json!(index)), ("tool_name", json!(name))],
+                )
+            })?;
+        let Some(arguments_value) = function.get("arguments") else {
+            return Err(invalid_tool_call_response_error(
+                "tool_call.function.arguments is missing",
+                "tool_call_arguments_parse",
+                &[("tool_call_index", json!(index)), ("tool_name", json!(name))],
+            ));
+        };
+        let arguments_raw = arguments_value.as_str().ok_or_else(|| {
+            invalid_tool_call_response_error(
+                "tool_call.function.arguments must be a JSON object string",
+                "tool_call_arguments_parse",
+                &[
+                    ("tool_call_index", json!(index)),
+                    ("tool_name", json!(name)),
+                    ("raw_value", arguments_value.clone()),
+                ],
+            )
+        })?;
         let arguments = parse_tool_arguments(arguments_raw, &name)?;
         calls.push(ToolCallInput { id, name, arguments });
     }

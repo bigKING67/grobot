@@ -1,5 +1,6 @@
 #[derive(Debug, Default, Clone)]
 struct KimiStreamToolCallAggregate {
+    seen: bool,
     id: Option<String>,
     call_type: Option<String>,
     function_name: String,
@@ -32,6 +33,17 @@ fn append_stream_content(destination: &mut String, content: &Value) {
             destination.push_str(text);
         }
     }
+}
+
+fn kimi_stream_invalid_response_error(
+    message: impl Into<String>,
+    stage: &str,
+    fields: &[(&str, Value)],
+) -> ModelExecutionError {
+    model_error_with_fields(
+        model_invalid_response_error(message, "model.kimi_stream", stage),
+        &[fields, &[("provider", json!("kimi"))]].concat(),
+    )
 }
 
 fn parse_kimi_stream_completion_payload(body_text: &str) -> Result<Value, ModelExecutionError> {
@@ -83,18 +95,38 @@ fn parse_kimi_stream_completion_payload(body_text: &str) -> Result<Value, ModelE
         if let Some(usage) = chunk.get("usage") {
             usage_payload = Some(usage.clone());
         }
-        let Some(raw_choices) = chunk.get("choices").and_then(Value::as_array) else {
+        let Some(raw_choices_value) = chunk.get("choices") else {
             continue;
         };
+        let raw_choices = raw_choices_value.as_array().ok_or_else(|| {
+            kimi_stream_invalid_response_error(
+                "kimi stream chunk choices must be an array when present",
+                "stream_choices_validate_array",
+                &[("raw_value", raw_choices_value.clone())],
+            )
+        })?;
         for (fallback_index, raw_choice) in raw_choices.iter().enumerate() {
-            let Some(choice_object) = raw_choice.as_object() else {
-                continue;
-            };
+            let choice_object = raw_choice.as_object().ok_or_else(|| {
+                kimi_stream_invalid_response_error(
+                    "kimi stream choices entries must be objects",
+                    "stream_choice_validate_object",
+                    &[
+                        ("choice_index", json!(fallback_index)),
+                        ("raw_value", raw_choice.clone()),
+                    ],
+                )
+            })?;
             let choice_index = choice_object
                 .get("index")
                 .and_then(Value::as_u64)
                 .map(|value| value as usize)
-                .unwrap_or(fallback_index);
+                .ok_or_else(|| {
+                    kimi_stream_invalid_response_error(
+                        "kimi stream choice.index is missing",
+                        "stream_choice_index_parse",
+                        &[("choice_index", json!(fallback_index))],
+                    )
+                })?;
             while choices.len() <= choice_index {
                 choices.push(KimiStreamChoiceAggregate::default());
             }
@@ -119,45 +151,124 @@ fn parse_kimi_stream_completion_payload(body_text: &str) -> Result<Value, ModelE
             if let Some(reasoning) = delta.get("reasoning_content").and_then(Value::as_str) {
                 choice.reasoning_content.push_str(reasoning);
             }
-            if let Some(raw_tool_calls) = delta.get("tool_calls").and_then(Value::as_array) {
+            if let Some(raw_tool_calls_value) = delta.get("tool_calls") {
+                let raw_tool_calls = raw_tool_calls_value.as_array().ok_or_else(|| {
+                    kimi_stream_invalid_response_error(
+                        "kimi stream delta.tool_calls must be an array when present",
+                        "stream_tool_calls_validate_array",
+                        &[
+                            ("choice_index", json!(choice_index)),
+                            ("raw_value", raw_tool_calls_value.clone()),
+                        ],
+                    )
+                })?;
                 for (fallback_call_index, raw_tool_call) in raw_tool_calls.iter().enumerate() {
-                    let Some(tool_call) = raw_tool_call.as_object() else {
-                        continue;
-                    };
+                    let tool_call = raw_tool_call.as_object().ok_or_else(|| {
+                        kimi_stream_invalid_response_error(
+                            "kimi stream tool_calls entries must be objects",
+                            "stream_tool_call_validate_object",
+                            &[
+                                ("choice_index", json!(choice_index)),
+                                ("tool_call_index", json!(fallback_call_index)),
+                                ("raw_value", raw_tool_call.clone()),
+                            ],
+                        )
+                    })?;
                     let tool_call_index = tool_call
                         .get("index")
                         .and_then(Value::as_u64)
                         .map(|value| value as usize)
-                        .unwrap_or(fallback_call_index);
+                        .ok_or_else(|| {
+                            kimi_stream_invalid_response_error(
+                                "kimi stream tool_call.index is missing",
+                                "stream_tool_call_index_parse",
+                                &[
+                                    ("choice_index", json!(choice_index)),
+                                    ("tool_call_index", json!(fallback_call_index)),
+                                ],
+                            )
+                        })?;
                     while choice.tool_calls.len() <= tool_call_index {
                         choice
                             .tool_calls
                             .push(KimiStreamToolCallAggregate::default());
                     }
                     let aggregate = &mut choice.tool_calls[tool_call_index];
-                    if let Some(id) = tool_call
-                        .get("id")
-                        .and_then(Value::as_str)
-                        .map(str::trim)
-                        .filter(|value| !value.is_empty())
-                    {
+                    aggregate.seen = true;
+                    if let Some(id_value) = tool_call.get("id") {
+                        let id = id_value
+                            .as_str()
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .ok_or_else(|| {
+                                kimi_stream_invalid_response_error(
+                                    "kimi stream tool_call.id must be a non-empty string",
+                                    "stream_tool_call_id_parse",
+                                    &[
+                                        ("choice_index", json!(choice_index)),
+                                        ("tool_call_index", json!(tool_call_index)),
+                                        ("raw_value", id_value.clone()),
+                                    ],
+                                )
+                            })?;
                         aggregate.id = Some(id.to_string());
                     }
-                    if let Some(call_type) = tool_call
-                        .get("type")
-                        .and_then(Value::as_str)
-                        .map(str::trim)
-                        .filter(|value| !value.is_empty())
-                    {
+                    if let Some(call_type_value) = tool_call.get("type") {
+                        let call_type = call_type_value
+                            .as_str()
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .ok_or_else(|| {
+                                kimi_stream_invalid_response_error(
+                                    "kimi stream tool_call.type must be a non-empty string",
+                                    "stream_tool_call_type_parse",
+                                    &[
+                                        ("choice_index", json!(choice_index)),
+                                        ("tool_call_index", json!(tool_call_index)),
+                                        ("raw_value", call_type_value.clone()),
+                                    ],
+                                )
+                            })?;
                         aggregate.call_type = Some(call_type.to_string());
                     }
-                    if let Some(function) = tool_call.get("function").and_then(Value::as_object) {
-                        if let Some(name_piece) = function.get("name").and_then(Value::as_str) {
+                    if let Some(function_value) = tool_call.get("function") {
+                        let function = function_value.as_object().ok_or_else(|| {
+                            kimi_stream_invalid_response_error(
+                                "kimi stream tool_call.function must be an object when present",
+                                "stream_tool_call_function_parse",
+                                &[
+                                    ("choice_index", json!(choice_index)),
+                                    ("tool_call_index", json!(tool_call_index)),
+                                    ("raw_value", function_value.clone()),
+                                ],
+                            )
+                        })?;
+                        if let Some(name_value) = function.get("name") {
+                            let name_piece = name_value.as_str().ok_or_else(|| {
+                                kimi_stream_invalid_response_error(
+                                    "kimi stream tool_call.function.name must be a string",
+                                    "stream_tool_call_name_parse",
+                                    &[
+                                        ("choice_index", json!(choice_index)),
+                                        ("tool_call_index", json!(tool_call_index)),
+                                        ("raw_value", name_value.clone()),
+                                    ],
+                                )
+                            })?;
                             aggregate.function_name.push_str(name_piece);
                         }
-                        if let Some(arguments_piece) =
-                            function.get("arguments").and_then(Value::as_str)
-                        {
+                        if let Some(arguments_value) = function.get("arguments") {
+                            let arguments_piece = arguments_value.as_str().ok_or_else(|| {
+                                kimi_stream_invalid_response_error(
+                                    "kimi stream tool_call.function.arguments must be a string",
+                                    "stream_tool_call_arguments_parse",
+                                    &[
+                                        ("choice_index", json!(choice_index)),
+                                        ("tool_call_index", json!(tool_call_index)),
+                                        ("raw_value", arguments_value.clone()),
+                                    ],
+                                )
+                            })?;
                             aggregate.function_arguments.push_str(arguments_piece);
                         }
                     }
@@ -207,20 +318,70 @@ fn parse_kimi_stream_completion_payload(body_text: &str) -> Result<Value, ModelE
         }
         let mut output_tool_calls: Vec<Value> = Vec::new();
         for (tool_call_index, tool_call) in choice.tool_calls.into_iter().enumerate() {
-            if tool_call.function_name.trim().is_empty() {
+            if !tool_call.seen {
                 continue;
             }
-            let arguments = if tool_call.function_arguments.trim().is_empty() {
-                "{}".to_string()
-            } else {
-                tool_call.function_arguments
-            };
+            if tool_call.function_name.trim().is_empty() {
+                return Err(kimi_stream_invalid_response_error(
+                    "kimi stream tool_call.function.name is missing",
+                    "stream_tool_call_name_parse",
+                    &[
+                        ("choice_index", json!(index)),
+                        ("tool_call_index", json!(tool_call_index)),
+                    ],
+                ));
+            }
+            let id = tool_call.id.ok_or_else(|| {
+                kimi_stream_invalid_response_error(
+                    "kimi stream tool_call.id is missing",
+                    "stream_tool_call_id_parse",
+                    &[
+                        ("choice_index", json!(index)),
+                        ("tool_call_index", json!(tool_call_index)),
+                        ("tool_name", json!(tool_call.function_name.clone())),
+                    ],
+                )
+            })?;
+            let call_type = tool_call.call_type.ok_or_else(|| {
+                kimi_stream_invalid_response_error(
+                    "kimi stream tool_call.type is missing",
+                    "stream_tool_call_type_parse",
+                    &[
+                        ("choice_index", json!(index)),
+                        ("tool_call_index", json!(tool_call_index)),
+                        ("tool_name", json!(tool_call.function_name.clone())),
+                    ],
+                )
+            })?;
+            if call_type != "function" {
+                return Err(kimi_stream_invalid_response_error(
+                    "kimi stream tool_call.type must be function",
+                    "stream_tool_call_type_validate",
+                    &[
+                        ("choice_index", json!(index)),
+                        ("tool_call_index", json!(tool_call_index)),
+                        ("tool_name", json!(tool_call.function_name.clone())),
+                        ("raw_value", json!(call_type)),
+                    ],
+                ));
+            }
+            if tool_call.function_arguments.trim().is_empty() {
+                return Err(kimi_stream_invalid_response_error(
+                    "kimi stream tool_call.function.arguments is missing",
+                    "stream_tool_call_arguments_parse",
+                    &[
+                        ("choice_index", json!(index)),
+                        ("tool_call_index", json!(tool_call_index)),
+                        ("tool_name", json!(tool_call.function_name)),
+                    ],
+                ));
+            }
             output_tool_calls.push(json!({
-                "id": tool_call.id.unwrap_or_else(|| format!("call_{}", tool_call_index + 1)),
-                "type": tool_call.call_type.unwrap_or_else(|| "function".to_string()),
+                "id": id,
+                "type": call_type,
                 "function": {
                     "name": tool_call.function_name,
-                    "arguments": arguments,
+                    "arguments": tool_call.function_arguments,
                 }
             }));
         }
