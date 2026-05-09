@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { PLAN_APPLY_STALE_DEFAULT_MS, PLAN_PROGRESS_SECTION } from "./constants";
+import { PLAN_PROGRESS_SECTION } from "./constants";
 import {
   buildApprovalTicketId,
   buildPlanId,
@@ -7,11 +7,11 @@ import {
   clearPlanApprovalFields,
   nextPlanSeq,
 } from "./content";
+import { resolvePlanArtifactEnvControls } from "./env-controls";
 import { appendPlanEventUnlocked } from "./events";
 import {
   compactSingleLine,
   nowIsoUtc,
-  parsePositiveInt,
   readText,
   removeDangerousChars,
   sanitizeSegment,
@@ -452,8 +452,7 @@ export function recoverStaleApprovedPlan(
     }
     const staleAfterMs = Math.max(
       1_000,
-      options?.staleAfterMs ??
-        parsePositiveInt(process.env.GROBOT_PLAN_APPLY_STALE_MS, PLAN_APPLY_STALE_DEFAULT_MS),
+      options?.staleAfterMs ?? resolvePlanArtifactEnvControls().applyStaleMs,
     );
     const startedAt = current.apply_started_at ?? current.approved_at ?? current.updated_at;
     const startedAtMs = Date.parse(startedAt);

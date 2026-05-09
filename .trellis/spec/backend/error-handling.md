@@ -201,6 +201,13 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     must exit `2` with stable `invalid_ask_user_pending_ttl_minutes` before
     GA mechanism runtime bootstrap, pending ask expiry, or runtime turn
     execution starts.
+27. Plan artifact maintenance env controls must fail closed on malformed
+    explicit values. `GROBOT_PLAN_EVENTS_MAX_BYTES`,
+    `GROBOT_PLAN_EVENTS_ROTATE_KEEP`, and `GROBOT_PLAN_APPLY_STALE_MS` may use
+    defaults only when omitted or empty; malformed, zero, or out-of-range
+    explicit values must exit `2` with stable `invalid_<field>` errors before
+    plan artifact event rotation, stale apply recovery, or runtime turn
+    execution starts.
 
 ---
 

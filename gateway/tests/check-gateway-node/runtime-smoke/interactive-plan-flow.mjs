@@ -74,6 +74,35 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
     events: planModeFlowPayload.events_count,
   });
 
+  const invalidPlanArtifactControlsResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-invalid-plan-artifact-controls-reject-flow",
+    ["--repo-root", repoRoot],
+  );
+  const invalidPlanArtifactControlsPayload = parseJsonOutput(
+    "start-smoke-contract start-invalid-plan-artifact-controls-reject-flow",
+    invalidPlanArtifactControlsResult.stdout,
+  );
+  assert.deepEqual(
+    [
+      invalidPlanArtifactControlsPayload.invalid_events_max_bytes_exit_code,
+      invalidPlanArtifactControlsPayload.invalid_events_rotate_keep_exit_code,
+      invalidPlanArtifactControlsPayload.invalid_plan_apply_stale_exit_code,
+    ],
+    [2, 2, 2],
+  );
+  assert.deepEqual(
+    [
+      invalidPlanArtifactControlsPayload.invalid_events_max_bytes_has_stable_error,
+      invalidPlanArtifactControlsPayload.invalid_events_rotate_keep_has_stable_error,
+      invalidPlanArtifactControlsPayload.invalid_plan_apply_stale_has_stable_error,
+    ],
+    [true, true, true],
+  );
+  assert.equal(invalidPlanArtifactControlsPayload.hides_top_level_fatal, true);
+  assert.equal(invalidPlanArtifactControlsPayload.has_start_banner, false);
+  logStep("start-smoke-contract start-invalid-plan-artifact-controls-reject-flow");
+
   const bareInteractiveFlowResult = runContract(
     "start-smoke-contract.mjs",
     "start-bare-interactive-session-flow",

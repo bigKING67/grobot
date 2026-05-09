@@ -83,6 +83,7 @@ import {
   runStartInvalidExperienceSchedulerControlsRejectFlow,
 } from "./start-smoke-contract/experience-scheduler-control-flows.mjs";
 import {
+  runStartInvalidPlanArtifactControlsRejectFlow,
   runStartPlanConcurrencyFlow,
   runStartPlanModeFlow,
 } from "./start-smoke-contract/start-plan-flows.mjs";
@@ -204,6 +205,9 @@ function runCli(argv) {
       break;
     case "start-plan-mode-flow":
       payload = runStartPlanModeFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-plan-artifact-controls-reject-flow":
+      payload = runStartInvalidPlanArtifactControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "start-plan-concurrency-flow":
       payload = runStartPlanConcurrencyFlow(buildStartSmokeFlowContext(repoRoot));

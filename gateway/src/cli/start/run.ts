@@ -23,6 +23,10 @@ import { createRunStartPersistence } from "./persistence";
 import { createRunStartRuntimeState } from "./runtime-state";
 import { createRunStartWire } from "./wire";
 import { createRunStartPlanMode } from "./plan-mode";
+import {
+  isPlanArtifactControlInputError,
+  resolvePlanArtifactEnvControls,
+} from "./plan-artifact/env-controls";
 import { createRunStartRewindStore } from "./rewind-store";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./turn";
 import {
@@ -180,6 +184,15 @@ export async function runStart(
     sessionRegistryFilePathValue,
     sessionStore,
   } = context;
+  try {
+    resolvePlanArtifactEnvControls();
+  } catch (error) {
+    if (isPlanArtifactControlInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    throw error;
+  }
   const traceModeEnabled = hasFlag(options, "trace");
   const verboseModeEnabled = hasFlag(options, "verbose") || traceModeEnabled;
   const interactiveDiagnosticsMode: InteractiveDiagnosticsMode =

@@ -57,17 +57,6 @@ export function writeFileAtomic(path: string, content: string): void {
   }
 }
 
-export function parsePositiveInt(raw: string | undefined, fallback: number): number {
-  if (typeof raw !== "string") {
-    return fallback;
-  }
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return fallback;
-  }
-  return parsed;
-}
-
 export function parseOptionalNonNegativeInt(raw: string | undefined): number | undefined {
   if (typeof raw !== "string") {
     return undefined;

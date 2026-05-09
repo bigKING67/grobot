@@ -1,13 +1,9 @@
 import { existsSync, mkdirSync, renameSync, statSync, writeFileSync } from "node:fs";
-import {
-  PLAN_EVENTS_DEFAULT_MAX_BYTES,
-  PLAN_EVENTS_DEFAULT_ROTATE_KEEP,
-} from "./constants";
+import { resolvePlanArtifactEnvControls } from "./env-controls";
 import {
   dirname,
   nowIsoUtc,
   parseOptionalNonNegativeInt,
-  parsePositiveInt,
   readText,
 } from "./fs-utils";
 import { withSessionPlanLock } from "./lock";
@@ -23,8 +19,9 @@ import type {
 } from "./types";
 
 function rotatePlanEventsIfNeeded(path: string): void {
-  const maxBytes = parsePositiveInt(process.env.GROBOT_PLAN_EVENTS_MAX_BYTES, PLAN_EVENTS_DEFAULT_MAX_BYTES);
-  const rotateKeep = Math.max(1, parsePositiveInt(process.env.GROBOT_PLAN_EVENTS_ROTATE_KEEP, PLAN_EVENTS_DEFAULT_ROTATE_KEEP));
+  const controls = resolvePlanArtifactEnvControls();
+  const maxBytes = controls.eventsMaxBytes;
+  const rotateKeep = controls.eventsRotateKeep;
   if (!existsSync(path)) {
     return;
   }

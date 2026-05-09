@@ -1,5 +1,69 @@
 import { existsSync } from "node:fs";
 
+export function runStartInvalidPlanArtifactControlsRejectFlow(context) {
+  const {
+    repoRoot,
+    createTempDir,
+    buildSmokeConfig,
+    writeConfig,
+    runCommand,
+    hasStartBannerMarker,
+  } = context;
+  const workDir = createTempDir("grobot-start-invalid-plan-artifact-controls-work");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const commonArgs = [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-subject",
+    "start-invalid-plan-artifact-controls-user",
+    "--message",
+    "invalid plan artifact controls should not reach runtime",
+  ];
+  const invalidEventsMaxBytesResult = runCommand(repoRoot, commonArgs, {
+    GROBOT_PLAN_EVENTS_MAX_BYTES: "abc",
+  });
+  const invalidEventsRotateKeepResult = runCommand(repoRoot, commonArgs, {
+    GROBOT_PLAN_EVENTS_ROTATE_KEEP: "0",
+  });
+  const invalidPlanApplyStaleResult = runCommand(repoRoot, commonArgs, {
+    GROBOT_PLAN_APPLY_STALE_MS: "999",
+  });
+  const combinedOutput = [
+    invalidEventsMaxBytesResult.stdout,
+    invalidEventsMaxBytesResult.stderr,
+    invalidEventsRotateKeepResult.stdout,
+    invalidEventsRotateKeepResult.stderr,
+    invalidPlanApplyStaleResult.stdout,
+    invalidPlanApplyStaleResult.stderr,
+  ].join("\n");
+  return {
+    invalid_events_max_bytes_exit_code: invalidEventsMaxBytesResult.exit_code,
+    invalid_events_max_bytes_has_stable_error:
+      invalidEventsMaxBytesResult.stderr.includes("error: invalid_plan_events_max_bytes:")
+      && invalidEventsMaxBytesResult.stderr.includes("plan-events-max-bytes must be an integer between 1024 and 104857600"),
+    invalid_events_rotate_keep_exit_code: invalidEventsRotateKeepResult.exit_code,
+    invalid_events_rotate_keep_has_stable_error:
+      invalidEventsRotateKeepResult.stderr.includes("error: invalid_plan_events_rotate_keep:")
+      && invalidEventsRotateKeepResult.stderr.includes("plan-events-rotate-keep must be an integer between 1 and 100"),
+    invalid_plan_apply_stale_exit_code: invalidPlanApplyStaleResult.exit_code,
+    invalid_plan_apply_stale_has_stable_error:
+      invalidPlanApplyStaleResult.stderr.includes("error: invalid_plan_apply_stale_ms:")
+      && invalidPlanApplyStaleResult.stderr.includes("plan-apply-stale-ms must be an integer between 1000 and 86400000"),
+    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
+    has_start_banner: hasStartBannerMarker(combinedOutput),
+  };
+}
+
 export function runStartPlanModeFlow(context) {
   const {
     repoRoot,
