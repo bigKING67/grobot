@@ -1,5 +1,9 @@
 import { readFileSync } from "node:fs";
-import { OptionValue, readOptionString, readOptionStringAny } from "../cli-args";
+import {
+  OptionValue,
+  readExplicitOptionalNonEmptyString,
+  readExplicitOptionalNonEmptyStringAny,
+} from "../cli-args";
 
 export function fileReadable(path: string): boolean {
   try {
@@ -35,7 +39,7 @@ function toAbsolutePath(rawPath: string, homeDir: string, baseDir: string): stri
 }
 
 export function resolveProjectRoot(options: Record<string, OptionValue>, homeDir: string): string {
-  const raw = readOptionString(options, "project-root");
+  const raw = readExplicitOptionalNonEmptyString(options, "project-root");
   if (!raw) {
     return removeTrailingSlashes(process.cwd());
   }
@@ -43,7 +47,7 @@ export function resolveProjectRoot(options: Record<string, OptionValue>, homeDir
 }
 
 export function resolveWorkDir(options: Record<string, OptionValue>, projectRoot: string, homeDir: string): string {
-  const raw = readOptionString(options, "work-dir");
+  const raw = readExplicitOptionalNonEmptyString(options, "work-dir");
   if (!raw) {
     return projectRoot;
   }
@@ -56,14 +60,14 @@ export function resolveProjectTomlPath(
   projectRoot: string,
   homeDir: string,
 ): string | undefined {
-  const explicit = readOptionStringAny(options, ["project-toml", "project-path"]);
+  const explicit = readExplicitOptionalNonEmptyStringAny(options, ["project-toml", "project-path"]);
   if (explicit) {
     const explicitPath = toAbsolutePath(explicit, homeDir, process.cwd());
     if (fileReadable(explicitPath)) {
       return explicitPath;
     }
   }
-  const hasProjectRootOverride = Boolean(readOptionString(options, "project-root"));
+  const hasProjectRootOverride = Boolean(readExplicitOptionalNonEmptyString(options, "project-root"));
   if (hasProjectRootOverride) {
     const fromProjectRoot = `${projectRoot}/.grobot/project.toml`;
     if (fileReadable(fromProjectRoot)) {
@@ -105,7 +109,7 @@ export function resolveConfigTomlPath(
   homeDir: string,
   context?: ResolveConfigTomlPathContext,
 ): string | undefined {
-  const explicit = readOptionStringAny(options, ["config", "config-path"]);
+  const explicit = readExplicitOptionalNonEmptyStringAny(options, ["config", "config-path"]);
   if (explicit) {
     const explicitPath = toAbsolutePath(explicit, homeDir, process.cwd());
     if (fileReadable(explicitPath)) {
@@ -157,7 +161,7 @@ export function resolveHomeDir(options?: Record<string, OptionValue>): string {
   const defaultHome = typeof home === "string" && home.trim().length > 0
     ? `${removeTrailingSlashes(home.trim())}/.grobot`
     : `${process.cwd()}/.grobot`;
-  const fromOption = options ? readOptionStringAny(options, ["home", "home-dir"]) : undefined;
+  const fromOption = options ? readExplicitOptionalNonEmptyStringAny(options, ["home", "home-dir"]) : undefined;
   if (fromOption) {
     return toAbsolutePath(fromOption, defaultHome, process.cwd());
   }

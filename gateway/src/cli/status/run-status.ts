@@ -1,5 +1,5 @@
 import { resolveExecutionPlaneConfig } from "../../orchestration/execution-plane";
-import { hasFlag, isCliStringOptionInputError, OptionValue, readExplicitOptionalNonEmptyString, readOptionString } from "../cli-args";
+import { hasFlag, isCliStringOptionInputError, OptionValue, readOptionString } from "../cli-args";
 import { CLI_PRODUCT_ENGINE } from "../product-identity";
 import {
   GLOBAL_TURN_GATE,
@@ -47,15 +47,6 @@ import {
   readMemoryStrategyAutotuneState,
 } from "../../tools/memory";
 import {
-  basenameFromPath,
-  resolveConfigTomlPath,
-  resolveHomeDir,
-  resolveProjectStateRoot,
-  resolveProjectRoot,
-  resolveProjectTomlPath,
-  resolveWorkDir,
-} from "../services/runtime-paths";
-import {
   readGraphCacheCounter,
   resolveContextEngineRuntimeModelConfig,
 } from "./context-engine-status";
@@ -96,6 +87,7 @@ import { serializeRuntimeToolsStatus } from "./runtime-tool-json";
 import { buildRuntimeToolQualitySummary } from "./runtime-tool-quality";
 import { formatRuntimeToolStatusLines } from "./runtime-tool-status-lines";
 import { writeStatusInputError } from "./input-error-output";
+import { resolveStatusPathContext } from "./path-context";
 import { renderInfoPanel } from "../tui/components/info-panel/render";
 import {
   displayValue,
@@ -112,25 +104,9 @@ import {
 export async function runStatus(options: Record<string, OptionValue>): Promise<number> {
   const outputJson = hasFlag(options, "json");
   const turnGate = serializeTurnGateSnapshot(GLOBAL_TURN_GATE.snapshot());
-  const homeDir = resolveHomeDir(options);
-  const projectRoot = resolveProjectRoot(options, homeDir);
-  const workDir = resolveWorkDir(options, projectRoot, homeDir);
-  const projectStateRoot = resolveProjectStateRoot(workDir);
-  const projectTomlPath = resolveProjectTomlPath(options, workDir, projectRoot, homeDir);
-  const configTomlPath = resolveConfigTomlPath(options, homeDir, { workDir, projectRoot });
-  const configSource =
-    configTomlPath == null
-      ? "none"
-      : configTomlPath.startsWith(`${workDir}/.grobot/`)
-        ? "project_work_dir"
-        : configTomlPath.startsWith(`${projectRoot}/.grobot/`)
-          ? "project_root"
-          : configTomlPath.startsWith(`${homeDir}/`)
-            ? "home"
-            : "custom";
-  let projectName: string;
+  let pathContext: ReturnType<typeof resolveStatusPathContext>;
   try {
-    projectName = readExplicitOptionalNonEmptyString(options, "project") ?? basenameFromPath(workDir);
+    pathContext = resolveStatusPathContext(options);
   } catch (error) {
     if (isCliStringOptionInputError(error)) {
       writeStatusInputError(error, outputJson);
@@ -138,6 +114,16 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     }
     throw error;
   }
+  const {
+    homeDir,
+    projectRoot,
+    workDir,
+    projectStateRoot,
+    projectTomlPath,
+    configTomlPath,
+    configSource,
+    projectName,
+  } = pathContext;
   const providerOverrideFromCli = readOptionString(options, "provider");
   const providerOverrideFromEnv = process.env.GROBOT_PROVIDER;
   const modelFromCli = readOptionString(options, "model");

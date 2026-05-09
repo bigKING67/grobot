@@ -172,6 +172,12 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     project name from the work directory only when `--project` is omitted;
     explicit empty or missing `--project` values must exit `2` with stable
     `invalid_project` errors instead of falling back to the directory basename.
+22. CLI path controls must fail closed on malformed explicit values.
+    `--project-root`, `--work-dir`, `--project-toml` / `--project-path`,
+    `--config` / `--config-path`, and `--home` / `--home-dir` may use implicit
+    discovery only when omitted; explicit empty or missing values must exit
+    `2` with stable `invalid_<field>` errors instead of silently falling back
+    to the current directory, project root, or home default.
 
 ---
 

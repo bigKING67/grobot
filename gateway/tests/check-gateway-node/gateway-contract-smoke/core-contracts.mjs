@@ -246,6 +246,11 @@ export async function runCoreContracts() {
   assert.equal(runtimePathResolutionPayload.explicit_project_root_reads_distinct_workdir_toml, true);
   assert.equal(runtimePathResolutionPayload.explicit_project_root_prefers_project_over_workdir_toml, true);
   assert.equal(runtimePathResolutionPayload.implicit_project_root_allows_dev_repo_fallback, true);
+  assert.equal(runtimePathResolutionPayload.empty_project_root_rejected, true);
+  assert.equal(runtimePathResolutionPayload.missing_work_dir_value_rejected, true);
+  assert.equal(runtimePathResolutionPayload.empty_project_toml_rejected, true);
+  assert.equal(runtimePathResolutionPayload.empty_config_path_rejected, true);
+  assert.equal(runtimePathResolutionPayload.empty_home_dir_rejected, true);
   logStep("runtime-path-resolution-contract");
 
   runContract("session-lifecycle-contract.mjs", "parse-args", [

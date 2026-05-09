@@ -1,7 +1,16 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { type OptionValue } from "../../cli/cli-args";
-import { resolveProjectTomlPath } from "../../cli/services/runtime-paths";
+import {
+  isCliStringOptionInputError,
+  type OptionValue,
+} from "../../cli/cli-args";
+import {
+  resolveConfigTomlPath,
+  resolveHomeDir,
+  resolveProjectRoot,
+  resolveProjectTomlPath,
+  resolveWorkDir,
+} from "../../cli/services/runtime-paths";
 
 function assertEqual(actual: unknown, expected: unknown, message: string): void {
   if (actual !== expected) {
@@ -14,6 +23,18 @@ function writeProjectToml(root: string, marker: string): string {
   mkdirSync(resolve(root, ".grobot"), { recursive: true });
   writeFileSync(path, `name = "${marker}"\n`, "utf8");
   return path;
+}
+
+function captureStringOptionErrorCode(callback: () => unknown): string | null {
+  try {
+    callback();
+    return null;
+  } catch (error) {
+    if (isCliStringOptionInputError(error)) {
+      return error.code;
+    }
+    throw error;
+  }
 }
 
 function resolvePath(input: {
@@ -98,6 +119,24 @@ function main(): void {
       explicit_project_root_reads_distinct_workdir_toml: explicitWorkToml === workOnlyToml,
       explicit_project_root_prefers_project_over_workdir_toml: explicitBothToml === bothProjectToml,
       implicit_project_root_allows_dev_repo_fallback: implicitDevRepoFallback === devRepoProjectToml,
+      empty_project_root_rejected:
+        captureStringOptionErrorCode(() => resolveProjectRoot({ "project-root": "" }, homeDir)) === "invalid_project_root",
+      missing_work_dir_value_rejected:
+        captureStringOptionErrorCode(() => resolveWorkDir({ "work-dir": true }, isolatedProjectRoot, homeDir)) === "invalid_work_dir",
+      empty_project_toml_rejected:
+        captureStringOptionErrorCode(() => resolvePath({
+          options: { "project-toml": "" },
+          workDir: isolatedWorkDir,
+          projectRoot: isolatedProjectRoot,
+          homeDir,
+        })) === "invalid_project_toml",
+      empty_config_path_rejected:
+        captureStringOptionErrorCode(() => resolveConfigTomlPath({ config: "" }, homeDir, {
+          workDir: isolatedWorkDir,
+          projectRoot: isolatedProjectRoot,
+        })) === "invalid_config",
+      empty_home_dir_rejected:
+        captureStringOptionErrorCode(() => resolveHomeDir({ "home-dir": "" })) === "invalid_home_dir",
     };
 
     assertEqual(
@@ -125,6 +164,11 @@ function main(): void {
       true,
       "implicit project root should keep TS dev repo fallback",
     );
+    assertEqual(payload.empty_project_root_rejected, true, "empty --project-root should fail closed");
+    assertEqual(payload.missing_work_dir_value_rejected, true, "missing --work-dir value should fail closed");
+    assertEqual(payload.empty_project_toml_rejected, true, "empty --project-toml should fail closed");
+    assertEqual(payload.empty_config_path_rejected, true, "empty --config should fail closed");
+    assertEqual(payload.empty_home_dir_rejected, true, "empty --home-dir should fail closed");
 
     process.stdout.write(`${JSON.stringify(payload)}\n`);
   } finally {

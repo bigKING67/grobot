@@ -137,6 +137,19 @@ export function readExplicitOptionalNonEmptyString(
   return value.trim();
 }
 
+export function readExplicitOptionalNonEmptyStringAny(
+  options: Record<string, OptionValue>,
+  keys: readonly string[],
+): string | undefined {
+  for (const key of keys) {
+    const value = readExplicitOptionalNonEmptyString(options, key);
+    if (value !== undefined) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
 export function hasFlag(options: Record<string, OptionValue>, key: string): boolean {
   const value = options[key];
   if (typeof value === "boolean") {
