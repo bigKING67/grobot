@@ -188,6 +188,13 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     execution defaults only when omitted; explicit empty, missing, or
     unsupported values must exit `2` under the TS+Rust hard-cut error umbrella
     instead of falling back to `ts` / `rust`.
+25. Start runtime maintenance env controls must fail closed on malformed
+    explicit values. `GROBOT_MEMORY_MAINTENANCE_ENABLED`,
+    `GROBOT_MEMORY_MAINTENANCE_INTERVAL_MS`, and
+    `GROBOT_CONTEXT_GRAPH_CACHE_WINDOW_SIZE` may use defaults only when
+    omitted; invalid booleans, non-integer values, or out-of-range integers
+    must exit `2` with stable `invalid_<field>` errors before memory
+    maintenance or runtime turn execution starts.
 
 ---
 

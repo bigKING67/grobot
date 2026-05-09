@@ -256,6 +256,27 @@ export function runStartInvalidRuntimeControlsRejectFlow(context) {
       GROBOT_PROVIDER_BURST: "NaN",
     },
   );
+  const invalidEnvMemoryMaintenanceEnabledResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_MEMORY_MAINTENANCE_ENABLED: "maybe",
+    },
+  );
+  const invalidEnvMemoryMaintenanceIntervalResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_MEMORY_MAINTENANCE_INTERVAL_MS: "14999",
+    },
+  );
+  const invalidEnvContextGraphWindowResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_CONTEXT_GRAPH_CACHE_WINDOW_SIZE: "201",
+    },
+  );
   const combinedOutput = [
     invalidTimeoutResult.stdout,
     invalidTimeoutResult.stderr,
@@ -267,6 +288,12 @@ export function runStartInvalidRuntimeControlsRejectFlow(context) {
     invalidProviderLimitResult.stderr,
     invalidEnvProviderBurstResult.stdout,
     invalidEnvProviderBurstResult.stderr,
+    invalidEnvMemoryMaintenanceEnabledResult.stdout,
+    invalidEnvMemoryMaintenanceEnabledResult.stderr,
+    invalidEnvMemoryMaintenanceIntervalResult.stdout,
+    invalidEnvMemoryMaintenanceIntervalResult.stderr,
+    invalidEnvContextGraphWindowResult.stdout,
+    invalidEnvContextGraphWindowResult.stderr,
   ].join("\n");
   return {
     invalid_timeout_exit_code: invalidTimeoutResult.exit_code,
@@ -289,6 +316,18 @@ export function runStartInvalidRuntimeControlsRejectFlow(context) {
     invalid_env_provider_burst_has_stable_error:
       invalidEnvProviderBurstResult.stderr.includes("error: invalid_provider_burst:")
       && invalidEnvProviderBurstResult.stderr.includes("provider-burst must be a positive integer"),
+    invalid_env_memory_maintenance_enabled_exit_code: invalidEnvMemoryMaintenanceEnabledResult.exit_code,
+    invalid_env_memory_maintenance_enabled_has_stable_error:
+      invalidEnvMemoryMaintenanceEnabledResult.stderr.includes("error: invalid_memory_maintenance_enabled:")
+      && invalidEnvMemoryMaintenanceEnabledResult.stderr.includes("memory-maintenance-enabled must be one of:"),
+    invalid_env_memory_maintenance_interval_exit_code: invalidEnvMemoryMaintenanceIntervalResult.exit_code,
+    invalid_env_memory_maintenance_interval_has_stable_error:
+      invalidEnvMemoryMaintenanceIntervalResult.stderr.includes("error: invalid_memory_maintenance_interval_ms:")
+      && invalidEnvMemoryMaintenanceIntervalResult.stderr.includes("memory-maintenance-interval-ms must be an integer between 15000 and 86400000"),
+    invalid_env_context_graph_window_exit_code: invalidEnvContextGraphWindowResult.exit_code,
+    invalid_env_context_graph_window_has_stable_error:
+      invalidEnvContextGraphWindowResult.stderr.includes("error: invalid_context_graph_cache_window_size:")
+      && invalidEnvContextGraphWindowResult.stderr.includes("context-graph-cache-window-size must be an integer between 1 and 200"),
     hides_top_level_fatal: !combinedOutput.includes("fatal error"),
     has_start_banner: hasStartBannerMarker(combinedOutput),
   };

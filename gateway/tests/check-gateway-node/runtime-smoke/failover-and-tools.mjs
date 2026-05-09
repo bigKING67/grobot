@@ -273,16 +273,8 @@ export async function runRuntimeFailoverAndToolSmoke() {
     "start-smoke-contract start-invalid-runtime-controls-reject-flow",
     startInvalidRuntimeControlsResult.stdout,
   );
-  assert.equal(startInvalidRuntimeControlsPayload.invalid_timeout_exit_code, 2);
-  assert.equal(startInvalidRuntimeControlsPayload.invalid_timeout_has_stable_error, true);
-  assert.equal(startInvalidRuntimeControlsPayload.missing_timeout_exit_code, 2);
-  assert.equal(startInvalidRuntimeControlsPayload.missing_timeout_has_stable_error, true);
-  assert.equal(startInvalidRuntimeControlsPayload.invalid_circuit_failures_exit_code, 2);
-  assert.equal(startInvalidRuntimeControlsPayload.invalid_circuit_failures_has_stable_error, true);
-  assert.equal(startInvalidRuntimeControlsPayload.invalid_provider_limit_exit_code, 2);
-  assert.equal(startInvalidRuntimeControlsPayload.invalid_provider_limit_has_stable_error, true);
-  assert.equal(startInvalidRuntimeControlsPayload.invalid_env_provider_burst_exit_code, 2);
-  assert.equal(startInvalidRuntimeControlsPayload.invalid_env_provider_burst_has_stable_error, true);
+  assert.deepEqual([startInvalidRuntimeControlsPayload.invalid_timeout_exit_code, startInvalidRuntimeControlsPayload.missing_timeout_exit_code, startInvalidRuntimeControlsPayload.invalid_circuit_failures_exit_code, startInvalidRuntimeControlsPayload.invalid_provider_limit_exit_code, startInvalidRuntimeControlsPayload.invalid_env_provider_burst_exit_code, startInvalidRuntimeControlsPayload.invalid_env_memory_maintenance_enabled_exit_code, startInvalidRuntimeControlsPayload.invalid_env_memory_maintenance_interval_exit_code, startInvalidRuntimeControlsPayload.invalid_env_context_graph_window_exit_code], [2, 2, 2, 2, 2, 2, 2, 2]);
+  assert.deepEqual([startInvalidRuntimeControlsPayload.invalid_timeout_has_stable_error, startInvalidRuntimeControlsPayload.missing_timeout_has_stable_error, startInvalidRuntimeControlsPayload.invalid_circuit_failures_has_stable_error, startInvalidRuntimeControlsPayload.invalid_provider_limit_has_stable_error, startInvalidRuntimeControlsPayload.invalid_env_provider_burst_has_stable_error, startInvalidRuntimeControlsPayload.invalid_env_memory_maintenance_enabled_has_stable_error, startInvalidRuntimeControlsPayload.invalid_env_memory_maintenance_interval_has_stable_error, startInvalidRuntimeControlsPayload.invalid_env_context_graph_window_has_stable_error], [true, true, true, true, true, true, true, true]);
   assert.equal(startInvalidRuntimeControlsPayload.hides_top_level_fatal, true);
   assert.equal(startInvalidRuntimeControlsPayload.has_start_banner, false);
   logStep("start-smoke-contract start-invalid-runtime-controls-reject-flow");

@@ -70,13 +70,11 @@ import { isRuntimeToolControlInputError } from "./context/runtime-tool-controls"
 import { isRuntimeModelConfigInputError } from "./context/runtime-model-config";
 import { isStatusLineConfigInputError } from "./context/status-line-config";
 import { isContextEngineConfigInputError } from "../../tools/context";
+import { resolveStartEnvControls } from "./context/start-env-controls";
 
 export async function runStart(
   options: Record<string, OptionValue>,
 ): Promise<number> {
-  const MEMORY_MAINTENANCE_DEFAULT_INTERVAL_MS = 5 * 60 * 1_000;
-  const MEMORY_MAINTENANCE_MIN_INTERVAL_MS = 15_000;
-  const PROMPT_QUALITY_WINDOW_DEFAULT_SIZE = 20;
   const isTurnInterruptedCode = (code: number): boolean =>
     code === TURN_INTERRUPTED_EXIT_CODE;
   let context: ReturnType<typeof resolveRunStartContext>;
@@ -398,26 +396,26 @@ export async function runStart(
     writeStdout: output.writeStdout,
     writeStartupDiagnostics,
   });
-  const memoryMaintenanceEnabled = !["0", "false", "off", "no"].includes(
-    (process.env.GROBOT_MEMORY_MAINTENANCE_ENABLED ?? "1").trim().toLowerCase(),
-  );
-  const parsedMemoryInterval = Number.parseInt(
-    process.env.GROBOT_MEMORY_MAINTENANCE_INTERVAL_MS ?? "",
-    10,
-  );
-  const memoryMaintenanceIntervalMs =
-    Number.isFinite(parsedMemoryInterval) && parsedMemoryInterval > 0
-      ? Math.max(MEMORY_MAINTENANCE_MIN_INTERVAL_MS, parsedMemoryInterval)
-      : MEMORY_MAINTENANCE_DEFAULT_INTERVAL_MS;
-  const parsedPromptQualityWindowSize = Number.parseInt(
-    process.env.GROBOT_CONTEXT_GRAPH_CACHE_WINDOW_SIZE ?? "",
-    10,
-  );
-  const promptQualityWindowSize =
-    Number.isFinite(parsedPromptQualityWindowSize) &&
-    parsedPromptQualityWindowSize > 0
-      ? Math.floor(parsedPromptQualityWindowSize)
-      : PROMPT_QUALITY_WINDOW_DEFAULT_SIZE;
+  let memoryMaintenanceEnabled: boolean;
+  let memoryMaintenanceIntervalMs: number;
+  let promptQualityWindowSize: number;
+  try {
+    ({
+      memoryMaintenanceEnabled,
+      memoryMaintenanceIntervalMs,
+      promptQualityWindowSize,
+    } = resolveStartEnvControls());
+  } catch (error) {
+    if (isCliStringOptionInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    if (isCliNumericOptionInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    throw error;
+  }
   let memoryMaintenanceRunning = false;
   const runMemoryMaintenance = async (
     reason: MemoryMaintenanceReason,
