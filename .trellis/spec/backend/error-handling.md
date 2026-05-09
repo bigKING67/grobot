@@ -167,6 +167,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     specified; malformed arrays, empty arrays, empty entries, or duplicate
     entries must exit `2` with stable `invalid_runtime_tools_allow` errors
     instead of silently clearing or partially applying the allowlist.
+21. CLI project identity controls must fail closed on malformed explicit
+    values. `grobot start`, `grobot status`, and `grobot serve` may derive the
+    project name from the work directory only when `--project` is omitted;
+    explicit empty or missing `--project` values must exit `2` with stable
+    `invalid_project` errors instead of falling back to the directory basename.
 
 ---
 

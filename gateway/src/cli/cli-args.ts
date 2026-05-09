@@ -102,6 +102,41 @@ export function readOptionStringAny(options: Record<string, OptionValue>, keys: 
   return undefined;
 }
 
+export class CliStringOptionInputError extends Error {
+  readonly code: string;
+  readonly field: string;
+
+  constructor(field: string, detail: string) {
+    super(detail);
+    this.name = "CliStringOptionInputError";
+    this.code = `invalid_${field.replace(/-/g, "_")}`;
+    this.field = field;
+  }
+}
+
+export function isCliStringOptionInputError(
+  error: unknown,
+): error is CliStringOptionInputError {
+  return error instanceof CliStringOptionInputError;
+}
+
+export function readExplicitOptionalNonEmptyString(
+  options: Record<string, OptionValue>,
+  key: string,
+): string | undefined {
+  if (!Object.prototype.hasOwnProperty.call(options, key)) {
+    return undefined;
+  }
+  const value = options[key];
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new CliStringOptionInputError(
+      key,
+      `${key} must be a non-empty string`,
+    );
+  }
+  return value.trim();
+}
+
 export function hasFlag(options: Record<string, OptionValue>, key: string): boolean {
   const value = options[key];
   if (typeof value === "boolean") {

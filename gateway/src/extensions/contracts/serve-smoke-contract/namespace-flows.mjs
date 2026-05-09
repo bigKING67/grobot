@@ -108,6 +108,11 @@ export async function runServeInvalidNamespaceRejectFlow(options) {
     "--session-subject",
     "",
   ]);
+  const emptyProjectResult = await runRepoCommand(repoRoot, [
+    ...commonArgs,
+    "--project",
+    "",
+  ]);
   const combinedOutput = [
     invalidTenantResult.stdout,
     invalidTenantResult.stderr,
@@ -125,6 +130,8 @@ export async function runServeInvalidNamespaceRejectFlow(options) {
     missingCircuitCooldownResult.stderr,
     emptySubjectResult.stdout,
     emptySubjectResult.stderr,
+    emptyProjectResult.stdout,
+    emptyProjectResult.stderr,
   ].join("\n");
   return {
     invalid_tenant_exit_code: invalidTenantResult.exit_code,
@@ -159,6 +166,10 @@ export async function runServeInvalidNamespaceRejectFlow(options) {
     empty_subject_has_stable_error:
       emptySubjectResult.stderr.includes("error: invalid_session_subject:")
       && emptySubjectResult.stderr.includes("session-subject must be non-empty"),
+    empty_project_exit_code: emptyProjectResult.exit_code,
+    empty_project_has_stable_error:
+      emptyProjectResult.stderr.includes("error: invalid_project:")
+      && emptyProjectResult.stderr.includes("project must be a non-empty string"),
     hides_top_level_fatal: !combinedOutput.includes("fatal error"),
     has_serve_banner: combinedOutput.includes("management api:"),
   };

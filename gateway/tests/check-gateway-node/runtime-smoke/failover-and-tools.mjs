@@ -201,6 +201,9 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(providerFailureStatusPayload.empty_subject_status_exit_code, 2);
   assert.equal(providerFailureStatusPayload.empty_subject_status_error, "invalid_session_subject");
   assert.equal(providerFailureStatusPayload.empty_subject_status_field, "session-subject");
+  assert.equal(providerFailureStatusPayload.empty_project_status_exit_code, 2);
+  assert.equal(providerFailureStatusPayload.empty_project_status_error, "invalid_project");
+  assert.equal(providerFailureStatusPayload.empty_project_status_field, "project");
   assert.equal(providerFailureStatusPayload.invalid_scope_status_exit_code, 2);
   assert.equal(providerFailureStatusPayload.invalid_scope_status_error, "invalid_session_scope");
   assert.equal(providerFailureStatusPayload.invalid_scope_status_field, "session-scope");
@@ -253,6 +256,8 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(startInvalidNamespacePayload.invalid_scope_has_stable_error, true);
   assert.equal(startInvalidNamespacePayload.empty_subject_exit_code, 2);
   assert.equal(startInvalidNamespacePayload.empty_subject_has_stable_error, true);
+  assert.equal(startInvalidNamespacePayload.empty_project_exit_code, 2);
+  assert.equal(startInvalidNamespacePayload.empty_project_has_stable_error, true);
   assert.equal(startInvalidNamespacePayload.hides_top_level_fatal, true);
   assert.equal(startInvalidNamespacePayload.has_start_banner, false);
   logStep("start-smoke-contract start-invalid-namespace-reject-flow");
@@ -584,6 +589,8 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(serveInvalidNamespacePayload.missing_circuit_cooldown_has_stable_error, true);
   assert.equal(serveInvalidNamespacePayload.empty_subject_exit_code, 2);
   assert.equal(serveInvalidNamespacePayload.empty_subject_has_stable_error, true);
+  assert.equal(serveInvalidNamespacePayload.empty_project_exit_code, 2);
+  assert.equal(serveInvalidNamespacePayload.empty_project_has_stable_error, true);
   assert.equal(serveInvalidNamespacePayload.hides_top_level_fatal, true);
   assert.equal(serveInvalidNamespacePayload.has_serve_banner, false);
   logStep("serve-smoke-contract serve-invalid-namespace-reject-flow");

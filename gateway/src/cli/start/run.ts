@@ -1,4 +1,9 @@
-import { hasFlag, OptionValue, readOptionString } from "../cli-args";
+import {
+  hasFlag,
+  isCliStringOptionInputError,
+  OptionValue,
+  readOptionString,
+} from "../cli-args";
 import { buildInteractiveHelpText } from "./session-interactive";
 import { bootstrapRunStartState } from "./bootstrap";
 import { resolveRunStartContext } from "./context";
@@ -83,6 +88,10 @@ export async function runStart(
       return 2;
     }
     if (isCliNumericOptionInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    if (isCliStringOptionInputError(error)) {
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }

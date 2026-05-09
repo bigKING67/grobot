@@ -164,6 +164,13 @@ export function runProviderFailureRouteStatusTsRust(context, successProviderBase
     "--json",
   ]);
   const emptySubjectPayload = parseJsonObjectSafe(emptySubjectStatusResult.stdout);
+  const emptyProjectStatusResult = runCommand(repoRoot, [
+    ...statusArgs,
+    "--project",
+    "",
+    "--json",
+  ]);
+  const emptyProjectPayload = parseJsonObjectSafe(emptyProjectStatusResult.stdout);
   const invalidScopeStatusResult = runCommand(repoRoot, [
     ...statusArgs,
     "--session-scope",
@@ -202,6 +209,9 @@ export function runProviderFailureRouteStatusTsRust(context, successProviderBase
     empty_subject_status_exit_code: emptySubjectStatusResult.exit_code,
     empty_subject_status_error: emptySubjectPayload?.error ?? null,
     empty_subject_status_field: emptySubjectPayload?.field ?? null,
+    empty_project_status_exit_code: emptyProjectStatusResult.exit_code,
+    empty_project_status_error: emptyProjectPayload?.error ?? null,
+    empty_project_status_field: emptyProjectPayload?.field ?? null,
     invalid_scope_status_exit_code: invalidScopeStatusResult.exit_code,
     invalid_scope_status_error: invalidScopePayload?.error ?? null,
     invalid_scope_status_field: invalidScopePayload?.field ?? null,

@@ -105,6 +105,24 @@ export function runStartInvalidNamespaceRejectFlow(context) {
     "--message",
     "invalid namespace should not reach runtime",
   ]);
+  const emptyProjectResult = runCommand(repoRoot, [
+    "./grobot",
+    "start",
+    "--project",
+    "",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-subject",
+    "start-invalid-project-user",
+    "--message",
+    "invalid project should not reach runtime",
+  ]);
   const combinedOutput = [
     invalidTenantResult.stdout,
     invalidTenantResult.stderr,
@@ -112,6 +130,8 @@ export function runStartInvalidNamespaceRejectFlow(context) {
     invalidScopeResult.stderr,
     emptySubjectResult.stdout,
     emptySubjectResult.stderr,
+    emptyProjectResult.stdout,
+    emptyProjectResult.stderr,
   ].join("\n");
   return {
     invalid_tenant_exit_code: invalidTenantResult.exit_code,
@@ -126,6 +146,10 @@ export function runStartInvalidNamespaceRejectFlow(context) {
     empty_subject_has_stable_error:
       emptySubjectResult.stderr.includes("error: invalid_session_subject:")
       && emptySubjectResult.stderr.includes("session-subject must be non-empty"),
+    empty_project_exit_code: emptyProjectResult.exit_code,
+    empty_project_has_stable_error:
+      emptyProjectResult.stderr.includes("error: invalid_project:")
+      && emptyProjectResult.stderr.includes("project must be a non-empty string"),
     hides_top_level_fatal: !combinedOutput.includes("fatal error"),
     has_start_banner: hasStartBannerMarker(combinedOutput),
   };

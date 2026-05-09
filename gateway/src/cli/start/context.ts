@@ -1,5 +1,10 @@
 import { resolveExecutionPlaneConfig } from "../../orchestration/execution-plane";
-import { hasFlag, type OptionValue, readOptionString } from "../cli-args";
+import {
+  hasFlag,
+  type OptionValue,
+  readExplicitOptionalNonEmptyString,
+  readOptionString,
+} from "../cli-args";
 import { readProviderPoolFromToml } from "../provider-probe";
 import {
   basenameFromPath,
@@ -74,7 +79,7 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     projectRoot,
   });
   const projectName =
-    readOptionString(options, "project") ?? basenameFromPath(workDir);
+    readExplicitOptionalNonEmptyString(options, "project") ?? basenameFromPath(workDir);
   const providerOverride = readOptionString(options, "provider");
   const providerPoolSnapshot = readProviderPoolFromToml(
     configTomlPath,

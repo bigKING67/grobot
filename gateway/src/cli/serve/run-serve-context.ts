@@ -1,4 +1,9 @@
-import { hasFlag, OptionValue, readOptionString } from "../cli-args";
+import {
+  hasFlag,
+  OptionValue,
+  readExplicitOptionalNonEmptyString,
+  readOptionString,
+} from "../cli-args";
 import {
   readProviderPoolFromToml,
 } from "../provider-probe";
@@ -152,7 +157,7 @@ export function resolveRunServeContext(options: Record<string, OptionValue>): Ru
   const projectTomlPath = resolveProjectTomlPath(options, workDir, projectRoot, homeDir);
   const configTomlPath = resolveConfigTomlPath(options, homeDir, { workDir, projectRoot });
   const bind = parseBind(readOptionString(options, "bind"), hasOption(options, "bind"));
-  const projectName = readOptionString(options, "project") ?? basenameFromPath(workDir);
+  const projectName = readExplicitOptionalNonEmptyString(options, "project") ?? basenameFromPath(workDir);
   const { sessionNamespace } = resolveCliRouteNamespace({
     options,
     projectName,

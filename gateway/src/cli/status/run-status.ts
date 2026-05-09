@@ -1,5 +1,5 @@
 import { resolveExecutionPlaneConfig } from "../../orchestration/execution-plane";
-import { hasFlag, OptionValue, readOptionString } from "../cli-args";
+import { hasFlag, isCliStringOptionInputError, OptionValue, readExplicitOptionalNonEmptyString, readOptionString } from "../cli-args";
 import { CLI_PRODUCT_ENGINE } from "../product-identity";
 import {
   GLOBAL_TURN_GATE,
@@ -128,7 +128,16 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
           : configTomlPath.startsWith(`${homeDir}/`)
             ? "home"
             : "custom";
-  const projectName = readOptionString(options, "project") ?? basenameFromPath(workDir);
+  let projectName: string;
+  try {
+    projectName = readExplicitOptionalNonEmptyString(options, "project") ?? basenameFromPath(workDir);
+  } catch (error) {
+    if (isCliStringOptionInputError(error)) {
+      writeStatusInputError(error, outputJson);
+      return 2;
+    }
+    throw error;
+  }
   const providerOverrideFromCli = readOptionString(options, "provider");
   const providerOverrideFromEnv = process.env.GROBOT_PROVIDER;
   const modelFromCli = readOptionString(options, "model");

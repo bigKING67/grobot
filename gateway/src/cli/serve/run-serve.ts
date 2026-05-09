@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { OptionValue } from "../cli-args";
+import { isCliStringOptionInputError, OptionValue } from "../cli-args";
 import { dispatchManagementRoutes } from "./management-routes";
 import { writeJson } from "./http-utils";
 import { type MCPRuntimeState } from "./mcp-runtime";
@@ -58,6 +58,10 @@ export async function runServe(options: Record<string, OptionValue>): Promise<nu
       return 2;
     }
     if (isCliNumericOptionInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    if (isCliStringOptionInputError(error)) {
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }
