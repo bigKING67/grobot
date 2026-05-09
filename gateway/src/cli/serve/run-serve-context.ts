@@ -75,11 +75,11 @@ export interface RunServeRouteDecisionInput {
 }
 
 function resolveHasDirectRuntimeOverride(options: Record<string, OptionValue>): boolean {
-  return Boolean(readOptionString(options, "base-url"))
+  return Boolean(readExplicitOptionalNonEmptyString(options, "base-url"))
     || Boolean(process.env.GROBOT_BASE_URL)
-    || Boolean(readOptionString(options, "api-key"))
+    || Boolean(readExplicitOptionalNonEmptyString(options, "api-key"))
     || Boolean(process.env.GROBOT_API_KEY)
-    || Boolean(readOptionString(options, "model"))
+    || Boolean(readExplicitOptionalNonEmptyString(options, "model"))
     || Boolean(process.env.GROBOT_MODEL);
 }
 
@@ -163,9 +163,9 @@ export function resolveRunServeContext(options: Record<string, OptionValue>): Ru
     projectName,
     defaultSubject: process.env.USER ?? "user",
   });
-  const providerOverrideFromCli = readOptionString(options, "provider");
+  const providerOverrideFromCli = readExplicitOptionalNonEmptyString(options, "provider");
   const managementToken =
-    readOptionString(options, "management-token") ??
+    readExplicitOptionalNonEmptyString(options, "management-token") ??
     process.env.GROBOT_MANAGEMENT_TOKEN ??
     readManagementTokenFromToml(configTomlPath);
   const executionPlaneInput: ExecutionPlaneConfigInput = {

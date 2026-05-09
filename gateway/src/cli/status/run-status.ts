@@ -1,5 +1,5 @@
 import { resolveExecutionPlaneConfig } from "../../orchestration/execution-plane";
-import { hasFlag, isCliStringOptionInputError, OptionValue, readOptionString } from "../cli-args";
+import { hasFlag, isCliStringOptionInputError, OptionValue, readExplicitOptionalNonEmptyString, readOptionString } from "../cli-args";
 import { CLI_PRODUCT_ENGINE } from "../product-identity";
 import {
   GLOBAL_TURN_GATE,
@@ -124,13 +124,25 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
     configSource,
     projectName,
   } = pathContext;
-  const providerOverrideFromCli = readOptionString(options, "provider");
+  let providerOverrideFromCli: string | undefined;
+  let modelFromCli: string | undefined;
+  let baseUrlFromCli: string | undefined;
+  let apiKeyFromCli: string | undefined;
+  try {
+    providerOverrideFromCli = readExplicitOptionalNonEmptyString(options, "provider");
+    modelFromCli = readExplicitOptionalNonEmptyString(options, "model");
+    baseUrlFromCli = readExplicitOptionalNonEmptyString(options, "base-url");
+    apiKeyFromCli = readExplicitOptionalNonEmptyString(options, "api-key");
+  } catch (error) {
+    if (isCliStringOptionInputError(error)) {
+      writeStatusInputError(error, outputJson);
+      return 2;
+    }
+    throw error;
+  }
   const providerOverrideFromEnv = process.env.GROBOT_PROVIDER;
-  const modelFromCli = readOptionString(options, "model");
   const modelFromEnv = process.env.GROBOT_MODEL;
-  const baseUrlFromCli = readOptionString(options, "base-url");
   const baseUrlFromEnv = process.env.GROBOT_BASE_URL;
-  const apiKeyFromCli = readOptionString(options, "api-key");
   const apiKeyFromEnv = process.env.GROBOT_API_KEY;
   const projectProviderPoolSnapshot = readProviderPoolFromToml(
     configTomlPath,

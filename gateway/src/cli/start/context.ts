@@ -80,7 +80,7 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
   });
   const projectName =
     readExplicitOptionalNonEmptyString(options, "project") ?? basenameFromPath(workDir);
-  const providerOverride = readOptionString(options, "provider");
+  const providerOverride = readExplicitOptionalNonEmptyString(options, "provider");
   const providerPoolSnapshot = readProviderPoolFromToml(
     configTomlPath,
     projectName,

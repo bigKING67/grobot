@@ -55,6 +55,14 @@ export function assertRuntimeModelControlSmoke() {
   assert.equal(payload.invalid_search_routing_has_stable_error, true);
   assert.equal(payload.malformed_search_routing_exit_code, 2);
   assert.equal(payload.malformed_search_routing_has_stable_error, true);
+  assert.equal(payload.empty_provider_cli_exit_code, 2);
+  assert.equal(payload.empty_provider_cli_has_stable_error, true);
+  assert.equal(payload.empty_model_cli_exit_code, 2);
+  assert.equal(payload.empty_model_cli_has_stable_error, true);
+  assert.equal(payload.empty_api_key_cli_exit_code, 2);
+  assert.equal(payload.empty_api_key_cli_has_stable_error, true);
+  assert.equal(payload.missing_base_url_cli_exit_code, 2);
+  assert.equal(payload.missing_base_url_cli_has_stable_error, true);
   assert.equal(payload.valid_boundary_exit_code !== 2, true);
   assert.equal(payload.valid_boundary_reached_runtime, true);
   assert.equal(payload.valid_search_routing_boundary_exit_code !== 2, true);

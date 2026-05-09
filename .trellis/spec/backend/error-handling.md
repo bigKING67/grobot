@@ -178,6 +178,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     discovery only when omitted; explicit empty or missing values must exit
     `2` with stable `invalid_<field>` errors instead of silently falling back
     to the current directory, project root, or home default.
+23. CLI runtime/provider string controls must fail closed on malformed explicit
+    values. `--provider`, `--model`, `--base-url`, `--api-key`, and
+    `--management-token` may fall back to env/config only when omitted;
+    explicit empty or missing values must exit `2` with stable
+    `invalid_<field>` errors instead of silently using a lower-priority source.
 
 ---
 

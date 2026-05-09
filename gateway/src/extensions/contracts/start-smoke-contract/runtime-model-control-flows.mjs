@@ -103,6 +103,29 @@ export function runStartInvalidRuntimeModelControlsRejectFlow(context) {
       "invalid search routing config should not reach runtime",
     ]);
   };
+  const makeCliOverrideCase = (suffix, extraCliArgs) => {
+    const workDir = createTempDir(`grobot-start-invalid-runtime-model-${suffix}`);
+    const config = writeConfig(buildKimiProviderConfig(workDir, []));
+    return runCommand(repoRoot, [
+      "./grobot",
+      "start",
+      "--project",
+      "grobot",
+      "--work-dir",
+      workDir,
+      "--config",
+      config.configPath,
+      "--gateway-impl",
+      "ts",
+      "--runtime-impl",
+      "rust",
+      "--session-subject",
+      `start-invalid-runtime-model-${suffix}-user`,
+      ...extraCliArgs,
+      "--message",
+      "invalid runtime model CLI override should not reach runtime",
+    ]);
+  };
   const invalidWebSearchModeResult = makeCase(
     "web-search-mode",
     ['kimi_web_search_mode = "always_on"'],
@@ -170,6 +193,10 @@ export function runStartInvalidRuntimeModelControlsRejectFlow(context) {
     "search-routing-malformed",
     ['kimi = "mcp_only" trailing'],
   );
+  const emptyProviderCliResult = makeCliOverrideCase("cli-provider-empty", ["--provider", ""]);
+  const emptyModelCliResult = makeCliOverrideCase("cli-model-empty", ["--model", ""]);
+  const emptyApiKeyCliResult = makeCliOverrideCase("cli-api-key-empty", ["--api-key", ""]);
+  const missingBaseUrlCliResult = makeCliOverrideCase("cli-base-url-missing", ["--base-url"]);
   const validBoundaryResult = makeCase(
     "valid-boundary",
     [
@@ -222,6 +249,14 @@ export function runStartInvalidRuntimeModelControlsRejectFlow(context) {
     invalidSearchRoutingResult.stderr,
     malformedSearchRoutingResult.stdout,
     malformedSearchRoutingResult.stderr,
+    emptyProviderCliResult.stdout,
+    emptyProviderCliResult.stderr,
+    emptyModelCliResult.stdout,
+    emptyModelCliResult.stderr,
+    emptyApiKeyCliResult.stdout,
+    emptyApiKeyCliResult.stderr,
+    missingBaseUrlCliResult.stdout,
+    missingBaseUrlCliResult.stderr,
   ].join("\n");
   const validSearchRoutingBoundaryResult = makeSearchRoutingCase(
     "search-routing-valid-boundary",
@@ -306,6 +341,22 @@ export function runStartInvalidRuntimeModelControlsRejectFlow(context) {
       malformedSearchRoutingResult.stderr.includes("error: invalid_search_routing_kimi:")
       && malformedSearchRoutingResult.stderr.includes("search-routing-kimi must be mcp_first_fallback_builtin, builtin_only, or mcp_only")
       && malformedSearchRoutingResult.stderr.includes("source=project_toml"),
+    empty_provider_cli_exit_code: emptyProviderCliResult.exit_code,
+    empty_provider_cli_has_stable_error:
+      emptyProviderCliResult.stderr.includes("error: invalid_provider:")
+      && emptyProviderCliResult.stderr.includes("provider must be a non-empty string"),
+    empty_model_cli_exit_code: emptyModelCliResult.exit_code,
+    empty_model_cli_has_stable_error:
+      emptyModelCliResult.stderr.includes("error: invalid_model:")
+      && emptyModelCliResult.stderr.includes("model must be a non-empty string"),
+    empty_api_key_cli_exit_code: emptyApiKeyCliResult.exit_code,
+    empty_api_key_cli_has_stable_error:
+      emptyApiKeyCliResult.stderr.includes("error: invalid_api_key:")
+      && emptyApiKeyCliResult.stderr.includes("api-key must be a non-empty string"),
+    missing_base_url_cli_exit_code: missingBaseUrlCliResult.exit_code,
+    missing_base_url_cli_has_stable_error:
+      missingBaseUrlCliResult.stderr.includes("error: invalid_base_url:")
+      && missingBaseUrlCliResult.stderr.includes("base-url must be a non-empty string"),
     valid_boundary_exit_code: validBoundaryResult.exit_code,
     valid_boundary_reached_runtime:
       validBoundaryResult.stderr.includes("Turn failed")

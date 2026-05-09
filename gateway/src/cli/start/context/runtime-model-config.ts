@@ -5,7 +5,11 @@ import {
   type RuntimePromptCacheCapability,
   type RuntimePromptCacheStrategy,
 } from "../../../models/types";
-import { readOptionString, type OptionValue } from "../../cli-args";
+import {
+  readExplicitOptionalNonEmptyString,
+  readOptionString,
+  type OptionValue,
+} from "../../cli-args";
 import {
   parseExplicitPositiveIntOption,
   parseExplicitRequiredPositiveIntOption,
@@ -514,9 +518,9 @@ export function resolveRuntimeModelConfig(
   options: Record<string, OptionValue>,
   fallbackPool: RuntimeProviderPoolSnapshot | undefined,
 ): ResolvedRuntimeModelConfig {
-  const baseUrlFromCli = readOptionString(options, "base-url");
-  const apiKeyFromCli = readOptionString(options, "api-key");
-  const modelFromCli = readOptionString(options, "model");
+  const baseUrlFromCli = readExplicitOptionalNonEmptyString(options, "base-url");
+  const apiKeyFromCli = readExplicitOptionalNonEmptyString(options, "api-key");
+  const modelFromCli = readExplicitOptionalNonEmptyString(options, "model");
   const timeoutFromCli = readOptionString(options, "runtime-http-timeout-ms");
 
   const fallback = fallbackPool?.providers[0];
