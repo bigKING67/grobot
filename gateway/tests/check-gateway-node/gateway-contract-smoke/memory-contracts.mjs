@@ -88,6 +88,25 @@ export async function runMemoryContracts() {
   assert.equal(experiencePoolTaskContractPayload.roundtrip_task_metadata_persisted, true);
   logStep("experience-pool-task-contract");
 
+  const experienceSchedulerTaskContractResult = runCommand("npx", [
+    "--yes",
+    "--package",
+    "tsx@4.20.6",
+    "tsx",
+    "gateway/src/extensions/contracts/experience-scheduler-task-contract.ts",
+  ]);
+  assertSuccess("experience-scheduler-task-contract", experienceSchedulerTaskContractResult);
+  const experienceSchedulerTaskContractPayload = parseJsonOutput(
+    "experience-scheduler-task-contract",
+    experienceSchedulerTaskContractResult.stdout,
+  );
+  assert.equal(experienceSchedulerTaskContractPayload.valid_task_triggered, true);
+  assert.equal(experienceSchedulerTaskContractPayload.invalid_delay_tasks_rejected, true);
+  assert.equal(experienceSchedulerTaskContractPayload.invalid_delay_errors_logged, true);
+  assert.equal(experienceSchedulerTaskContractPayload.invalid_repeat_task_rejected, true);
+  assert.equal(experienceSchedulerTaskContractPayload.invalid_repeat_error_logged, true);
+  logStep("experience-scheduler-task-contract");
+
   const memoryDecayAutotuneContractResult = runCommand("npx", [
     "--yes",
     "--package",

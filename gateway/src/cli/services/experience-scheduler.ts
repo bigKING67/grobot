@@ -57,14 +57,6 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function clampInt(value: number, minimum: number, maximum: number): number {
-  if (!Number.isFinite(value)) {
-    return minimum;
-  }
-  const normalized = Math.floor(value);
-  return Math.min(maximum, Math.max(minimum, normalized));
-}
-
 function formatDateToken(input: Date): string {
   const year = input.getFullYear();
   const month = String(input.getMonth() + 1).padStart(2, "0");
@@ -137,7 +129,17 @@ function parseRepeatCooldown(rawRepeat: string): number {
       }
     }
   }
-  return 20 * 60 * 60 * 1_000;
+  throw new RangeError("invalid_experience_scheduler_task_repeat: repeat must be daily, weekday, weekly, monthly, once, every_<n>h, or every_<n>d");
+}
+
+function resolveTaskMaxDelayHours(raw: unknown, defaultMaxDelayHours: number): number {
+  if (raw === undefined) {
+    return defaultMaxDelayHours;
+  }
+  if (typeof raw !== "number" || !Number.isSafeInteger(raw) || raw < 1 || raw > 24) {
+    throw new RangeError("invalid_experience_scheduler_task_max_delay_hours: max_delay_hours must be an integer between 1 and 24");
+  }
+  return raw;
 }
 
 function appendSchedulerLog(logPath: string, level: "info" | "warn" | "error", message: string): void {
@@ -173,9 +175,7 @@ function normalizeTaskConfig(raw: SchedulerTaskFile, defaultMaxDelayHours: numbe
   const repeat = typeof raw.repeat === "string" && raw.repeat.trim().length > 0 ? raw.repeat.trim() : "daily";
   const schedule = typeof raw.schedule === "string" && raw.schedule.trim().length > 0 ? raw.schedule.trim() : "00:00";
   const prompt = typeof raw.prompt === "string" ? raw.prompt.trim() : "";
-  const maxDelayHours = typeof raw.max_delay_hours === "number" && Number.isFinite(raw.max_delay_hours)
-    ? clampInt(raw.max_delay_hours, 1, 24)
-    : defaultMaxDelayHours;
+  const maxDelayHours = resolveTaskMaxDelayHours(raw.max_delay_hours, defaultMaxDelayHours);
   return {
     enabled,
     repeat,
@@ -264,7 +264,15 @@ export function createExperienceSchedulerRuntime(
         appendSchedulerLog(config.logPath, "error", message);
         continue;
       }
-      const normalized = normalizeTaskConfig(parsedTask, config.defaultMaxDelayHours);
+      let normalized: SchedulerTaskConfig;
+      try {
+        normalized = normalizeTaskConfig(parsedTask, config.defaultMaxDelayHours);
+      } catch (error) {
+        const message = `task=${taskId} config_error=${error instanceof Error ? error.message : String(error)}`;
+        result.errors.push(message);
+        appendSchedulerLog(config.logPath, "error", message);
+        continue;
+      }
       if (!normalized.enabled) {
         result.skipped += 1;
         continue;
@@ -301,7 +309,16 @@ export function createExperienceSchedulerRuntime(
         continue;
       }
       const lastRunAt = getLastRunAt(config.doneDir, taskId);
-      const cooldownMs = parseRepeatCooldown(repeat);
+      let cooldownMs: number;
+      try {
+        cooldownMs = parseRepeatCooldown(repeat);
+      } catch (error) {
+        result.skipped += 1;
+        const message = `task=${taskId} config_error=${error instanceof Error ? error.message : String(error)}`;
+        result.errors.push(message);
+        appendSchedulerLog(config.logPath, "error", message);
+        continue;
+      }
       if (lastRunAt && now.getTime() - lastRunAt.getTime() < cooldownMs) {
         result.skipped += 1;
         continue;
