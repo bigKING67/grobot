@@ -301,7 +301,11 @@ export async function dispatchManagementMemoryRoutes(
       return writeManagementInputError(response, context, dryRunResult);
     }
     const dryRun = dryRunResult.value;
-    const source = typeof body.source === "string" && body.source.trim().length > 0 ? body.source.trim() : undefined;
+    const sourceResult = bodyOptionalNonEmptyString(body, "source");
+    if (!sourceResult.ok) {
+      return writeManagementInputError(response, context, sourceResult);
+    }
+    const source = sourceResult.value;
     const importResult = context.importMemoryRows(sessionId, scope, body.records, source, dryRun);
     if (!importResult.ok) {
       const payload: Record<string, unknown> = {
@@ -368,18 +372,20 @@ export async function dispatchManagementMemoryRoutes(
 
     const body = parsedBody.body;
     const ids: string[] = [];
-    if (typeof body.id === "string" && body.id.trim().length > 0) {
-      ids.push(body.id.trim());
+    const idResult = bodyOptionalNonEmptyString(body, "id");
+    if (!idResult.ok) {
+      return writeManagementInputError(response, context, idResult);
     }
-    if (Array.isArray(body.ids)) {
-      for (const item of body.ids) {
-        if (typeof item !== "string") {
-          continue;
-        }
-        const cleaned = item.trim();
-        if (cleaned && !ids.includes(cleaned)) {
-          ids.push(cleaned);
-        }
+    if (idResult.value !== undefined) {
+      ids.push(idResult.value);
+    }
+    const idsResult = bodyStringArray(body, "ids");
+    if (!idsResult.ok) {
+      return writeManagementInputError(response, context, idsResult);
+    }
+    for (const id of idsResult.value) {
+      if (!ids.includes(id)) {
+        ids.push(id);
       }
     }
     const scopeRaw = String(body.scope ?? MEMORY_SCOPE_AUTO).toLowerCase();
@@ -397,7 +403,11 @@ export async function dispatchManagementMemoryRoutes(
       return writeManagementInputError(response, context, dryRunResult);
     }
     const dryRun = dryRunResult.value;
-    const reason = typeof body.reason === "string" && body.reason.trim().length > 0 ? body.reason.trim() : undefined;
+    const reasonResult = bodyOptionalNonEmptyString(body, "reason");
+    if (!reasonResult.ok) {
+      return writeManagementInputError(response, context, reasonResult);
+    }
+    const reason = reasonResult.value;
     const forgetResult = context.forgetMemoryRows(sessionId, scope, ids, reason, dryRun);
     if (!forgetResult.ok) {
       const payload: Record<string, unknown> = {

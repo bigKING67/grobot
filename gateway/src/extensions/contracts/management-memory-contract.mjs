@@ -205,6 +205,15 @@ async function runMemoryInputValidation(options) {
         records: [{ text: "x" }],
       }),
     });
+    const invalidImportSource = await requestJson(importUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        source: "",
+        records: [{ text: "x" }],
+      }),
+    });
     const invalidForgetDryRun = await requestJson(forgetUrl, {
       method: "POST",
       timeoutMs: 1_000,
@@ -212,6 +221,39 @@ async function runMemoryInputValidation(options) {
       body: jsonBody({
         dry_run: 2,
         ids: ["x"],
+      }),
+    });
+    const invalidForgetId = await requestJson(forgetUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        id: "",
+      }),
+    });
+    const invalidForgetIdsType = await requestJson(forgetUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        ids: "x",
+      }),
+    });
+    const invalidForgetIdsEntry = await requestJson(forgetUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        ids: ["x", 67],
+      }),
+    });
+    const invalidForgetReason = await requestJson(forgetUrl, {
+      method: "POST",
+      timeoutMs: 1_000,
+      headers,
+      body: jsonBody({
+        ids: ["x"],
+        reason: "",
       }),
     });
     const invalidLifecycleDryRun = await requestJson(lifecycleUrl, {
@@ -300,9 +342,24 @@ async function runMemoryInputValidation(options) {
       invalid_import_dry_run_status: invalidImportDryRun.status,
       invalid_import_dry_run_error: invalidImportDryRun.body.error ?? null,
       invalid_import_dry_run_field: invalidImportDryRun.body.field ?? null,
+      invalid_import_source_status: invalidImportSource.status,
+      invalid_import_source_error: invalidImportSource.body.error ?? null,
+      invalid_import_source_field: invalidImportSource.body.field ?? null,
       invalid_forget_dry_run_status: invalidForgetDryRun.status,
       invalid_forget_dry_run_error: invalidForgetDryRun.body.error ?? null,
       invalid_forget_dry_run_field: invalidForgetDryRun.body.field ?? null,
+      invalid_forget_id_status: invalidForgetId.status,
+      invalid_forget_id_error: invalidForgetId.body.error ?? null,
+      invalid_forget_id_field: invalidForgetId.body.field ?? null,
+      invalid_forget_ids_type_status: invalidForgetIdsType.status,
+      invalid_forget_ids_type_error: invalidForgetIdsType.body.error ?? null,
+      invalid_forget_ids_type_field: invalidForgetIdsType.body.field ?? null,
+      invalid_forget_ids_entry_status: invalidForgetIdsEntry.status,
+      invalid_forget_ids_entry_error: invalidForgetIdsEntry.body.error ?? null,
+      invalid_forget_ids_entry_field: invalidForgetIdsEntry.body.field ?? null,
+      invalid_forget_reason_status: invalidForgetReason.status,
+      invalid_forget_reason_error: invalidForgetReason.body.error ?? null,
+      invalid_forget_reason_field: invalidForgetReason.body.field ?? null,
       invalid_lifecycle_dry_run_status: invalidLifecycleDryRun.status,
       invalid_lifecycle_dry_run_error: invalidLifecycleDryRun.body.error ?? null,
       invalid_lifecycle_dry_run_field: invalidLifecycleDryRun.body.field ?? null,
