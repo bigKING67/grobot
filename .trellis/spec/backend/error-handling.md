@@ -231,6 +231,15 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     when omitted, and `GROBOT_NODE_BIN` may default to `node` only when
     omitted; explicit empty or non-unicode values must return structured
     `invalid_tool_arguments` errors instead of silently falling back.
+32. Rust runtime provider option strings must fail closed on explicit empty
+    values. `model_config.provider_kind`,
+    `provider_options.kimi.web_search_mode`,
+    `provider_options.kimi.prompt_cache.strategy`,
+    `provider_options.kimi.prompt_cache.capability`, and Kimi official-tool
+    connection strings may use defaults only when omitted; explicit empty
+    values must return structured `config_invalid` errors instead of deriving
+    provider kind, choosing Kimi defaults, or reporting empty required
+    connection strings as merely missing.
 
 ---
 

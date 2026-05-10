@@ -364,6 +364,26 @@
         );
         assert_eq!(data["raw_value"].as_str(), Some("moon"));
         assert_eq!(data["stage"].as_str(), Some("provider_kind_validate"));
+
+        let empty_kind_config_input = RuntimeModelConfigInput {
+            provider_kind: Some(" ".to_string()),
+            ..model_config_input
+        };
+        let empty_error = load_runtime_model_config(Some(&empty_kind_config_input))
+            .expect_err("empty provider_kind should fail closed");
+        assert_eq!(empty_error.error_class, "config_invalid");
+        let empty_data = empty_error
+            .data
+            .as_ref()
+            .expect("empty provider kind diagnostic data");
+        assert_eq!(
+            empty_data["field"].as_str(),
+            Some("model_config.provider_kind")
+        );
+        assert_eq!(
+            empty_data["stage"].as_str(),
+            Some("provider_kind_validate")
+        );
     }
 
     #[test]
@@ -408,6 +428,14 @@
         expect_invalid_kimi_field(
             RuntimeKimiOptionsInput {
                 web_search_mode: Some("always_on".to_string()),
+                ..base.clone()
+            },
+            "provider_options.kimi.web_search_mode",
+            "kimi_web_search_mode_validate",
+        );
+        expect_invalid_kimi_field(
+            RuntimeKimiOptionsInput {
+                web_search_mode: Some(" ".to_string()),
                 ..base.clone()
             },
             "provider_options.kimi.web_search_mode",
@@ -473,6 +501,19 @@
             RuntimeKimiOptionsInput {
                 prompt_cache: Some(RuntimePromptCacheOptionsInput {
                     enabled: Some(true),
+                    strategy: Some("".to_string()),
+                    user_last_n: None,
+                    capability: None,
+                }),
+                ..base.clone()
+            },
+            "provider_options.kimi.prompt_cache.strategy",
+            "prompt_cache_strategy_validate",
+        );
+        expect_invalid_kimi_field(
+            RuntimeKimiOptionsInput {
+                prompt_cache: Some(RuntimePromptCacheOptionsInput {
+                    enabled: Some(true),
                     strategy: None,
                     user_last_n: Some(13),
                     capability: None,
@@ -489,6 +530,19 @@
                     strategy: None,
                     user_last_n: None,
                     capability: Some("openai_compatible".to_string()),
+                }),
+                ..base.clone()
+            },
+            "provider_options.kimi.prompt_cache.capability",
+            "prompt_cache_capability_validate",
+        );
+        expect_invalid_kimi_field(
+            RuntimeKimiOptionsInput {
+                prompt_cache: Some(RuntimePromptCacheOptionsInput {
+                    enabled: Some(true),
+                    strategy: None,
+                    user_last_n: None,
+                    capability: Some(" ".to_string()),
                 }),
                 ..base
             },

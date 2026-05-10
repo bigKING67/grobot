@@ -132,6 +132,44 @@
             Some("runtime_timeout_validate_range")
         );
 
+        let mut empty_base_url_config = base_model_config.clone();
+        empty_base_url_config.base_url = Some(" ".to_string());
+        let empty_base_url_error = LocalToolExecutor
+            .execute_tool_call(&call, &build_input(empty_base_url_config))
+            .expect_err("kimi official tool should reject empty base_url");
+        assert_eq!(empty_base_url_error.error_class, "config_invalid");
+        let empty_base_url_data = empty_base_url_error
+            .data
+            .as_ref()
+            .expect("empty base_url config error data");
+        assert_eq!(
+            empty_base_url_data["field"].as_str(),
+            Some("model_config.base_url")
+        );
+        assert_eq!(
+            empty_base_url_data["stage"].as_str(),
+            Some("required_kimi_connection_string_validate_non_empty")
+        );
+
+        let mut empty_api_key_config = base_model_config.clone();
+        empty_api_key_config.api_key = Some(String::new());
+        let empty_api_key_error = LocalToolExecutor
+            .execute_tool_call(&call, &build_input(empty_api_key_config))
+            .expect_err("kimi official tool should reject empty api_key");
+        assert_eq!(empty_api_key_error.error_class, "config_invalid");
+        let empty_api_key_data = empty_api_key_error
+            .data
+            .as_ref()
+            .expect("empty api_key config error data");
+        assert_eq!(
+            empty_api_key_data["field"].as_str(),
+            Some("model_config.api_key")
+        );
+        assert_eq!(
+            empty_api_key_data["stage"].as_str(),
+            Some("required_kimi_connection_string_validate_non_empty")
+        );
+
         let mut mode_config = base_model_config.clone();
         if let Some(kimi) = mode_config
             .provider_options
@@ -240,4 +278,22 @@
         );
         assert_eq!(data["raw_value"].as_str(), Some("moon"));
         assert_eq!(data["stage"].as_str(), Some("provider_kind_validate"));
+
+        let mut empty_kind_input = input;
+        if let Some(config) = empty_kind_input.model_config.as_mut() {
+            config.provider_kind = Some(" ".to_string());
+        }
+        let empty_error = LocalToolExecutor
+            .execute_tool_call(&call, &empty_kind_input)
+            .expect_err("empty explicit provider_kind should fail closed");
+        assert_eq!(empty_error.error_class, "config_invalid");
+        let empty_data = empty_error
+            .data
+            .as_ref()
+            .expect("empty provider kind config error data");
+        assert_eq!(
+            empty_data["field"].as_str(),
+            Some("model_config.provider_kind")
+        );
+        assert_eq!(empty_data["stage"].as_str(), Some("provider_kind_validate"));
     }

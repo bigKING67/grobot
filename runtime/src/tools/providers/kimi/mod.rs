@@ -193,6 +193,16 @@ fn invalid_kimi_provider_kind_error(raw_kind: &str) -> ToolExecutionError {
     )
 }
 
+fn invalid_kimi_connection_string_error(field: &str, raw_value: &str) -> ToolExecutionError {
+    kimi_config_invalid_error(
+        field,
+        json!(raw_value),
+        "required_kimi_connection_string_validate_non_empty",
+        format!("{field} must be a non-empty string for kimi official tools"),
+        "omit the field only when using a non-kimi tool path, or provide a non-empty runtime model config value",
+    )
+}
+
 fn validate_kimi_timeout_ms(input: &TurnExecuteInput) -> Result<u64, ToolExecutionError> {
     let Some(from_model) = input.model_config.as_ref().and_then(|config| config.timeout_ms) else {
         return Ok(15_000);
@@ -214,31 +224,22 @@ fn is_kimi_provider(input: &TurnExecuteInput) -> Result<bool, ToolExecutionError
         Some(config) => config,
         None => return Ok(false),
     };
-    let explicit_kind = model_config
-        .provider_kind
-        .as_ref()
-        .map(|value| value.trim().to_ascii_lowercase())
-        .unwrap_or_default();
+    let Some(provider_kind) = model_config.provider_kind.as_ref() else {
+        let base_url = model_config
+            .base_url
+            .as_ref()
+            .map(|value| value.to_ascii_lowercase())
+            .unwrap_or_default();
+        return Ok(base_url.contains("moonshot.cn"));
+    };
+    let explicit_kind = provider_kind.trim().to_ascii_lowercase();
     if explicit_kind == "kimi" {
         return Ok(true);
     }
     if explicit_kind == "openai_compatible" || explicit_kind == "openai-compatible" {
         return Ok(false);
     }
-    if !explicit_kind.is_empty() {
-        return Err(invalid_kimi_provider_kind_error(
-            model_config
-                .provider_kind
-                .as_deref()
-                .unwrap_or_default(),
-        ));
-    }
-    let base_url = model_config
-        .base_url
-        .as_ref()
-        .map(|value| value.to_ascii_lowercase())
-        .unwrap_or_default();
-    Ok(base_url.contains("moonshot.cn"))
+    Err(invalid_kimi_provider_kind_error(provider_kind))
 }
 
 fn resolve_kimi_web_search_mode(input: &TurnExecuteInput) -> Result<KimiWebSearchMode, ToolExecutionError> {
@@ -406,30 +407,44 @@ fn resolve_kimi_connection(input: &TurnExecuteInput) -> Result<(String, String, 
             "provider_options.kimi.official_tools",
         )
     })?;
-    let base_url = model_config
-        .base_url
-        .as_ref()
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            config_missing_tool_error(
+    let base_url = match model_config.base_url.as_ref() {
+        Some(raw) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return Err(invalid_kimi_connection_string_error(
+                    "model_config.base_url",
+                    raw,
+                ));
+            }
+            trimmed
+        }
+        None => {
+            return Err(config_missing_tool_error(
                 "model_config.base_url is required for kimi official tools",
                 "model_config.base_url",
                 "provider_options.kimi.official_tools",
-            )
-        })?;
-    let api_key = model_config
-        .api_key
-        .as_ref()
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            config_missing_tool_error(
+            ));
+        }
+    };
+    let api_key = match model_config.api_key.as_ref() {
+        Some(raw) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return Err(invalid_kimi_connection_string_error(
+                    "model_config.api_key",
+                    raw,
+                ));
+            }
+            trimmed
+        }
+        None => {
+            return Err(config_missing_tool_error(
                 "model_config.api_key is required for kimi official tools",
                 "model_config.api_key",
                 "provider_options.kimi.official_tools",
-            )
-        })?;
+            ));
+        }
+    };
     Ok((
         base_url.trim_end_matches('/').to_string(),
         api_key.to_string(),

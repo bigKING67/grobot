@@ -265,48 +265,45 @@ fn parse_provider_kind(
     base_url: &str,
     raw_model: &str,
 ) -> Result<ProviderKind, ModelExecutionError> {
-    let normalized = raw_kind
-        .map(str::trim)
-        .map(str::to_ascii_lowercase)
-        .unwrap_or_default();
+    let Some(raw_kind) = raw_kind else {
+        let model = raw_model.trim().to_ascii_lowercase();
+        if base_url.to_ascii_lowercase().contains("moonshot.cn")
+            || model.starts_with("kimi")
+            || model.starts_with("moonshot")
+        {
+            return Ok(ProviderKind::Kimi);
+        }
+        return Ok(ProviderKind::OpenAiCompatible);
+    };
+    let normalized = raw_kind.trim().to_ascii_lowercase();
     if normalized == "kimi" {
         return Ok(ProviderKind::Kimi);
     }
     if normalized == "openai_compatible" || normalized == "openai-compatible" {
         return Ok(ProviderKind::OpenAiCompatible);
     }
-    if !normalized.is_empty() {
-        return Err(invalid_model_config_error(
-            "model_config.provider_kind",
-            json!(raw_kind.unwrap_or_default()),
-            "provider_kind_validate",
-            "model_config.provider_kind must be kimi, openai_compatible, or openai-compatible",
-            "omit provider_kind to derive it from base_url/model, or set it to kimi/openai_compatible",
-        ));
-    }
-    let model = raw_model.trim().to_ascii_lowercase();
-    if base_url.to_ascii_lowercase().contains("moonshot.cn")
-        || model.starts_with("kimi")
-        || model.starts_with("moonshot")
-    {
-        return Ok(ProviderKind::Kimi);
-    }
-    Ok(ProviderKind::OpenAiCompatible)
+    Err(invalid_model_config_error(
+        "model_config.provider_kind",
+        json!(raw_kind),
+        "provider_kind_validate",
+        "model_config.provider_kind must be kimi, openai_compatible, or openai-compatible",
+        "omit provider_kind to derive it from base_url/model, or set it to kimi/openai_compatible",
+    ))
 }
 
 fn parse_kimi_web_search_mode(raw: Option<&str>) -> Result<KimiWebSearchMode, ModelExecutionError> {
-    let normalized = raw
-        .map(str::trim)
-        .map(str::to_ascii_lowercase)
-        .unwrap_or_default();
+    let Some(raw) = raw else {
+        return Ok(KimiWebSearchMode::BuiltinPreferred);
+    };
+    let normalized = raw.trim().to_ascii_lowercase();
     match normalized.as_str() {
-        "" | "builtin_preferred" => Ok(KimiWebSearchMode::BuiltinPreferred),
+        "builtin_preferred" => Ok(KimiWebSearchMode::BuiltinPreferred),
         "builtin_only" => Ok(KimiWebSearchMode::BuiltinOnly),
         "official_only" => Ok(KimiWebSearchMode::OfficialOnly),
         "off" => Ok(KimiWebSearchMode::Off),
         _ => Err(invalid_model_config_error(
             "provider_options.kimi.web_search_mode",
-            json!(raw.unwrap_or_default()),
+            json!(raw),
             "kimi_web_search_mode_validate",
             "provider_options.kimi.web_search_mode must be builtin_preferred, builtin_only, official_only, or off",
             "omit web_search_mode to use builtin_preferred, or set one of the supported values",
@@ -315,15 +312,15 @@ fn parse_kimi_web_search_mode(raw: Option<&str>) -> Result<KimiWebSearchMode, Mo
 }
 
 fn parse_prompt_cache_strategy(raw: Option<&str>) -> Result<PromptCacheStrategy, ModelExecutionError> {
-    let normalized = raw
-        .map(str::trim)
-        .map(str::to_ascii_lowercase)
-        .unwrap_or_default();
+    let Some(raw) = raw else {
+        return Ok(PromptCacheStrategy::UserLastN);
+    };
+    let normalized = raw.trim().to_ascii_lowercase();
     match normalized.as_str() {
-        "" | "user_last_n" => Ok(PromptCacheStrategy::UserLastN),
+        "user_last_n" => Ok(PromptCacheStrategy::UserLastN),
         _ => Err(invalid_model_config_error(
             "provider_options.kimi.prompt_cache.strategy",
-            json!(raw.unwrap_or_default()),
+            json!(raw),
             "prompt_cache_strategy_validate",
             "provider_options.kimi.prompt_cache.strategy must be user_last_n",
             "omit prompt_cache.strategy to use user_last_n, or set it to user_last_n",
@@ -334,18 +331,18 @@ fn parse_prompt_cache_strategy(raw: Option<&str>) -> Result<PromptCacheStrategy,
 fn parse_prompt_cache_capability(
     raw: Option<&str>,
 ) -> Result<PromptCacheCapability, ModelExecutionError> {
-    let normalized = raw
-        .map(str::trim)
-        .map(str::to_ascii_lowercase)
-        .unwrap_or_default();
+    let Some(raw) = raw else {
+        return Ok(PromptCacheCapability::Unsupported);
+    };
+    let normalized = raw.trim().to_ascii_lowercase();
     match normalized.as_str() {
         "anthropic_compatible" | "anthropic-compatible" => {
             Ok(PromptCacheCapability::AnthropicCompatible)
         }
-        "" | "unsupported" | "none" | "off" => Ok(PromptCacheCapability::Unsupported),
+        "unsupported" | "none" | "off" => Ok(PromptCacheCapability::Unsupported),
         _ => Err(invalid_model_config_error(
             "provider_options.kimi.prompt_cache.capability",
-            json!(raw.unwrap_or_default()),
+            json!(raw),
             "prompt_cache_capability_validate",
             "provider_options.kimi.prompt_cache.capability must be anthropic_compatible or unsupported",
             "omit prompt_cache.capability to use unsupported, or set a supported capability",
