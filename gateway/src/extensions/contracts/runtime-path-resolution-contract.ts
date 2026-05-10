@@ -180,6 +180,24 @@ function main(): void {
         "   ",
         () => captureStringOptionErrorCode(() => resolveHomeDir({})) === "invalid_home",
       ),
+      empty_project_toml_repo_root_env_rejected: withEnv(
+        "GROBOT_TS_DEV_REPO_ROOT",
+        "",
+        () => captureStringOptionErrorCode(() => resolvePath({
+          workDir: isolatedWorkDir,
+          projectRoot: isolatedProjectRoot,
+          homeDir,
+        })) === "invalid_ts_dev_repo_root",
+      ),
+      whitespace_project_toml_repo_root_env_rejected: withEnv(
+        "GROBOT_TS_DEV_REPO_ROOT",
+        "   ",
+        () => captureStringOptionErrorCode(() => resolvePath({
+          workDir: isolatedWorkDir,
+          projectRoot: isolatedProjectRoot,
+          homeDir,
+        })) === "invalid_ts_dev_repo_root",
+      ),
       empty_ts_dev_repo_root_rejected:
         captureRuntimeRepoRootErrorCode(() => resolveRuntimeBinaryPath({
           env: { GROBOT_TS_DEV_REPO_ROOT: "" },
@@ -232,6 +250,16 @@ function main(): void {
     assertEqual(payload.empty_home_dir_rejected, true, "empty --home-dir should fail closed");
     assertEqual(payload.empty_env_config_rejected, true, "empty GROBOT_CONFIG should fail closed");
     assertEqual(payload.empty_env_home_rejected, true, "empty GROBOT_HOME should fail closed");
+    assertEqual(
+      payload.empty_project_toml_repo_root_env_rejected,
+      true,
+      "empty GROBOT_TS_DEV_REPO_ROOT should fail closed during project.toml discovery",
+    );
+    assertEqual(
+      payload.whitespace_project_toml_repo_root_env_rejected,
+      true,
+      "whitespace GROBOT_TS_DEV_REPO_ROOT should fail closed during project.toml discovery",
+    );
     assertEqual(
       payload.empty_ts_dev_repo_root_rejected,
       true,

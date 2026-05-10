@@ -265,10 +265,12 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     repo-root values must exit `2` with `invalid_ts_dev_repo_root`, before
     runtime health checks, status rendering, or Rust turn execution.
 36. Gateway path env overrides must fail closed on explicit empty values.
-    `GROBOT_CONFIG` and `GROBOT_HOME` may use discovered config paths or the
-    default home directory only when omitted; explicit empty or whitespace-only
-    values must return stable `invalid_config` or `invalid_home` path input
-    errors instead of silently falling back.
+    `GROBOT_CONFIG`, `GROBOT_HOME`, and repo-root discovery via
+    `GROBOT_TS_DEV_REPO_ROOT` may use discovered config paths, default home
+    directory, or work/project directory discovery only when omitted; explicit
+    empty or whitespace-only values must return stable `invalid_config`,
+    `invalid_home`, or `invalid_ts_dev_repo_root` path input errors instead of
+    silently falling back.
 37. Rust runtime numeric env controls must fail closed on explicit empty
     values. `GROBOT_RUNTIME_HTTP_TIMEOUT_MS` and
     `GROBOT_MODEL_AUTO_CACHE_TTL_SECS` may use runtime defaults only when

@@ -90,7 +90,11 @@ export function resolveProjectTomlPath(
       return fromProjectRoot;
     }
   }
-  const repoRoot = process.env.GROBOT_TS_DEV_REPO_ROOT;
+  const repoRoot = readEnvOptionalNonEmptyString(
+    process.env,
+    "GROBOT_TS_DEV_REPO_ROOT",
+    "ts-dev-repo-root",
+  );
   if (repoRoot) {
     const fromRepo = `${removeTrailingSlashes(repoRoot)}/.grobot/project.toml`;
     if (fileReadable(fromRepo)) {
