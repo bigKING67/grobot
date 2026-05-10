@@ -212,7 +212,7 @@ export async function runMcpSessionIdleReap(repoRoot) {
       [
         "[tools.mcp]",
         "call_timeout_ms = 4000",
-        "session_idle_ttl_secs = 10",
+        "session_idle_ttl_secs = 1",
       ].join("\n"),
       "utf8",
     );
@@ -260,7 +260,7 @@ export async function runMcpSessionIdleReap(repoRoot) {
         GROBOT_RUNTIME_HTTP_TIMEOUT_MS: "8000",
       },
       [
-        { line: requestOne, delay_ms: 10_500 },
+        { line: requestOne, delay_ms: 1_500 },
         { line: requestTwo },
       ],
       120_000,

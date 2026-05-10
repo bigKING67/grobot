@@ -48,6 +48,37 @@ allow_tools = ["echo", "search"]
     }
 
     #[test]
+    fn load_mcp_call_policy_accepts_fast_idle_reap_ttl() {
+        let root = make_temp_workspace("policy-fast-idle-reap");
+        let workspace = root.join("workspace");
+        let grobot_dir = root.join(".grobot");
+        fs::create_dir_all(&workspace).expect("create workspace");
+        fs::create_dir_all(&grobot_dir).expect("create .grobot");
+        fs::write(
+            grobot_dir.join("project.toml"),
+            r#"
+[tools.mcp]
+session_idle_ttl_secs = 1
+"#,
+        )
+        .expect("write project policy");
+
+        let context = ToolContextResolved {
+            session_key: "test-session".to_string(),
+            work_dir: workspace,
+            enabled_tools: HashSet::new(),
+            model_visible_tools: HashSet::new(),
+            tool_surface_profile: "coding".to_string(),
+            advanced_tool_schema: false,
+            bash_allowlist: Vec::new(),
+        };
+        let policy = load_mcp_call_policy(&context).expect("fast idle reap ttl should load");
+        assert_eq!(policy.session_idle_ttl_secs, 1);
+
+        fs::remove_dir_all(&root).expect("cleanup temp workspace");
+    }
+
+    #[test]
     fn load_mcp_call_policy_rejects_out_of_range_fields() {
         let root = make_temp_workspace("policy-reject-range");
         let workspace = root.join("workspace");

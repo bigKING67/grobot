@@ -126,6 +126,13 @@ High-value surfaces:
   falling back to generic smoke. The former broad failover/provider/tool/MCP
   bundle is split by behavior surface so local affected runs do not pay a 60s+
   suite when only one helper changed.
+- `runtime:mcp-session` keeps the idle-reap correctness contract but uses a
+  test-local one-second MCP session TTL. This avoids paying a production-like
+  ten-second wall-clock wait in every CI run while still proving the runtime
+  reaps and respawns an idle MCP process.
+- `gateway/src/extensions/contracts/runtime-smoke-contract/mcp-cases.mjs` maps
+  directly to the MCP call/session/server suites, so edits to shared MCP
+  contract helpers cannot silently fall back to unrelated gateway smoke.
 - `gateway/src/cli/tui/**` and ask-user UI: gateway TS and `gateway:tui` suite.
 - `gateway/src/cli/start/**` or plan paths: gateway TS plus gateway/runtime plan
   suites.

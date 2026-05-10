@@ -108,6 +108,14 @@ assertIncludes(runtimeToolMcpHarness, "check:gateway:suite:runtime:tool-loop", "
 assertIncludes(runtimeToolMcpHarness, "check:gateway:suite:runtime:mcp-session", "runtime tool/mcp affected gates");
 assertExcludes(runtimeToolMcpHarness, "check:gateway:suite:runtime:provider-status", "runtime tool/mcp affected gates");
 
+const runtimeMcpContractHarness = selectAffectedGates(registry, [
+  "gateway/src/extensions/contracts/runtime-smoke-contract/mcp-cases.mjs",
+]).names;
+assertIncludes(runtimeMcpContractHarness, "check:gateway:suite:runtime:mcp-call", "runtime MCP contract affected gates");
+assertIncludes(runtimeMcpContractHarness, "check:gateway:suite:runtime:mcp-session", "runtime MCP contract affected gates");
+assertIncludes(runtimeMcpContractHarness, "check:gateway:suite:runtime:mcp-server", "runtime MCP contract affected gates");
+assertExcludes(runtimeMcpContractHarness, "check:gateway:suite:runtime:provider-status", "runtime MCP contract affected gates");
+
 const runtimeControlSurfaceHarness = selectAffectedGates(registry, [
   "gateway/tests/check-gateway-node/runtime-smoke/control-surface.mjs",
 ]).names;

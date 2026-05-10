@@ -345,6 +345,12 @@ function gatewaySmokeHarnessGates(file) {
   if (file === "gateway/tests/check-gateway-node.mjs" || file.endsWith("/harness.mjs")) {
     return [...base, "check:gateway:suite:gateway:core", "check:gateway:suite:runtime:status"];
   }
+  if (file.includes("/runtime-smoke-contract/mcp-cases")) {
+    return [...base, "check:gateway:suite:runtime:mcp-call", "check:gateway:suite:runtime:mcp-session", "check:gateway:suite:runtime:mcp-server"];
+  }
+  if (file.includes("/runtime-smoke-contract/basic-cases")) {
+    return [...base, "check:gateway:suite:runtime:tool-loop", "check:gateway:suite:runtime:mcp-call", "check:gateway:suite:runtime:tool-diagnostics"];
+  }
   if (file.includes("/runtime-smoke/status-surface")) {
     return [...base, "check:gateway:suite:runtime:status"];
   }
@@ -497,7 +503,10 @@ export function selectAffectedGates(registry, changedFiles) {
       continue;
     }
 
-    if (file.startsWith("gateway/tests/check-gateway-node")) {
+    if (
+      file.startsWith("gateway/tests/check-gateway-node")
+      || file.startsWith("gateway/src/extensions/contracts/runtime-smoke-contract/")
+    ) {
       addNames(selected, gatewaySmokeHarnessGates(file), `${file}: gateway smoke harness change`);
       continue;
     }
