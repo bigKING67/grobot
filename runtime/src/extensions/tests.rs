@@ -271,6 +271,8 @@ mod tests {
         assert!(has_ask_user_tool);
     }
 
+    include!("tests/request_envelope.rs");
+
     #[test]
     fn turn_execute_validates_empty_fields() {
         let input = r#"{"jsonrpc":"2.0","id":"2","method":"runtime.turn.execute","params":{"request_id":"req_1","session_key":"feishu:tenant:dm:user","user_message":"   ","context_lines":["a","b"]}}"#;

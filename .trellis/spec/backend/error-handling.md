@@ -344,6 +344,16 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     instead of silently behaving like an omitted window policy. Explicit
     malformed `cache_stats_reset_window` values must return structured
     `invalid_cache_stats_reset_window` data instead of falling back to `false`.
+42. Runtime JSON-RPC envelopes must fail closed before typed request
+    deserialization. Each stdin line must be a JSON object with
+    `jsonrpc:"2.0"`, a response-correlatable `id` (`string`, `number`, or
+    `null`), and a non-empty string `method`. Non-object requests, missing or
+    malformed envelope fields, wrong protocol versions, and object/array ids
+    must return JSON-RPC `-32600` with stable structured diagnostics such as
+    `invalid_rpc_request_shape`, `invalid_jsonrpc_version`,
+    `invalid_rpc_id_shape`, or `invalid_rpc_method_shape`. Invalid ids must
+    produce a `null` response id; valid request ids must be preserved in error
+    responses. Malformed JSON remains JSON-RPC `-32700` parse error.
 
 ---
 

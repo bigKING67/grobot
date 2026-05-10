@@ -1,12 +1,10 @@
 pub const JSONRPC_VERSION: &str = "2.0";
 pub const RUNTIME_PROTOCOL_VERSION: &str = "runtime.v1";
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub struct RpcRequest {
-    pub jsonrpc: String,
     pub id: Value,
     pub method: String,
-    #[serde(default)]
     pub params: Value,
 }
 

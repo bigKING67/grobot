@@ -90,10 +90,6 @@ fn invalid_runtime_health_message(data: &Value) -> &'static str {
 }
 
 pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErrorResponse> {
-    if request.jsonrpc != JSONRPC_VERSION {
-        return Err(error(request.id, -32600, "invalid jsonrpc version"));
-    }
-
     match request.method.as_str() {
         "runtime.health" => {
             let params = parse_runtime_health_params(&request.params).map_err(|data| {
@@ -270,8 +266,7 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
 }
 
 pub fn handle_json_line(line: &str) -> String {
-    let parsed = serde_json::from_str::<RpcRequest>(line);
-    let response = match parsed {
+    let response = match parse_rpc_request_envelope(line) {
         Ok(request) => match handle_request(request) {
             Ok(ok) => serde_json::to_value(ok).unwrap_or_else(|_| {
                 json!({
@@ -288,10 +283,12 @@ pub fn handle_json_line(line: &str) -> String {
                 })
             }),
         },
-        Err(_) => json!({
-            "jsonrpc": JSONRPC_VERSION,
-            "id": null,
-            "error": { "code": -32700, "message": "parse error" }
+        Err(err) => serde_json::to_value(err).unwrap_or_else(|_| {
+            json!({
+                "jsonrpc": JSONRPC_VERSION,
+                "id": null,
+                "error": { "code": -32603, "message": "internal serialization error" }
+            })
         }),
     };
 
