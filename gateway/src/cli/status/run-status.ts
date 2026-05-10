@@ -84,6 +84,7 @@ import {
 import { resolveRuntimeToolContextPreview } from "./runtime-tool-context-preview";
 import { resolveStatusRuntimeOverrides } from "./runtime-overrides";
 import { isRuntimeToolControlInputError } from "../start/context/runtime-tool-controls";
+import { isToolSurfaceProfileInputError } from "../../tools/runtime/default-enabled-tools";
 import { serializeRuntimeToolsStatus } from "./runtime-tool-json";
 import { buildRuntimeToolQualitySummary } from "./runtime-tool-quality";
 import { formatRuntimeToolStatusLines } from "./runtime-tool-status-lines";
@@ -297,7 +298,7 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
       runtimeToolSurfaceAdaptationSnapshot,
     );
   } catch (error) {
-    if (isRuntimeToolControlInputError(error)) {
+    if (isRuntimeToolControlInputError(error) || isToolSurfaceProfileInputError(error)) {
       writeStatusInputError(error, outputJson);
       return 2;
     }

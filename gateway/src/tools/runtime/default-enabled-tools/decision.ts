@@ -26,14 +26,41 @@ import {
   scoreMatches,
 } from "./intent-rules";
 
-function normalizeProfile(raw: string | undefined): ToolSurfaceProfile | undefined {
-  const normalized = raw?.trim().toLowerCase().replace(/-/g, "_");
-  if (!normalized) {
+export class ToolSurfaceProfileInputError extends Error {
+  readonly code = "invalid_tool_surface_profile";
+  readonly field = "tool-surface-profile";
+
+  constructor() {
+    super(`tool-surface-profile must be one of: ${TOOL_SURFACE_PROFILES.join(", ")}`);
+    this.name = "ToolSurfaceProfileInputError";
+  }
+}
+
+export function isToolSurfaceProfileInputError(
+  error: unknown,
+): error is ToolSurfaceProfileInputError {
+  return error instanceof ToolSurfaceProfileInputError;
+}
+
+function normalizeProfile(raw: string): ToolSurfaceProfile | undefined {
+  const normalized = raw.trim().toLowerCase().replace(/-/g, "_");
+  if (normalized.length === 0) {
     return undefined;
   }
   return TOOL_SURFACE_PROFILES.includes(normalized as ToolSurfaceProfile)
     ? normalized as ToolSurfaceProfile
     : undefined;
+}
+
+function resolveEnvProfile(raw: string | undefined): ToolSurfaceProfile | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  const profile = normalizeProfile(raw);
+  if (profile) {
+    return profile;
+  }
+  throw new ToolSurfaceProfileInputError();
 }
 
 function emptySurfaceScores(): Record<ToolSurfaceProfile, number> {
@@ -115,7 +142,7 @@ export function resolveToolSurfaceProfileFromMessage(message: string | undefined
   reason: string;
   decision: RuntimeToolSurfaceDecision;
 } {
-  const envProfile = normalizeProfile(process.env.GROBOT_TOOL_SURFACE_PROFILE);
+  const envProfile = resolveEnvProfile(process.env.GROBOT_TOOL_SURFACE_PROFILE);
   if (envProfile) {
     const reason = "GROBOT_TOOL_SURFACE_PROFILE";
     return {

@@ -254,3 +254,95 @@ export function runStatusInvalidToolsAllowControlsRejectFlow(context) {
     hides_top_level_fatal: !combinedOutput.includes("fatal error"),
   };
 }
+
+export function runStartInvalidToolSurfaceProfileControlsRejectFlow(context) {
+  const {
+    repoRoot,
+    createTempDir,
+    buildSmokeConfig,
+    writeConfig,
+    runCommand,
+    parseJsonObjectSafe,
+    hasStartBannerMarker,
+  } = context;
+  const workDir = createTempDir("grobot-invalid-tool-surface-profile-work");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const commonStartArgs = [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-subject",
+    "invalid-tool-surface-profile-user",
+    "--message",
+    "invalid tool surface profile should not reach runtime",
+  ];
+  const startInvalidProfile = runCommand(repoRoot, commonStartArgs, {
+    GROBOT_TOOL_SURFACE_PROFILE: "everything",
+  });
+  const startEmptyProfile = runCommand(repoRoot, commonStartArgs, {
+    GROBOT_TOOL_SURFACE_PROFILE: "   ",
+  });
+  const statusJsonInvalidProfile = runCommand(repoRoot, [
+    "./grobot",
+    "status",
+    "--json",
+    "--work-dir",
+    workDir,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+  ], {
+    GROBOT_TOOL_SURFACE_PROFILE: "everything",
+  });
+  const statusJsonPayload = parseJsonObjectSafe(statusJsonInvalidProfile.stdout);
+  const statusTextEmptyProfile = runCommand(repoRoot, [
+    "./grobot",
+    "status",
+    "--work-dir",
+    workDir,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+  ], {
+    GROBOT_TOOL_SURFACE_PROFILE: "",
+  });
+  const combinedOutput = [
+    startInvalidProfile.stdout,
+    startInvalidProfile.stderr,
+    startEmptyProfile.stdout,
+    startEmptyProfile.stderr,
+    statusJsonInvalidProfile.stdout,
+    statusJsonInvalidProfile.stderr,
+    statusTextEmptyProfile.stdout,
+    statusTextEmptyProfile.stderr,
+  ].join("\n");
+  const hasStableError = (result) =>
+    result.stderr.includes("error: invalid_tool_surface_profile:")
+    && result.stderr.includes("tool-surface-profile must be one of:");
+  return {
+    start_invalid_profile_exit_code: startInvalidProfile.exit_code,
+    start_invalid_profile_has_stable_error: hasStableError(startInvalidProfile),
+    start_empty_profile_exit_code: startEmptyProfile.exit_code,
+    start_empty_profile_has_stable_error: hasStableError(startEmptyProfile),
+    status_json_invalid_profile_exit_code: statusJsonInvalidProfile.exit_code,
+    status_json_invalid_profile_error: statusJsonPayload?.error ?? null,
+    status_json_invalid_profile_field: statusJsonPayload?.field ?? null,
+    status_json_invalid_profile_detail:
+      typeof statusJsonPayload?.detail === "string" ? statusJsonPayload.detail : null,
+    status_text_empty_profile_exit_code: statusTextEmptyProfile.exit_code,
+    status_text_empty_profile_has_stable_error: hasStableError(statusTextEmptyProfile),
+    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
+    has_start_banner: hasStartBannerMarker(combinedOutput),
+  };
+}

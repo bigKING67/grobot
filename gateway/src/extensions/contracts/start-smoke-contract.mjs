@@ -70,6 +70,7 @@ import {
   runStartMessageSmoke,
 } from "./start-smoke-contract/start-basic-flows.mjs";
 import {
+  runStartInvalidToolSurfaceProfileControlsRejectFlow,
   runStartInvalidToolLoopControlsRejectFlow,
   runStatusInvalidToolsAllowControlsRejectFlow,
 } from "./start-smoke-contract/runtime-tool-control-flows.mjs";
@@ -141,6 +142,9 @@ function runCli(argv) {
       break;
     case "start-invalid-tool-loop-controls-reject-flow":
       payload = runStartInvalidToolLoopControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-tool-surface-profile-controls-reject-flow":
+      payload = runStartInvalidToolSurfaceProfileControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "status-invalid-tools-allow-controls-reject-flow":
       payload = runStatusInvalidToolsAllowControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));

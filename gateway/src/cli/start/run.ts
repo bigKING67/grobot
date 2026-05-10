@@ -52,6 +52,7 @@ import {
   applyContextWindowOverride,
   normalizePositiveInt,
 } from "./context/window-runtime";
+import { isToolSurfaceProfileInputError } from "../../tools/runtime/default-enabled-tools";
 import {
   buildExperienceSchedulerTaskFailedSurface,
   buildExperienceSchedulerTickErrorSurface,
@@ -109,6 +110,10 @@ export async function runStart(
       return 2;
     }
     if (isRuntimeToolControlInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    if (isToolSurfaceProfileInputError(error)) {
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }

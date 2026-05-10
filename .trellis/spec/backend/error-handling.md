@@ -247,6 +247,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     when omitted; explicit empty or whitespace-only values must exit `2` with
     stable `invalid_<field>` errors before session bootstrap or management
     server listen.
+34. Runtime tool-surface routing controls must fail closed on explicit
+    malformed env values. `GROBOT_TOOL_SURFACE_PROFILE` may use intent-based
+    routing only when omitted; explicit empty, whitespace-only, or unsupported
+    values must exit `2` with `invalid_tool_surface_profile` before start turn
+    execution or status rendering.
 
 ---
 
