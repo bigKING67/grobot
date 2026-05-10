@@ -300,9 +300,9 @@ Error handling follows fail-fast plus explicit fallback boundaries:
 38. Runtime protocol event stream controls must fail closed on malformed
     explicit values. `runtime.turn.execute` may omit `event_stream` to disable
     streaming and may use `stderr_jsonl` / `stderr-jsonl` to enable stderr JSONL
-    runtime events, but explicit empty, whitespace-only, or unsupported values
-    must return JSON-RPC `-32602` with structured `invalid_event_stream` data
-    before runtime turn execution starts.
+    runtime events, but explicit `null`, non-string, empty, whitespace-only, or
+    unsupported values must return JSON-RPC `-32602` with structured
+    `invalid_event_stream` data before runtime turn execution starts.
 39. Rust orchestration direct turn inputs must enforce the same required-field
     boundary as the JSON-RPC handler. Direct `TurnExecuteInput` callers must not
     bypass empty `request_id`, `session_key`, or `user_message` checks; empty or

@@ -128,8 +128,6 @@ pub struct TurnExecuteParams {
     pub tool_context: Option<TurnExecuteToolContextParams>,
     #[serde(default)]
     pub attachments: Vec<TurnExecuteAttachmentParams>,
-    #[serde(default)]
-    pub event_stream: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

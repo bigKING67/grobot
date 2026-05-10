@@ -15,22 +15,29 @@ impl crate::models::engine::RuntimeEventSink for StderrJsonlRuntimeEventSink {
     }
 }
 
-fn parse_event_stream_mode(value: Option<&str>) -> Result<bool, Value> {
-    let Some(raw_value) = value else {
-        return Ok(false);
-    };
-    let normalized = raw_value.trim().to_ascii_lowercase().replace('-', "_");
-    if normalized == STDERR_EVENT_STREAM_MODE {
-        return Ok(true);
-    }
-    Err(json!({
+fn invalid_event_stream_value(raw_value: Value) -> Value {
+    json!({
         "diagnostic_kind": "invalid_event_stream",
         "field": "event_stream",
         "source": "event_stream",
         "raw_value": raw_value,
         "valid_values": [STDERR_EVENT_STREAM_MODE, "stderr-jsonl"],
         "recovery_hint": "omit event_stream to disable runtime event streaming, or set it to stderr_jsonl",
-    }))
+    })
+}
+
+fn parse_event_stream_mode(value: Option<&Value>) -> Result<bool, Value> {
+    let Some(value) = value else {
+        return Ok(false);
+    };
+    let Some(raw_value) = value.as_str() else {
+        return Err(invalid_event_stream_value(value.clone()));
+    };
+    let normalized = raw_value.trim().to_ascii_lowercase().replace('-', "_");
+    if normalized == STDERR_EVENT_STREAM_MODE {
+        return Ok(true);
+    }
+    Err(invalid_event_stream_value(json!(raw_value)))
 }
 
 fn invalid_runtime_health_field(field: &str, raw_value: Value, recovery_hint: &str) -> Value {
@@ -165,6 +172,10 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
             ))
         }
         "runtime.turn.execute" => {
+            let use_stderr_event_stream = parse_event_stream_mode(request.params.get("event_stream"))
+                .map_err(|data| {
+                    error_with_data(request.id.clone(), -32602, "invalid event_stream", data)
+                })?;
             let params: TurnExecuteParams = serde_json::from_value(request.params)
                 .map_err(|_| error(request.id.clone(), -32602, "invalid params"))?;
             if params.request_id.trim().is_empty()
@@ -174,10 +185,6 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                 return Err(error(request.id, -32602, "empty request fields"));
             }
 
-            let use_stderr_event_stream = parse_event_stream_mode(params.event_stream.as_deref())
-                .map_err(|data| {
-                    error_with_data(request.id.clone(), -32602, "invalid event_stream", data)
-                })?;
             let turn_input = TurnExecuteInput {
                 request_id: params.request_id,
                 session_key: params.session_key,
