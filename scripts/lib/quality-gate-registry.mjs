@@ -203,7 +203,7 @@ const BASE_GATE_DEFINITIONS = Object.freeze([
 function gatewaySuiteGate(id) {
   const group = id.startsWith("runtime:") ? "gateway-runtime-smoke" : id.startsWith("governance:") ? "governance" : "gateway-smoke";
   const isBenchmark = id.includes("benchmark");
-  const workerCount = id === "runtime:context" ? 4 : id === "runtime:plan" ? 4 : id === "runtime:controls" || id === "gateway:context" ? 3 : 1;
+  const workerCount = id === "runtime:context" ? 4 : id === "runtime:plan" || id === "runtime:model-controls" ? 4 : id === "runtime:controls" || id === "gateway:context" ? 3 : 1;
   const gatewaySmokeCost = workerCount > 1 ? 2 : 1;
   return {
     name: `check:gateway:suite:${id}`,

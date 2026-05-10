@@ -84,6 +84,16 @@ assert.equal(
   true,
   "runtime plan must expose isolated case-level events policy flow",
 );
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:model-controls:kimi-options"),
+  true,
+  "runtime model controls must expose case-level Kimi option controls",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:model-controls:cli-env"),
+  true,
+  "runtime model controls must expose case-level CLI/env controls",
+);
 
 const shardResult = spawnSync("node", ["gateway/tests/check-gateway-node.mjs", "--suite", "workflow", "--shard", "1/1", "--json"], {
   encoding: "utf8",

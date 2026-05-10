@@ -241,6 +241,12 @@ for high-value composite smoke surfaces. Current split cases include:
 - `runtime:plan:session-menu`
 - `runtime:plan:concurrency`
 - `runtime:plan:events-policy`
+- `runtime:model-controls:kimi-options`
+- `runtime:model-controls:prompt-cache`
+- `runtime:model-controls:provider`
+- `runtime:model-controls:search-routing`
+- `runtime:model-controls:cli-env`
+- `runtime:model-controls:valid-boundary`
 
 Suite selection expands to split cases when a suite has them; direct
 `<suite>:full` cases remain available for aggregate reproduction. Shards are
@@ -272,13 +278,16 @@ parallelize internally without forcing the outer quality-runner to know every
 suite implementation detail. Parent JSON reports keep the run diagnosable:
 worker executions add structured worker bucket entries and aggregate child case
 results, while parent `steps` records one `gateway-worker-N` step per worker.
-Heavy split suites (`runtime:context`, `runtime:controls`, `runtime:plan`, and
-`gateway:context`) are invoked with internal workers from the quality gate
-registry so full CI gets the same coverage with less monolithic wall time. The
-`runtime:plan:events-policy` case intentionally creates fresh plan-mode and
-concurrency event sources before running the report/policy checks, so it stays
-replayable as an isolated worker case instead of depending on sibling case
-side-effects.
+Heavy split suites (`runtime:context`, `runtime:controls`, `runtime:plan`,
+`runtime:model-controls`, and `gateway:context`) are invoked with internal
+workers from the quality gate registry so full CI gets the same coverage with
+less monolithic wall time. The `runtime:plan:events-policy` case intentionally
+creates fresh plan-mode and concurrency event sources before running the
+report/policy checks, so it stays replayable as an isolated worker case instead
+of depending on sibling case side-effects. Runtime model-control cases are split
+by validation domain (Kimi options, prompt cache, provider metadata, search
+routing, CLI/env overrides, and valid boundary) while preserving
+`runtime:model-controls:full` as the aggregate reproduction path.
 
 ### 6. Events and stats
 

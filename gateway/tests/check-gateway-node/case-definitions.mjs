@@ -16,6 +16,14 @@ import {
   runRuntimePlanEventSourceFlowSmoke,
   runRuntimePlanEventsPolicySmoke,
 } from "./runtime-smoke/plan-events-policy.mjs";
+import {
+  assertRuntimeModelCliEnvControlSmoke,
+  assertRuntimeModelKimiOptionControlSmoke,
+  assertRuntimeModelPromptCacheControlSmoke,
+  assertRuntimeModelProviderControlSmoke,
+  assertRuntimeModelSearchRoutingControlSmoke,
+  assertRuntimeModelValidBoundarySmoke,
+} from "./runtime-smoke/runtime-model-controls.mjs";
 import { assertContextEngineControlSmoke } from "./runtime-smoke/context-engine-controls.mjs";
 import { assertExperienceRuntimeControlSmoke } from "./runtime-smoke/experience-runtime-controls.mjs";
 import { assertExperienceSchedulerControlSmoke } from "./runtime-smoke/experience-scheduler-controls.mjs";
@@ -182,5 +190,35 @@ export const CASES = Object.freeze({
     async run() {
       await runRuntimePlanEventsPolicySmoke(runRuntimePlanEventSourceFlowSmoke());
     },
+  },
+  "runtime:model-controls:kimi-options": {
+    suite: "runtime:model-controls",
+    description: "Runtime Kimi model option validation controls.",
+    run: assertRuntimeModelKimiOptionControlSmoke,
+  },
+  "runtime:model-controls:prompt-cache": {
+    suite: "runtime:model-controls",
+    description: "Runtime prompt cache validation controls.",
+    run: assertRuntimeModelPromptCacheControlSmoke,
+  },
+  "runtime:model-controls:provider": {
+    suite: "runtime:model-controls",
+    description: "Runtime provider priority, weight, and kind validation controls.",
+    run: assertRuntimeModelProviderControlSmoke,
+  },
+  "runtime:model-controls:search-routing": {
+    suite: "runtime:model-controls",
+    description: "Runtime search routing validation and valid boundary controls.",
+    run: assertRuntimeModelSearchRoutingControlSmoke,
+  },
+  "runtime:model-controls:cli-env": {
+    suite: "runtime:model-controls",
+    description: "Runtime model CLI and environment override validation controls.",
+    run: assertRuntimeModelCliEnvControlSmoke,
+  },
+  "runtime:model-controls:valid-boundary": {
+    suite: "runtime:model-controls",
+    description: "Runtime model valid boundary reaches runtime.",
+    run: assertRuntimeModelValidBoundarySmoke,
   },
 });

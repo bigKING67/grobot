@@ -76,7 +76,13 @@ import {
   runStatusInvalidToolsAllowControlsRejectFlow,
 } from "./start-smoke-contract/runtime-tool-control-flows.mjs";
 import {
+  runStartRuntimeModelCliEnvControlsRejectFlow,
   runStartInvalidRuntimeModelControlsRejectFlow,
+  runStartRuntimeModelKimiOptionControlsRejectFlow,
+  runStartRuntimeModelPromptCacheControlsRejectFlow,
+  runStartRuntimeModelProviderControlsRejectFlow,
+  runStartRuntimeModelSearchRoutingControlsFlow,
+  runStartRuntimeModelValidBoundaryFlow,
 } from "./start-smoke-contract/runtime-model-control-flows.mjs";
 import {
   runStartInvalidMemoryStrategyProfileControlsRejectFlow,
@@ -128,6 +134,24 @@ function runCli(argv) {
       break;
     case "start-invalid-runtime-model-controls-reject-flow":
       payload = runStartInvalidRuntimeModelControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-runtime-model-kimi-option-controls-reject-flow":
+      payload = runStartRuntimeModelKimiOptionControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-runtime-model-prompt-cache-controls-reject-flow":
+      payload = runStartRuntimeModelPromptCacheControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-runtime-model-provider-controls-reject-flow":
+      payload = runStartRuntimeModelProviderControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-runtime-model-search-routing-controls-flow":
+      payload = runStartRuntimeModelSearchRoutingControlsFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-runtime-model-cli-env-controls-reject-flow":
+      payload = runStartRuntimeModelCliEnvControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-runtime-model-valid-boundary-flow":
+      payload = runStartRuntimeModelValidBoundaryFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "start-invalid-memory-strategy-profile-controls-reject-flow":
       payload = runStartInvalidMemoryStrategyProfileControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
