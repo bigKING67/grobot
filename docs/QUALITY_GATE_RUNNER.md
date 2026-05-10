@@ -285,6 +285,19 @@ for high-value composite smoke surfaces. Current split cases include:
 - `runtime:provider-status:persisted-failure`
 - `runtime:provider-status:clean-alternate`
 - `runtime:provider-status:management-api`
+- `runtime:describe:memory-legacy-fallback`
+- `runtime:describe:unavailable`
+- `runtime:describe:fallback-diagnostic`
+- `runtime:describe:invalid-schema-status`
+- `runtime:describe:invalid-schema-start`
+- `runtime:describe:legacy-flag`
+- `runtime:describe:python-gateway`
+- `runtime:describe:legacy-env`
+- `runtime:describe:serve-config-policy-auto`
+- `runtime:describe:serve-config-policy-disabled`
+- `runtime:describe:interrupt-ttl`
+- `runtime:describe:memory-input`
+- `runtime:describe:experience-input`
 
 Suite selection expands to split cases when a suite has them; direct
 `<suite>:full` cases remain available for aggregate reproduction. Shards are
@@ -318,7 +331,7 @@ worker executions add structured worker bucket entries and aggregate child case
 results, while parent `steps` records one `gateway-worker-N` step per worker.
 Heavy split suites (`gateway:plan`, `gateway:context`, `runtime:status`,
 `runtime:context`, `runtime:controls`, `runtime:plan`,
-`runtime:model-controls`, and `runtime:provider-status`) are invoked with
+`runtime:model-controls`, `runtime:provider-status`, and `runtime:describe`) are invoked with
 internal workers from the quality gate registry so full CI gets the same
 coverage with less monolithic wall time.
 Gateway plan cases are split by contract domain (input/keybinding, failure
@@ -340,6 +353,9 @@ aggregate reproduction path. Runtime provider-status cases are split by
 route-diagnostic surface (upstream failure text/redaction, persisted status and
 registry data, clean alternate selection, and management API status) while
 preserving `runtime:provider-status:full` as the aggregate reproduction path.
+Runtime describe fallback cases are split by fallback/invalid-runtime surface
+and management validation domain while preserving `runtime:describe:full` as
+the aggregate reproduction path.
 The runtime context memory-decay hysteresis case uses seeded prompt-quality
 evidence and an aggressive test-local EMA alpha to prove tighten, no-early-relax,
 monotonic update, and relax-window behavior in at most three relax rounds instead

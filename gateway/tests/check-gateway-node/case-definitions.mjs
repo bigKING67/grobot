@@ -36,6 +36,21 @@ import {
   runRuntimePlanEventsPolicySmoke,
 } from "./runtime-smoke/plan-events-policy.mjs";
 import {
+  runRuntimeDescribeExperienceInputValidationSmoke,
+  runRuntimeDescribeFallbackDiagnosticSmoke,
+  runRuntimeDescribeInterruptTtlValidationSmoke,
+  runRuntimeDescribeInvalidSchemaStartSmoke,
+  runRuntimeDescribeInvalidSchemaStatusSmoke,
+  runRuntimeDescribeLegacyEnvRejectSmoke,
+  runRuntimeDescribeLegacyFlagRejectSmoke,
+  runRuntimeDescribeMemoryInputValidationSmoke,
+  runRuntimeDescribeMemoryLegacyFallbackSmoke,
+  runRuntimeDescribePythonGatewayRejectSmoke,
+  runRuntimeDescribeServeConfigPolicyAutoSmoke,
+  runRuntimeDescribeServeConfigPolicyDisabledSmoke,
+  runRuntimeDescribeUnavailableSmoke,
+} from "./runtime-smoke/runtime-describe-fallbacks.mjs";
+import {
   assertRuntimeModelCliEnvControlSmoke,
   assertRuntimeModelKimiOptionControlSmoke,
   assertRuntimeModelPromptCacheControlSmoke,
@@ -340,5 +355,70 @@ export const CASES = Object.freeze({
     suite: "runtime:provider-status",
     description: "Provider failure management API status smoke.",
     run: runRuntimeProviderManagementApiStatusSmoke,
+  },
+  "runtime:describe:memory-legacy-fallback": {
+    suite: "runtime:describe",
+    description: "Runtime describe legacy memory fallback status smoke.",
+    run: runRuntimeDescribeMemoryLegacyFallbackSmoke,
+  },
+  "runtime:describe:unavailable": {
+    suite: "runtime:describe",
+    description: "Runtime describe unavailable fallback status smoke.",
+    run: runRuntimeDescribeUnavailableSmoke,
+  },
+  "runtime:describe:fallback-diagnostic": {
+    suite: "runtime:describe",
+    description: "Runtime describe fallback compact diagnostic smoke.",
+    run: runRuntimeDescribeFallbackDiagnosticSmoke,
+  },
+  "runtime:describe:invalid-schema-status": {
+    suite: "runtime:describe",
+    description: "Runtime describe invalid schema status quality smoke.",
+    run: runRuntimeDescribeInvalidSchemaStatusSmoke,
+  },
+  "runtime:describe:invalid-schema-start": {
+    suite: "runtime:describe",
+    description: "Runtime describe invalid schema start diagnostic smoke.",
+    run: runRuntimeDescribeInvalidSchemaStartSmoke,
+  },
+  "runtime:describe:legacy-flag": {
+    suite: "runtime:describe",
+    description: "Runtime describe legacy flag rejection smoke.",
+    run: runRuntimeDescribeLegacyFlagRejectSmoke,
+  },
+  "runtime:describe:python-gateway": {
+    suite: "runtime:describe",
+    description: "Runtime describe legacy gateway implementation rejection smoke.",
+    run: runRuntimeDescribePythonGatewayRejectSmoke,
+  },
+  "runtime:describe:legacy-env": {
+    suite: "runtime:describe",
+    description: "Runtime describe legacy environment rejection smoke.",
+    run: runRuntimeDescribeLegacyEnvRejectSmoke,
+  },
+  "runtime:describe:serve-config-policy-auto": {
+    suite: "runtime:describe",
+    description: "Runtime describe serve config read policy auto smoke.",
+    run: runRuntimeDescribeServeConfigPolicyAutoSmoke,
+  },
+  "runtime:describe:serve-config-policy-disabled": {
+    suite: "runtime:describe",
+    description: "Runtime describe serve config read policy disabled smoke.",
+    run: runRuntimeDescribeServeConfigPolicyDisabledSmoke,
+  },
+  "runtime:describe:interrupt-ttl": {
+    suite: "runtime:describe",
+    description: "Runtime describe management interrupt TTL validation smoke.",
+    run: runRuntimeDescribeInterruptTtlValidationSmoke,
+  },
+  "runtime:describe:memory-input": {
+    suite: "runtime:describe",
+    description: "Runtime describe management memory input validation smoke.",
+    run: runRuntimeDescribeMemoryInputValidationSmoke,
+  },
+  "runtime:describe:experience-input": {
+    suite: "runtime:describe",
+    description: "Runtime describe management experience input validation smoke.",
+    run: runRuntimeDescribeExperienceInputValidationSmoke,
   },
 });

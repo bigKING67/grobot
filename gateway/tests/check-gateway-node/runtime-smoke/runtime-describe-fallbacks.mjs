@@ -1,24 +1,14 @@
 import assert from "node:assert/strict";
-import { resolve } from "node:path";
-import { startMockModelServer } from "../../../src/extensions/contracts/_shared/mock-model-server.mjs";
 import {
-  assertSuccess,
-  contractsRoot,
-  isRecord,
-  logRetry,
   logStep,
   makeTempDir,
   parseJsonOutput,
   repoRoot,
   reserveFreePort,
-  runCommand,
-  runCommandAsync,
   runContract,
-  runContractAsync,
-  runTsContract,
-  sleepMs,
 } from "../harness.mjs";
-export async function runRuntimeDescribeFallbackSmoke() {
+
+export function runRuntimeDescribeMemoryLegacyFallbackSmoke() {
   const memoryLegacyFallbackResult = runContract(
     "start-smoke-contract.mjs",
     "status-ts-rust-memory-legacy-fallback",
@@ -52,7 +42,9 @@ export async function runRuntimeDescribeFallbackSmoke() {
     "memory",
   );
   logStep("start-smoke-contract status-ts-rust-memory-legacy-fallback");
+}
 
+export function runRuntimeDescribeUnavailableSmoke() {
   const runtimeDescribeUnavailableResult = runContract(
     "start-smoke-contract.mjs",
     "status-runtime-describe-unavailable",
@@ -85,7 +77,9 @@ export async function runRuntimeDescribeFallbackSmoke() {
   assert.equal(runtimeDescribeUnavailablePayload.quality_warning_has_describe_fallback, true);
   assert.equal(runtimeDescribeUnavailablePayload.text_has_quality_fail, true);
   logStep("start-smoke-contract status-runtime-describe-unavailable");
+}
 
+export function runRuntimeDescribeFallbackDiagnosticSmoke() {
   const startRuntimeDescribeFallbackDiagnosticResult = runContract(
     "start-smoke-contract.mjs",
     "start-runtime-describe-fallback-diagnostic",
@@ -104,7 +98,9 @@ export async function runRuntimeDescribeFallbackSmoke() {
   assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.compact_avoids_fallback_manifest_field, true);
   assert.equal(startRuntimeDescribeFallbackDiagnosticPayload.compact_avoids_schema_profiles_field, true);
   logStep("start-smoke-contract start-runtime-describe-fallback-diagnostic");
+}
 
+export function runRuntimeDescribeInvalidSchemaStatusSmoke() {
   const runtimeDescribeInvalidSchemaStatusResult = runContract(
     "start-smoke-contract.mjs",
     "status-runtime-describe-invalid-schema-profiles",
@@ -134,7 +130,9 @@ export async function runRuntimeDescribeFallbackSmoke() {
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.quality_warning_has_describe_fallback, true);
   assert.equal(runtimeDescribeInvalidSchemaStatusPayload.text_has_quality_fail, true);
   logStep("start-smoke-contract status-runtime-describe-invalid-schema-profiles");
+}
 
+export function runRuntimeDescribeInvalidSchemaStartSmoke() {
   const runtimeDescribeInvalidSchemaStartResult = runContract(
     "start-smoke-contract.mjs",
     "start-runtime-describe-invalid-schema-profiles",
@@ -153,7 +151,9 @@ export async function runRuntimeDescribeFallbackSmoke() {
   assert.equal(runtimeDescribeInvalidSchemaStartPayload.compact_avoids_fallback_manifest_field, true);
   assert.equal(runtimeDescribeInvalidSchemaStartPayload.compact_avoids_schema_profiles_field, true);
   logStep("start-smoke-contract start-runtime-describe-invalid-schema-profiles");
+}
 
+export function runRuntimeDescribeLegacyFlagRejectSmoke() {
   const legacyFlagRejectResult = runContract("start-smoke-contract.mjs", "status-reject-legacy-flag", [
     "--repo-root",
     repoRoot,
@@ -164,7 +164,9 @@ export async function runRuntimeDescribeFallbackSmoke() {
   );
   assert.equal(legacyFlagRejectPayload.exit_code, 2);
   logStep("start-smoke-contract status-reject-legacy-flag");
+}
 
+export function runRuntimeDescribePythonGatewayRejectSmoke() {
   const pythonGatewayRejectResult = runContract("start-smoke-contract.mjs", "status-reject-python-gateway", [
     "--repo-root",
     repoRoot,
@@ -182,12 +184,16 @@ export async function runRuntimeDescribeFallbackSmoke() {
   ], [2, 2, 2, 2, 2]);
   assert.equal(pythonGatewayRejectPayload.malformed_impl_errors_are_stable, true);
   logStep("start-smoke-contract status-reject-python-gateway");
+}
 
+export function runRuntimeDescribeLegacyEnvRejectSmoke() {
   const legacyEnvRejectResult = runContract("start-smoke-contract.mjs", "status-reject-legacy-env", ["--repo-root", repoRoot]);
   const legacyEnvRejectPayload = parseJsonOutput("start-smoke-contract status-reject-legacy-env", legacyEnvRejectResult.stdout);
   assert.equal(legacyEnvRejectPayload.exit_code, 2);
   logStep("start-smoke-contract status-reject-legacy-env");
+}
 
+export async function runRuntimeDescribeServeConfigPolicyAutoSmoke() {
   const homeDir = makeTempDir("serve-home");
   const workDir = makeTempDir("serve-work");
   const port = await reserveFreePort();
@@ -207,7 +213,10 @@ export async function runRuntimeDescribeFallbackSmoke() {
     { timeoutMs: 240_000 },
   );
   logStep("serve-smoke-contract config-read-policy-auto");
+}
 
+export async function runRuntimeDescribeServeConfigPolicyDisabledSmoke() {
+  const workDir = makeTempDir("serve-work");
   const disabledPort = await reserveFreePort();
   runContract(
     "serve-smoke-contract.mjs",
@@ -217,8 +226,6 @@ export async function runRuntimeDescribeFallbackSmoke() {
       repoRoot,
       "--work-dir",
       workDir,
-      "--home-dir",
-      homeDir,
       "--bind",
       `127.0.0.1:${disabledPort}`,
       "--management-token",
@@ -227,7 +234,9 @@ export async function runRuntimeDescribeFallbackSmoke() {
     { timeoutMs: 240_000 },
   );
   logStep("serve-smoke-contract config-read-policy-disabled");
+}
 
+export async function runRuntimeDescribeInterruptTtlValidationSmoke() {
   const interruptTtlPort = await reserveFreePort();
   const interruptTtlWorkDir = makeTempDir("management-interrupt-work");
   const interruptTtlResult = runContract(
@@ -264,7 +273,9 @@ export async function runRuntimeDescribeFallbackSmoke() {
   assert.equal(interruptTtlPayload.invalid_json_error, "bad_request");
   assert.equal(interruptTtlPayload.invalid_json_detail_has_context, true);
   logStep("management-interrupt-contract interrupt-ttl-validation");
+}
 
+export async function runRuntimeDescribeMemoryInputValidationSmoke() {
   const memoryInputPort = await reserveFreePort();
   const memoryInputWorkDir = makeTempDir("management-memory-work");
   const memoryInputResult = runContract(
@@ -414,7 +425,9 @@ export async function runRuntimeDescribeFallbackSmoke() {
   assert.equal(memoryInputPayload.valid_list_limit, 1);
   assert.equal(memoryInputPayload.valid_list_include_archived, true);
   logStep("management-memory-contract memory-input-validation");
+}
 
+export async function runRuntimeDescribeExperienceInputValidationSmoke() {
   const experienceInputPort = await reserveFreePort();
   const experienceInputWorkDir = makeTempDir("management-experience-work");
   const experienceInputResult = runContract(
@@ -485,4 +498,20 @@ export async function runRuntimeDescribeFallbackSmoke() {
   assert.equal(experienceInputPayload.valid_list_mode, "list");
   assert.equal(experienceInputPayload.valid_list_total_type, "number");
   logStep("management-experience-contract experience-input-validation");
+}
+
+export async function runRuntimeDescribeFallbackSmoke() {
+  runRuntimeDescribeMemoryLegacyFallbackSmoke();
+  runRuntimeDescribeUnavailableSmoke();
+  runRuntimeDescribeFallbackDiagnosticSmoke();
+  runRuntimeDescribeInvalidSchemaStatusSmoke();
+  runRuntimeDescribeInvalidSchemaStartSmoke();
+  runRuntimeDescribeLegacyFlagRejectSmoke();
+  runRuntimeDescribePythonGatewayRejectSmoke();
+  runRuntimeDescribeLegacyEnvRejectSmoke();
+  await runRuntimeDescribeServeConfigPolicyAutoSmoke();
+  await runRuntimeDescribeServeConfigPolicyDisabledSmoke();
+  await runRuntimeDescribeInterruptTtlValidationSmoke();
+  await runRuntimeDescribeMemoryInputValidationSmoke();
+  await runRuntimeDescribeExperienceInputValidationSmoke();
 }
