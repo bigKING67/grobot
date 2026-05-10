@@ -135,8 +135,8 @@ assert.equal(
 );
 assert.equal(
   registry.byName.get("check:gateway:suite:runtime:context")?.resourceCost,
-  2,
-  "internal worker suite gates must reserve extra gateway-smoke resources without monopolizing the pool",
+  3,
+  "runtime internal worker suite gates must reserve enough gateway-smoke resources to avoid noisy overlap",
 );
 assert.equal(
   registry.byName.get("check:gateway:suite:runtime:plan")?.command,
@@ -145,8 +145,8 @@ assert.equal(
 );
 assert.equal(
   registry.byName.get("check:gateway:suite:runtime:plan")?.resourceCost,
-  2,
-  "runtime plan internal worker suite must reserve extra gateway-smoke resources without monopolizing the pool",
+  3,
+  "runtime plan internal worker suite must reserve enough gateway-smoke resources to avoid noisy overlap",
 );
 assert.equal(
   registry.byName.get("check:gateway:suite:runtime:model-controls")?.command,
@@ -155,8 +155,8 @@ assert.equal(
 );
 assert.equal(
   registry.byName.get("check:gateway:suite:runtime:model-controls")?.resourceCost,
-  2,
-  "runtime model controls internal worker suite must reserve extra gateway-smoke resources without monopolizing the pool",
+  3,
+  "runtime model controls internal worker suite must reserve enough gateway-smoke resources to avoid noisy overlap",
 );
 assert.equal(
   registry.byName.get("check:gateway:suite:runtime:provider-status")?.command,
@@ -165,8 +165,8 @@ assert.equal(
 );
 assert.equal(
   registry.byName.get("check:gateway:suite:runtime:provider-status")?.resourceCost,
-  2,
-  "runtime provider status internal worker suite must reserve extra gateway-smoke resources without monopolizing the pool",
+  3,
+  "runtime provider status internal worker suite must reserve enough gateway-smoke resources to avoid noisy overlap",
 );
 assert.equal(
   registry.byName.get("check:gateway:suite:gateway:plan")?.command,
@@ -185,8 +185,13 @@ assert.equal(
 );
 assert.equal(
   registry.byName.get("check:gateway:suite:runtime:status")?.resourceCost,
-  2,
-  "runtime status internal worker suite must reserve extra gateway-smoke resources without monopolizing the pool",
+  3,
+  "runtime status internal worker suite must reserve enough gateway-smoke resources to avoid noisy overlap",
+);
+assert.equal(
+  registry.byName.get("check:gateway:suite:runtime:controls")?.resourceCost,
+  3,
+  "runtime controls internal worker suite must reserve enough gateway-smoke resources to avoid noisy overlap",
 );
 assert.equal(
   registry.byName.get("check:gateway:suite:gateway:context")?.command,

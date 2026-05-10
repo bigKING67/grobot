@@ -61,7 +61,10 @@ normalized to:
 - `parallel`: whether it may run concurrently with other gates.
 - `cost`: scheduler hint (`cheap`, `medium`, `expensive`).
 - `resourceClass` and `resourceCost`: resource-token scheduling hints such as
-  `node`, `typescript`, `rust`, `gateway-smoke`, or `release`.
+  `node`, `typescript`, `rust`, `gateway-smoke`, or `release`. Runtime gateway
+  smoke suites with internal workers reserve three `gateway-smoke` tokens so
+  the outer scheduler does not stack multiple process-heavy suites on the same
+  machine and turn a 7s isolated suite into a 20s+ noisy overlap.
 - `cachePolicy`: cache semantics (`pass-only` or `never` by default).
 - `env`: declared environment variables that participate in the action hash.
 - `modes`: profiles such as `quick`, `ci`, or `release`.

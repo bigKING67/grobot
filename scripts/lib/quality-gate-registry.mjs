@@ -217,7 +217,10 @@ function gatewaySuiteGate(id) {
   const group = id.startsWith("runtime:") ? "gateway-runtime-smoke" : id.startsWith("governance:") ? "governance" : "gateway-smoke";
   const isBenchmark = id.includes("benchmark");
   const workerCount = GATEWAY_SUITE_WORKER_COUNTS[id] ?? 1;
-  const gatewaySmokeCost = workerCount > 1 ? 2 : 1;
+  const isRuntimeSuite = id.startsWith("runtime:");
+  const gatewaySmokeCost = workerCount > 1
+    ? isRuntimeSuite ? 3 : 2
+    : 1;
   return {
     name: `check:gateway:suite:${id}`,
     command: `node gateway/tests/check-gateway-node.mjs --suite ${id} --json${workerCount > 1 ? ` --workers ${String(workerCount)}` : ""}`,
