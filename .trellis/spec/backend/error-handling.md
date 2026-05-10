@@ -257,6 +257,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     derived repository runtime path only when omitted; explicit empty or
     whitespace-only values must exit `2` with `invalid_runtime_bin` before
     runtime health checks, status rendering, or Rust turn execution.
+36. Gateway path env overrides must fail closed on explicit empty values.
+    `GROBOT_CONFIG` and `GROBOT_HOME` may use discovered config paths or the
+    default home directory only when omitted; explicit empty or whitespace-only
+    values must return stable `invalid_config` or `invalid_home` path input
+    errors instead of silently falling back.
 
 ---
 

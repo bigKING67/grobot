@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import {
   OptionValue,
+  readEnvOptionalNonEmptyString,
   readExplicitOptionalNonEmptyString,
   readExplicitOptionalNonEmptyStringAny,
 } from "../cli-args";
@@ -116,8 +117,8 @@ export function resolveConfigTomlPath(
       return explicitPath;
     }
   }
-  const envPath = process.env.GROBOT_CONFIG;
-  if (typeof envPath === "string" && envPath.trim().length > 0) {
+  const envPath = readEnvOptionalNonEmptyString(process.env, "GROBOT_CONFIG", "config");
+  if (typeof envPath === "string") {
     const envConfigPath = toAbsolutePath(envPath, homeDir, process.cwd());
     if (fileReadable(envConfigPath)) {
       return envConfigPath;
@@ -165,9 +166,9 @@ export function resolveHomeDir(options?: Record<string, OptionValue>): string {
   if (fromOption) {
     return toAbsolutePath(fromOption, defaultHome, process.cwd());
   }
-  const fromEnv = process.env.GROBOT_HOME;
-  if (typeof fromEnv === "string" && fromEnv.trim().length > 0) {
-    return removeTrailingSlashes(fromEnv.trim());
+  const fromEnv = readEnvOptionalNonEmptyString(process.env, "GROBOT_HOME", "home");
+  if (typeof fromEnv === "string") {
+    return removeTrailingSlashes(fromEnv);
   }
   return defaultHome;
 }

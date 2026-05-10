@@ -37,6 +37,20 @@ function captureStringOptionErrorCode(callback: () => unknown): string | null {
   }
 }
 
+function withEnv<T>(key: string, value: string, callback: () => T): T {
+  const previous = process.env[key];
+  process.env[key] = value;
+  try {
+    return callback();
+  } finally {
+    if (typeof previous === "string") {
+      process.env[key] = previous;
+    } else {
+      delete process.env[key];
+    }
+  }
+}
+
 function resolvePath(input: {
   options?: Record<string, OptionValue>;
   workDir: string;
@@ -137,6 +151,19 @@ function main(): void {
         })) === "invalid_config",
       empty_home_dir_rejected:
         captureStringOptionErrorCode(() => resolveHomeDir({ "home-dir": "" })) === "invalid_home_dir",
+      empty_env_config_rejected: withEnv(
+        "GROBOT_CONFIG",
+        "",
+        () => captureStringOptionErrorCode(() => resolveConfigTomlPath({}, homeDir, {
+          workDir: isolatedWorkDir,
+          projectRoot: isolatedProjectRoot,
+        })) === "invalid_config",
+      ),
+      empty_env_home_rejected: withEnv(
+        "GROBOT_HOME",
+        "   ",
+        () => captureStringOptionErrorCode(() => resolveHomeDir({})) === "invalid_home",
+      ),
     };
 
     assertEqual(
@@ -169,6 +196,8 @@ function main(): void {
     assertEqual(payload.empty_project_toml_rejected, true, "empty --project-toml should fail closed");
     assertEqual(payload.empty_config_path_rejected, true, "empty --config should fail closed");
     assertEqual(payload.empty_home_dir_rejected, true, "empty --home-dir should fail closed");
+    assertEqual(payload.empty_env_config_rejected, true, "empty GROBOT_CONFIG should fail closed");
+    assertEqual(payload.empty_env_home_rejected, true, "empty GROBOT_HOME should fail closed");
 
     process.stdout.write(`${JSON.stringify(payload)}\n`);
   } finally {
