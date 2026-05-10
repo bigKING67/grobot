@@ -222,6 +222,15 @@ for high-value composite smoke surfaces. Current split cases include:
 - `runtime:controls:runtime-bin`
 - `runtime:controls:mcp-instruction`
 - `runtime:controls:status-line`
+- `runtime:context:mcp-instruction`
+- `runtime:context:pre-send-head-trim`
+- `runtime:context:quality-guard`
+- `runtime:context:memory-autotune-tighten`
+- `runtime:context:memory-autotune-relax`
+- `runtime:context:memory-autotune-hysteresis`
+- `runtime:context:graph-autotune`
+- `runtime:context:graph-autotune-hysteresis`
+- `runtime:context:graph-autotune-adaptive-sequence`
 
 Suite selection expands to split cases when a suite has them; direct
 `<suite>:full` cases remain available for aggregate reproduction. Shards are
@@ -250,7 +259,12 @@ Plan files use schema `1`:
 `--workers N` runs selected cases through isolated child-process workers using
 the same timing-aware bin packing, so large gateway smoke profiles can
 parallelize internally without forcing the outer quality-runner to know every
-suite implementation detail.
+suite implementation detail. Parent JSON reports keep the run diagnosable:
+worker executions add structured worker bucket entries and aggregate child case
+results, while parent `steps` records one `gateway-worker-N` step per worker.
+Heavy split suites (`runtime:context`, `runtime:controls`, and
+`gateway:context`) are invoked with internal workers from the quality gate
+registry so full CI gets the same coverage with less monolithic wall time.
 
 ### 6. Events and stats
 

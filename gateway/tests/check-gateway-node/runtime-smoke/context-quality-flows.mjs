@@ -1,24 +1,12 @@
 import assert from "node:assert/strict";
-import { resolve } from "node:path";
-import { startMockModelServer } from "../../../src/extensions/contracts/_shared/mock-model-server.mjs";
 import {
-  assertSuccess,
-  contractsRoot,
-  isRecord,
-  logRetry,
   logStep,
-  makeTempDir,
   parseJsonOutput,
   repoRoot,
-  reserveFreePort,
-  runCommand,
-  runCommandAsync,
   runContract,
-  runContractAsync,
-  runTsContract,
-  sleepMs,
 } from "../harness.mjs";
-export async function runRuntimeContextQualityFlowSmoke() {
+
+export function runRuntimeContextMcpInstructionFlowSmoke() {
   const mcpInstructionFlowResult = runContract("start-smoke-contract.mjs", "start-mcp-instruction-events-flow", [
     "--repo-root",
     repoRoot,
@@ -39,7 +27,9 @@ export async function runRuntimeContextQualityFlowSmoke() {
   assert.equal(mcpInstructionFlowPayload.strict_failure_human_surface, true);
   assert.equal(mcpInstructionFlowPayload.strict_failure_avoids_machine_surface, true);
   logStep("start-smoke-contract start-mcp-instruction-events-flow");
+}
 
+export function runRuntimeContextPreSendHeadTrimFlowSmoke() {
   const preSendHeadTrimResult = runContract("start-smoke-contract.mjs", "start-context-pre-send-head-trim-flow", [
     "--repo-root",
     repoRoot,
@@ -81,7 +71,9 @@ export async function runRuntimeContextQualityFlowSmoke() {
     true,
   );
   logStep("start-smoke-contract start-context-pre-send-head-trim-flow");
+}
 
+export function runRuntimeContextQualityGuardFlowSmoke() {
   const qualityGuardFlowResult = runContract("start-smoke-contract.mjs", "start-context-quality-guard-flow", [
     "--repo-root",
     repoRoot,
@@ -102,7 +94,9 @@ export async function runRuntimeContextQualityFlowSmoke() {
   );
   assert.equal(String(qualityGuardFlowPayload.prompt_prepared_quality_guard), "true");
   logStep("start-smoke-contract start-context-quality-guard-flow");
+}
 
+export function runRuntimeContextMemoryDecayAutotuneQualityFlowSmoke() {
   const memoryDecayAutotuneQualityFlowResult = runContract(
     "start-smoke-contract.mjs",
     "start-context-memory-decay-autotune-quality-flow",
@@ -199,7 +193,9 @@ export async function runRuntimeContextQualityFlowSmoke() {
     true,
   );
   logStep("start-smoke-contract start-context-memory-decay-autotune-quality-flow");
+}
 
+export function runRuntimeContextMemoryDecayAutotuneRelaxFlowSmoke() {
   const memoryDecayAutotuneQualityRelaxFlowResult = runContract(
     "start-smoke-contract.mjs",
     "start-context-memory-decay-autotune-quality-relax-flow",
@@ -302,7 +298,9 @@ export async function runRuntimeContextQualityFlowSmoke() {
     true,
   );
   logStep("start-smoke-contract start-context-memory-decay-autotune-quality-relax-flow");
+}
 
+export function runRuntimeContextMemoryDecayAutotuneHysteresisFlowSmoke() {
   const memoryDecayAutotuneHysteresisFlowResult = runContract(
     "start-smoke-contract.mjs",
     "start-context-memory-decay-autotune-hysteresis-flow",
@@ -345,7 +343,9 @@ export async function runRuntimeContextQualityFlowSmoke() {
     );
   }
   logStep("start-smoke-contract start-context-memory-decay-autotune-hysteresis-flow");
+}
 
+export function runRuntimeContextGraphAutotuneFlowSmoke() {
   const graphAutotuneFlowResult = runContract(
     "start-smoke-contract.mjs",
     "start-context-graph-quality-autotune-flow",
@@ -440,7 +440,9 @@ export async function runRuntimeContextQualityFlowSmoke() {
     true,
   );
   logStep("start-smoke-contract start-context-graph-quality-autotune-flow");
+}
 
+export function runRuntimeContextGraphAutotuneHysteresisFlowSmoke() {
   const graphAutotuneHysteresisFlowResult = runContract(
     "start-smoke-contract.mjs",
     "start-context-graph-quality-autotune-hysteresis-flow",
@@ -517,7 +519,9 @@ export async function runRuntimeContextQualityFlowSmoke() {
     true,
   );
   logStep("start-smoke-contract start-context-graph-quality-autotune-hysteresis-flow");
+}
 
+export function runRuntimeContextGraphAutotuneAdaptiveSequenceFlowSmoke() {
   const graphAutotuneAdaptiveSequenceFlowResult = runContract(
     "start-smoke-contract.mjs",
     "start-context-graph-quality-autotune-adaptive-sequence-flow",
@@ -692,4 +696,16 @@ export async function runRuntimeContextQualityFlowSmoke() {
     true,
   );
   logStep("start-smoke-contract start-context-graph-quality-autotune-adaptive-sequence-flow");
+}
+
+export async function runRuntimeContextQualityFlowSmoke() {
+  runRuntimeContextMcpInstructionFlowSmoke();
+  runRuntimeContextPreSendHeadTrimFlowSmoke();
+  runRuntimeContextQualityGuardFlowSmoke();
+  runRuntimeContextMemoryDecayAutotuneQualityFlowSmoke();
+  runRuntimeContextMemoryDecayAutotuneRelaxFlowSmoke();
+  runRuntimeContextMemoryDecayAutotuneHysteresisFlowSmoke();
+  runRuntimeContextGraphAutotuneFlowSmoke();
+  runRuntimeContextGraphAutotuneHysteresisFlowSmoke();
+  runRuntimeContextGraphAutotuneAdaptiveSequenceFlowSmoke();
 }

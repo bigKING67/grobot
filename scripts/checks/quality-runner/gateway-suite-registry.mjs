@@ -64,6 +64,16 @@ assert.equal(
   true,
   "runtime controls must expose case-level status-line contracts",
 );
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:context:quality-guard"),
+  true,
+  "runtime context must expose case-level quality guard flow",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:context:graph-autotune-adaptive-sequence"),
+  true,
+  "runtime context must expose case-level graph autotune adaptive sequence flow",
+);
 
 const shardResult = spawnSync("node", ["gateway/tests/check-gateway-node.mjs", "--suite", "workflow", "--shard", "1/1", "--json"], {
   encoding: "utf8",
@@ -78,6 +88,20 @@ const workerResult = spawnSync("node", ["gateway/tests/check-gateway-node.mjs", 
   stdio: ["ignore", "pipe", "pipe"],
 });
 assert.equal(workerResult.status, 0, `multi-suite worker run must pass\nstdout:\n${workerResult.stdout}\nstderr:\n${workerResult.stderr}`);
+const workerPayload = JSON.parse(workerResult.stdout);
+assert.equal(workerPayload.worker_report_count, 2, "worker run must expose one parent report per worker bucket");
+assert.equal(workerPayload.case_count, 2, "worker run must aggregate child case results into parent JSON");
+assert.equal(workerPayload.step_count, 2, "worker run must expose parent worker steps");
+assert.equal(
+  workerPayload.cases.some((entry) => entry.type === "worker" && Array.isArray(entry.cases) && entry.cases.length === 1),
+  true,
+  "worker run must include structured worker bucket metadata",
+);
+assert.equal(
+  workerPayload.cases.some((entry) => entry.type === "case" && entry.id === "workflow:full" && entry.status === "ok"),
+  true,
+  "worker run must include successful child case metadata",
+);
 
 const caseResult = spawnSync("node", ["gateway/tests/check-gateway-node.mjs", "--case", "workflow:full", "--json"], {
   encoding: "utf8",
@@ -96,6 +120,9 @@ try {
     stdio: ["ignore", "pipe", "pipe"],
   });
   assert.equal(runPlanResult.status, 0, `run-plan worker run must pass\nstdout:\n${runPlanResult.stdout}\nstderr:\n${runPlanResult.stderr}`);
+  const runPlanPayload = JSON.parse(runPlanResult.stdout);
+  assert.equal(runPlanPayload.worker_report_count, 0, "single-case run plan should not spawn redundant workers");
+  assert.equal(runPlanPayload.case_count, 1, "single-case run plan must expose the executed case result");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

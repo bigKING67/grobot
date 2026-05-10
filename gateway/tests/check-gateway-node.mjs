@@ -7,6 +7,7 @@ import {
   runCoreContracts,
   runSemanticBenchmarkContracts,
 } from "./check-gateway-node/gateway-contract-smoke/core-contracts.mjs";
+import { runCasesInWorkers } from "./check-gateway-node/case-worker-runner.mjs";
 import { runSessionContracts } from "./check-gateway-node/gateway-contract-smoke/session-contracts.mjs";
 import { runPlanCommandContracts } from "./check-gateway-node/gateway-contract-smoke/plan-command-contracts.mjs";
 import { runTuiContracts } from "./check-gateway-node/gateway-contract-smoke/tui-contracts.mjs";
@@ -36,7 +37,18 @@ import {
 } from "./check-gateway-node/runtime-smoke/failover-and-tools.mjs";
 import { runRuntimeInteractivePlanFlowSmoke } from "./check-gateway-node/runtime-smoke/interactive-plan-flow.mjs";
 import { runRuntimePlanEventsPolicySmoke } from "./check-gateway-node/runtime-smoke/plan-events-policy.mjs";
-import { runRuntimeContextQualityFlowSmoke } from "./check-gateway-node/runtime-smoke/context-quality-flows.mjs";
+import {
+  runRuntimeContextGraphAutotuneAdaptiveSequenceFlowSmoke,
+  runRuntimeContextGraphAutotuneFlowSmoke,
+  runRuntimeContextGraphAutotuneHysteresisFlowSmoke,
+  runRuntimeContextMcpInstructionFlowSmoke,
+  runRuntimeContextMemoryDecayAutotuneHysteresisFlowSmoke,
+  runRuntimeContextMemoryDecayAutotuneQualityFlowSmoke,
+  runRuntimeContextMemoryDecayAutotuneRelaxFlowSmoke,
+  runRuntimeContextPreSendHeadTrimFlowSmoke,
+  runRuntimeContextQualityFlowSmoke,
+  runRuntimeContextQualityGuardFlowSmoke,
+} from "./check-gateway-node/runtime-smoke/context-quality-flows.mjs";
 import { assertContextEngineControlSmoke } from "./check-gateway-node/runtime-smoke/context-engine-controls.mjs";
 import { assertExperienceSchedulerControlSmoke } from "./check-gateway-node/runtime-smoke/experience-scheduler-controls.mjs";
 import { assertExperienceRuntimeControlSmoke } from "./check-gateway-node/runtime-smoke/experience-runtime-controls.mjs";
@@ -56,7 +68,6 @@ import {
   parseCliOptions,
   repoRoot,
   runCommand,
-  runNodeScriptAsync,
   setRunReporter,
   tempDirs,
 } from "./check-gateway-node/harness.mjs";
@@ -254,6 +265,51 @@ export const CASES = Object.freeze({
     description: "Status line control rejection smoke.",
     run: assertStatusLineControlSmoke,
   },
+  "runtime:context:mcp-instruction": {
+    suite: "runtime:context",
+    description: "Context MCP instruction event and fallback flow.",
+    run: runRuntimeContextMcpInstructionFlowSmoke,
+  },
+  "runtime:context:pre-send-head-trim": {
+    suite: "runtime:context",
+    description: "Context pre-send head trim flow.",
+    run: runRuntimeContextPreSendHeadTrimFlowSmoke,
+  },
+  "runtime:context:quality-guard": {
+    suite: "runtime:context",
+    description: "Context quality guard minimal-stage flow.",
+    run: runRuntimeContextQualityGuardFlowSmoke,
+  },
+  "runtime:context:memory-autotune-tighten": {
+    suite: "runtime:context",
+    description: "Context memory decay autotune quality tighten flow.",
+    run: runRuntimeContextMemoryDecayAutotuneQualityFlowSmoke,
+  },
+  "runtime:context:memory-autotune-relax": {
+    suite: "runtime:context",
+    description: "Context memory decay autotune quality relax flow.",
+    run: runRuntimeContextMemoryDecayAutotuneRelaxFlowSmoke,
+  },
+  "runtime:context:memory-autotune-hysteresis": {
+    suite: "runtime:context",
+    description: "Context memory decay autotune hysteresis flow.",
+    run: runRuntimeContextMemoryDecayAutotuneHysteresisFlowSmoke,
+  },
+  "runtime:context:graph-autotune": {
+    suite: "runtime:context",
+    description: "Context graph quality autotune flow.",
+    run: runRuntimeContextGraphAutotuneFlowSmoke,
+  },
+  "runtime:context:graph-autotune-hysteresis": {
+    suite: "runtime:context",
+    description: "Context graph quality autotune hysteresis flow.",
+    run: runRuntimeContextGraphAutotuneHysteresisFlowSmoke,
+  },
+  "runtime:context:graph-autotune-adaptive-sequence": {
+    suite: "runtime:context",
+    description: "Context graph quality adaptive sequence flow.",
+    run: runRuntimeContextGraphAutotuneAdaptiveSequenceFlowSmoke,
+  },
 });
 
 function suiteIds() {
@@ -410,44 +466,6 @@ function resolveSelectedCases(cli) {
     return expandSuitesToCases(suiteIds().filter((id) => id.startsWith("runtime:")));
   }
   return expandSuitesToCases(suiteIds());
-}
-
-async function runCasesInWorkers(caseIdsToRun, workers) {
-  if (workers <= 1 || caseIdsToRun.length <= 1) {
-    return false;
-  }
-  const buckets = Array.from({ length: Math.min(workers, caseIdsToRun.length) }, (_, index) => ({
-    caseIds: [],
-    index,
-    totalMs: 0,
-  }));
-  const casesById = new Map(listCases().map((testCase) => [testCase.id, testCase]));
-  const ordered = [...caseIdsToRun].sort((left, right) => {
-    const leftMs = casesById.get(left)?.estimatedMs ?? 1;
-    const rightMs = casesById.get(right)?.estimatedMs ?? 1;
-    return rightMs - leftMs || left.localeCompare(right);
-  });
-  for (const caseId of ordered) {
-    const bucket = buckets.sort((left, right) => left.totalMs - right.totalMs)[0];
-    bucket.caseIds.push(caseId);
-    bucket.totalMs += Math.max(1, casesById.get(caseId)?.estimatedMs ?? 1);
-  }
-  const results = await Promise.all(buckets
-    .filter((bucket) => bucket.caseIds.length > 0)
-    .map((bucket) => runNodeScriptAsync("gateway/tests/check-gateway-node.mjs", [
-      ...bucket.caseIds.flatMap((caseId) => ["--case", caseId]),
-      "--json",
-    ])));
-  const failures = results.filter((result) => result.code !== 0);
-  if (failures.length > 0) {
-    const details = failures.map((failure, index) => [
-      `[worker ${index + 1}] exit=${failure.code}`,
-      failure.stdout ? `stdout:\n${failure.stdout}` : "",
-      failure.stderr ? `stderr:\n${failure.stderr}` : "",
-    ].filter(Boolean).join("\n")).join("\n\n");
-    throw new Error(`gateway worker run failed\n${details}`);
-  }
-  return true;
 }
 
 function runGovernanceEvalSmoke() {
@@ -607,9 +625,26 @@ async function main() {
         } else {
           await suite.run();
         }
-        writeTiming(caseId, Math.round(performance.now() - startedAt), "ok");
+        const durationMs = Math.round(performance.now() - startedAt);
+        writeTiming(caseId, durationMs, "ok");
+        reporter.caseResult({
+          id: caseId,
+          suite: suiteId,
+          status: "ok",
+          duration_ms: durationMs,
+          split: Boolean(splitCase),
+        });
       } catch (error) {
-        writeTiming(caseId, Math.round(performance.now() - startedAt), "failed");
+        const durationMs = Math.round(performance.now() - startedAt);
+        writeTiming(caseId, durationMs, "failed");
+        reporter.caseResult({
+          id: caseId,
+          suite: suiteId,
+          status: "failed",
+          duration_ms: durationMs,
+          split: Boolean(splitCase),
+          error_message: error instanceof Error ? error.message : String(error),
+        });
         throw error;
       }
     }
@@ -636,7 +671,7 @@ async function main() {
       }
       return;
     }
-    const workerRan = await runCasesInWorkers(selectedCases, cli.workers);
+    const workerRan = await runCasesInWorkers(selectedCases, cli.workers, listCases(), reporter);
     if (!workerRan) {
       for (const caseId of selectedCases) {
         await runCase(caseId);

@@ -120,6 +120,21 @@ assert.equal(gatewayRuntimeSuiteGate?.parallel, true, "gateway suite gates must 
 assertIncludes(gatewayRuntimeSuiteGate?.deps ?? [], "check:runtime:check", "runtime suite gate dependencies");
 assert.equal(gatewayRuntimeSuiteGate?.resourceClass, "gateway-smoke", "gateway suite gates must advertise gateway-smoke resources");
 assert.equal(gatewayRuntimeSuiteGate?.cachePolicy, "never", "stateful smoke gates must remain uncached until hermetic");
+assert.equal(
+  registry.byName.get("check:gateway:suite:runtime:context")?.command,
+  "node gateway/tests/check-gateway-node.mjs --suite runtime:context --json --workers 4",
+  "runtime context suite gate must use internal case workers",
+);
+assert.equal(
+  registry.byName.get("check:gateway:suite:runtime:context")?.resourceCost,
+  2,
+  "internal worker suite gates must reserve extra gateway-smoke resources without monopolizing the pool",
+);
+assert.equal(
+  registry.byName.get("check:gateway:suite:gateway:context")?.command,
+  "node gateway/tests/check-gateway-node.mjs --suite gateway:context --json --workers 3",
+  "gateway context suite gate must use internal case workers",
+);
 assert.equal(registry.byName.get("check:runtime:check")?.parallel, false, "cargo check must remain exclusive");
 assert.equal(registry.byName.get("check:runtime:check")?.resourceClass, "rust", "cargo gates must advertise rust resources");
 assert.equal(

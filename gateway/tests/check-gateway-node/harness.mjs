@@ -151,6 +151,7 @@ export function createRunReporter(options = {}) {
     duration_ms: 0,
     status: "running",
     error_message: "",
+    cases: [],
     steps: [],
     retries: [],
   };
@@ -174,6 +175,15 @@ export function createRunReporter(options = {}) {
       if (emitText) {
         process.stdout.write(`[ok] ${name}${formatMeta(metadata)}\n`);
       }
+    },
+    caseResult(entry) {
+      if (!isRecord(entry)) {
+        return;
+      }
+      report.cases.push({
+        at: nowIso(),
+        ...entry,
+      });
     },
     retry(name, attempt, maxAttempts, reason, metadata = {}) {
       const elapsedMs = Date.now() - startedMs;
@@ -203,6 +213,8 @@ export function createRunReporter(options = {}) {
       report.retry_gate_triggered = true;
     },
     toJSON() {
+      const caseEntries = report.cases.filter((entry) => entry.type !== "worker");
+      const workerReportEntries = report.cases.filter((entry) => entry.type === "worker");
       const topSlowestSteps = report.steps
         .map((entry, index) => {
           const stepDurationMs =
@@ -228,6 +240,9 @@ export function createRunReporter(options = {}) {
         .slice(0, 5);
       return {
         ...report,
+        case_count: caseEntries.length,
+        failed_case_count: caseEntries.filter((entry) => entry.status !== "ok").length,
+        worker_report_count: workerReportEntries.length,
         step_count: report.steps.length,
         retry_count: report.retries.length,
         top_slowest_steps: topSlowestSteps,

@@ -203,15 +203,18 @@ const BASE_GATE_DEFINITIONS = Object.freeze([
 function gatewaySuiteGate(id) {
   const group = id.startsWith("runtime:") ? "gateway-runtime-smoke" : id.startsWith("governance:") ? "governance" : "gateway-smoke";
   const isBenchmark = id.includes("benchmark");
+  const workerCount = id === "runtime:context" ? 4 : id === "runtime:controls" || id === "gateway:context" ? 3 : 1;
+  const gatewaySmokeCost = workerCount > 1 ? 2 : 1;
   return {
     name: `check:gateway:suite:${id}`,
-    command: `node gateway/tests/check-gateway-node.mjs --suite ${id} --json`,
+    command: `node gateway/tests/check-gateway-node.mjs --suite ${id} --json${workerCount > 1 ? ` --workers ${String(workerCount)}` : ""}`,
     deps: id.startsWith("runtime:") ? ["check:runtime:check"] : [],
     group,
     inputs: ["gateway/tests/check-gateway-node.mjs", "gateway/tests/check-gateway-node/**", "gateway/src/**", "runtime/src/**", "package.json", "package-lock.json"],
     modes: ["ci"],
     cacheable: false,
     parallel: !isBenchmark,
+    ...(gatewaySmokeCost > 1 ? { resourceCost: gatewaySmokeCost } : {}),
   };
 }
 
