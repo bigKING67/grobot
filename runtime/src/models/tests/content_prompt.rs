@@ -296,6 +296,33 @@
     }
 
     #[test]
+    fn runtime_model_config_rejects_empty_timeout_env() {
+        let _guard = lock_env();
+        let _restore = apply_env(&[
+            (ENV_BASE_URL, Some("https://api.example.test/v1")),
+            (ENV_API_KEY, Some("runtime-test-key")),
+            (ENV_MODEL, Some("test-model")),
+            (ENV_RUNTIME_TIMEOUT_MS, Some("   ")),
+        ]);
+        let error =
+            load_runtime_model_config(None).expect_err("empty timeout env should fail closed");
+        assert_eq!(error.error_class, "config_invalid");
+        let data = error.data.as_ref().expect("empty timeout diagnostic data");
+        assert_eq!(
+            data["field"].as_str(),
+            Some(ENV_RUNTIME_TIMEOUT_MS)
+        );
+        assert_eq!(
+            data["env_key"].as_str(),
+            Some(ENV_RUNTIME_TIMEOUT_MS)
+        );
+        assert_eq!(
+            data["stage"].as_str(),
+            Some("runtime_timeout_validate_non_empty")
+        );
+    }
+
+    #[test]
     fn runtime_model_config_rejects_explicit_empty_required_strings() {
         let _guard = lock_env();
         let _restore = apply_env(&[
@@ -580,6 +607,42 @@
         assert!(
             calls.is_empty(),
             "invalid cache TTL must fail before fetching /models"
+        );
+    }
+
+    #[test]
+    fn runtime_model_auto_cache_ttl_rejects_empty_env() {
+        let _guard = lock_env();
+        let server = start_mock_http_server("200 OK", r#"{"data":[{"id":"model-a"}]}"#);
+        let model_config_input = RuntimeModelConfigInput {
+            base_url: Some(server.base_url.clone()),
+            api_key: Some("runtime-test-key".to_string()),
+            model: Some("auto".to_string()),
+            timeout_ms: Some(5_000),
+            provider_kind: Some("openai_compatible".to_string()),
+            provider_options: None,
+        };
+        let _restore = apply_env(&[(ENV_MODEL_AUTO_CACHE_TTL_SECS, Some(""))]);
+        let error = load_runtime_model_config(Some(&model_config_input))
+            .expect_err("empty auto cache ttl should fail closed");
+        assert_eq!(error.error_class, "config_invalid");
+        let data = error.data.as_ref().expect("empty cache ttl diagnostic data");
+        assert_eq!(
+            data["field"].as_str(),
+            Some(ENV_MODEL_AUTO_CACHE_TTL_SECS)
+        );
+        assert_eq!(
+            data["env_key"].as_str(),
+            Some(ENV_MODEL_AUTO_CACHE_TTL_SECS)
+        );
+        assert_eq!(
+            data["stage"].as_str(),
+            Some("model_auto_cache_ttl_validate_non_empty")
+        );
+        let calls = server.finish();
+        assert!(
+            calls.is_empty(),
+            "empty cache TTL must fail before fetching /models"
         );
     }
 

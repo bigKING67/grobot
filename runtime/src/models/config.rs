@@ -65,6 +65,36 @@ fn invalid_required_string_error(
     )
 }
 
+fn read_optional_env_candidate(key: &str, stage: &str, recovery_hint: &str) -> Result<Option<String>, ModelExecutionError> {
+    let invalid = |raw_value: String, message: String| {
+        model_error_with_fields(
+            model_diagnostic_error("config_invalid", message, "model_config", stage, recovery_hint),
+            &[
+                ("field", json!(key)),
+                ("env_key", json!(key)),
+                ("raw_value", json!(raw_value)),
+            ],
+        )
+    };
+    match env::var(key) {
+        Ok(value) => {
+            let normalized = value.trim();
+            if normalized.is_empty() {
+                return Err(invalid(
+                    value,
+                    format!("{key} must be a non-empty string"),
+                ));
+            }
+            Ok(Some(normalized.to_string()))
+        }
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(env::VarError::NotUnicode(value)) => Err(invalid(
+            value.to_string_lossy().to_string(),
+            format!("{key} must be valid unicode"),
+        )),
+    }
+}
+
 fn read_required_env_candidate(key: &str) -> Result<Option<String>, ModelExecutionError> {
     match env::var(key) {
         Ok(value) => {
@@ -180,11 +210,13 @@ fn validate_model_config_f64_range(
 }
 
 fn read_timeout_ms() -> Result<u64, ModelExecutionError> {
-    let raw = env::var(ENV_RUNTIME_TIMEOUT_MS).unwrap_or_default();
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
+    let Some(trimmed) = read_optional_env_candidate(
+        ENV_RUNTIME_TIMEOUT_MS,
+        "runtime_timeout_validate_non_empty",
+        "unset GROBOT_RUNTIME_HTTP_TIMEOUT_MS to use the runtime default, or set it to an integer number of milliseconds",
+    )? else {
         return Ok(DEFAULT_RUNTIME_TIMEOUT_MS);
-    }
+    };
     let parsed = trimmed.parse::<u64>().map_err(|_| {
         model_error_with_fields(
             model_diagnostic_error(
@@ -222,11 +254,13 @@ fn read_timeout_ms_with_override(
 }
 
 fn parse_cache_ttl_secs() -> Result<u64, ModelExecutionError> {
-    let raw = env::var(ENV_MODEL_AUTO_CACHE_TTL_SECS).unwrap_or_default();
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
+    let Some(trimmed) = read_optional_env_candidate(
+        ENV_MODEL_AUTO_CACHE_TTL_SECS,
+        "model_auto_cache_ttl_validate_non_empty",
+        "unset GROBOT_MODEL_AUTO_CACHE_TTL_SECS to use the runtime default, or set it to an integer number of seconds between 0 and 86400",
+    )? else {
         return Ok(DEFAULT_MODEL_AUTO_CACHE_TTL_SECS);
-    }
+    };
     let parsed = trimmed.parse::<u64>().map_err(|_| {
         model_error_with_fields(
             model_diagnostic_error(

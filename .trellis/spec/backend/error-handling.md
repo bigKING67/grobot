@@ -262,6 +262,12 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     default home directory only when omitted; explicit empty or whitespace-only
     values must return stable `invalid_config` or `invalid_home` path input
     errors instead of silently falling back.
+37. Rust runtime numeric env controls must fail closed on explicit empty
+    values. `GROBOT_RUNTIME_HTTP_TIMEOUT_MS` and
+    `GROBOT_MODEL_AUTO_CACHE_TTL_SECS` may use runtime defaults only when
+    omitted; explicit empty or whitespace-only values must return structured
+    `config_invalid` model errors with env-key diagnostics instead of silently
+    applying defaults.
 
 ---
 
