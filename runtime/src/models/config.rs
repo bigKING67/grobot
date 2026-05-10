@@ -27,39 +27,6 @@ fn model_config_missing_error(key: &str) -> ModelExecutionError {
     }))
 }
 
-fn read_required_env(key: &str) -> Result<String, ModelExecutionError> {
-    let value = env::var(key).unwrap_or_default();
-    let normalized = value.trim();
-    if normalized.is_empty() {
-        return Err(model_config_missing_error(key));
-    }
-    Ok(normalized.to_string())
-}
-
-fn normalized_optional(raw: Option<&str>) -> Option<String> {
-    match raw {
-        Some(value) => {
-            let trimmed = value.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            }
-        }
-        None => None,
-    }
-}
-
-fn read_required_env_or_override(
-    key: &str,
-    override_value: Option<&str>,
-) -> Result<String, ModelExecutionError> {
-    if let Some(value) = normalized_optional(override_value) {
-        return Ok(value);
-    }
-    read_required_env(key)
-}
-
 fn invalid_model_config_error(
     field: &str,
     raw_value: Value,
@@ -81,6 +48,78 @@ fn invalid_model_config_error(
             ("required_config", json!(field)),
         ],
     )
+}
+
+fn invalid_required_string_error(
+    field: &str,
+    raw_value: impl Into<String>,
+    stage: &str,
+    message: impl Into<String>,
+) -> ModelExecutionError {
+    invalid_model_config_error(
+        field,
+        json!(raw_value.into()),
+        stage,
+        message,
+        "omit the field to use the next configured source, or provide a non-empty string",
+    )
+}
+
+fn read_required_env_candidate(key: &str) -> Result<Option<String>, ModelExecutionError> {
+    match env::var(key) {
+        Ok(value) => {
+            let normalized = value.trim();
+            if normalized.is_empty() {
+                return Err(invalid_required_string_error(
+                    key,
+                    value,
+                    "required_env_string_validate_non_empty",
+                    format!("{key} must be a non-empty string"),
+                ));
+            }
+            Ok(Some(normalized.to_string()))
+        }
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(env::VarError::NotUnicode(value)) => Err(invalid_required_string_error(
+            key,
+            value.to_string_lossy().to_string(),
+            "required_env_string_validate_unicode",
+            format!("{key} must be valid unicode"),
+        )),
+    }
+}
+
+fn normalized_required_override(
+    field: &str,
+    raw: Option<&str>,
+) -> Result<Option<String>, ModelExecutionError> {
+    match raw {
+        Some(value) => {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                return Err(invalid_required_string_error(
+                    field,
+                    value,
+                    "required_model_config_string_validate_non_empty",
+                    format!("{field} must be a non-empty string"),
+                ));
+            }
+            Ok(Some(trimmed.to_string()))
+        }
+        None => Ok(None),
+    }
+}
+
+fn read_required_env_or_override(
+    key: &str,
+    override_field: &str,
+    override_value: Option<&str>,
+) -> Result<String, ModelExecutionError> {
+    let env_value = read_required_env_candidate(key)?;
+    if let Some(value) = normalized_required_override(override_field, override_value)? {
+        return Ok(value);
+    }
+    env_value.ok_or_else(|| model_config_missing_error(key))
 }
 
 fn validate_model_config_u64_range(
@@ -662,6 +701,7 @@ fn load_runtime_model_config(
 ) -> Result<RuntimeModelConfig, ModelExecutionError> {
     let base_url = trim_trailing_slashes(&read_required_env_or_override(
         ENV_BASE_URL,
+        "model_config.base_url",
         input_config.and_then(|config| config.base_url.as_deref()),
     )?);
     if !(base_url.starts_with("http://") || base_url.starts_with("https://")) {
@@ -678,11 +718,13 @@ fn load_runtime_model_config(
     }
     let api_key = read_required_env_or_override(
         ENV_API_KEY,
+        "model_config.api_key",
         input_config.and_then(|config| config.api_key.as_deref()),
     )?;
     let timeout_ms = read_timeout_ms_with_override(input_config.and_then(|config| config.timeout_ms))?;
     let raw_model = read_required_env_or_override(
         ENV_MODEL,
+        "model_config.model",
         input_config.and_then(|config| config.model.as_deref()),
     )?;
     let provider_kind = parse_provider_kind(

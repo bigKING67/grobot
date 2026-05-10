@@ -296,6 +296,55 @@
     }
 
     #[test]
+    fn runtime_model_config_rejects_explicit_empty_required_strings() {
+        let _guard = lock_env();
+        let _restore = apply_env(&[
+            (ENV_BASE_URL, Some("https://api.example.test/v1")),
+            (ENV_API_KEY, Some("runtime-test-key")),
+            (ENV_MODEL, Some("test-model")),
+        ]);
+        let empty_override_config = RuntimeModelConfigInput {
+            base_url: Some("   ".to_string()),
+            api_key: Some("runtime-test-key".to_string()),
+            model: Some("test-model".to_string()),
+            timeout_ms: Some(5_000),
+            provider_kind: Some("openai_compatible".to_string()),
+            provider_options: None,
+        };
+        let override_error = load_runtime_model_config(Some(&empty_override_config))
+            .expect_err("explicit empty model_config.base_url should fail closed");
+        assert_eq!(override_error.error_class, "config_invalid");
+        let override_data = override_error
+            .data
+            .as_ref()
+            .expect("empty override diagnostic data");
+        assert_eq!(override_data["field"].as_str(), Some("model_config.base_url"));
+        assert_eq!(
+            override_data["stage"].as_str(),
+            Some("required_model_config_string_validate_non_empty")
+        );
+
+        let _empty_env_restore = apply_env(&[(ENV_MODEL, Some(""))]);
+        let valid_override_config = RuntimeModelConfigInput {
+            base_url: Some("https://api.example.test/v1".to_string()),
+            api_key: Some("runtime-test-key".to_string()),
+            model: Some("test-model".to_string()),
+            timeout_ms: Some(5_000),
+            provider_kind: Some("openai_compatible".to_string()),
+            provider_options: None,
+        };
+        let env_error = load_runtime_model_config(Some(&valid_override_config))
+            .expect_err("explicit empty env should fail even with model_config override");
+        assert_eq!(env_error.error_class, "config_invalid");
+        let env_data = env_error.data.as_ref().expect("empty env diagnostic data");
+        assert_eq!(env_data["field"].as_str(), Some(ENV_MODEL));
+        assert_eq!(
+            env_data["stage"].as_str(),
+            Some("required_env_string_validate_non_empty")
+        );
+    }
+
+    #[test]
     fn runtime_model_config_rejects_unknown_explicit_provider_kind() {
         let model_config_input = RuntimeModelConfigInput {
             base_url: Some("https://api.example.test/v1".to_string()),

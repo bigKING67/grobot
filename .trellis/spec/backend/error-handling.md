@@ -214,6 +214,13 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     config/defaults only when omitted; if present but empty they must exit `2`
     with stable `invalid_<field>` errors instead of silently falling through to
     config TOML or unauthenticated management defaults.
+29. Rust runtime model required string controls must fail closed on explicit
+    empty values. `model_config.base_url`, `model_config.api_key`,
+    `model_config.model`, and the matching runtime env vars may use the next
+    configured source only when omitted; if present but empty they must return
+    structured `config_invalid` model errors instead of falling through to
+    lower-priority env/input sources. Missing required env remains
+    `config_missing`.
 
 ---
 
