@@ -5,6 +5,7 @@ import process from "node:process";
 
 import {
   appendQualityEvent,
+  computeGateTimingFingerprint,
   createQualityCacheContext,
   ensureQualityCacheDirs,
   explainGateCache,
@@ -265,6 +266,7 @@ async function runMode(mode, options) {
     gates: run.results.map((result) => ({
       cacheHit: result.cacheHit,
       durationMs: result.durationMs,
+      commandFingerprint: result.commandFingerprint ?? computeGateTimingFingerprint(result.gate),
       exitCode: result.exitCode,
       name: result.gate.name,
       skipped: result.skipped === true,
@@ -390,6 +392,7 @@ function explainCache(gateName, options) {
 function printStats(options) {
   const repoRoot = getRepoRoot();
   const stats = summarizeQualityEvents(repoRoot, {
+    currentGates: buildQualityGateRegistry({ repoRoot }).gates,
     limit: options.limit,
     slowLimit: options.slowLimit,
   });
@@ -400,12 +403,12 @@ function printStats(options) {
   console.log(`[quality] runs=${stats.totalRuns} gates=${stats.totalGateResults} cacheHitRate=${(stats.cacheHitRate * 100).toFixed(1)}%`);
   console.log("[quality] slowest cold gates:");
   for (const gate of stats.slowestCold) {
-    console.log(`- ${gate.name}: max=${gate.coldMaxMs}ms avg=${gate.coldAvgMs}ms p90=${gate.coldP90Ms}ms count=${gate.coldCount}`);
+    console.log(`- ${gate.name}: max=${gate.coldMaxMs}ms avg=${gate.coldAvgMs}ms recent=${gate.recentColdWeightedMs}ms estimate=${gate.estimatedMs}ms p90=${gate.coldP90Ms}ms count=${gate.coldCount}`);
   }
   if (stats.recommendations?.length) {
     console.log("[quality] recommendations:");
     for (const item of stats.recommendations) {
-      console.log(`- ${item.gate}: ${item.action} (${item.reason}, coldAvg=${item.coldAvgMs}ms)`);
+      console.log(`- ${item.gate}: ${item.action} (${item.reason}, estimate=${item.estimatedMs}ms coldAvg=${item.coldAvgMs}ms)`);
     }
   }
 }

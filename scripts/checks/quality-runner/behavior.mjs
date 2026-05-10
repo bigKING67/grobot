@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildQualityGateRegistry, QUALITY_ENTRYPOINT_SCRIPTS, validateQualityGateRegistry } from "../../lib/quality-gate-registry.mjs";
 import { explainAffectedSelection, listChangedFiles, selectAffectedGates } from "../../lib/quality-affected.mjs";
-import { createQualityCacheContext, explainGateCache } from "../../lib/quality-cache.mjs";
+import { appendQualityEvent, computeGateTimingFingerprint, createQualityCacheContext, explainGateCache, summarizeQualityEvents } from "../../lib/quality-cache.mjs";
 import { planQualityGates, runQualityGates } from "../../lib/quality-scheduler.mjs";
 
 function packageJson() {
@@ -409,6 +409,84 @@ try {
     true,
     "scoped exclusive gates must not block unrelated resource classes",
   );
+
+  const timingGate = {
+    cacheable: false,
+    command: "node slow-a.mjs",
+    cost: "expensive",
+    deps: [],
+    group: "test",
+    inputs: ["slow-a.mjs"],
+    name: "timing-sensitive",
+    parallel: true,
+    resourceClass: "node",
+    resourceCost: 1,
+  };
+  appendQualityEvent(tmp, {
+    completedAt: "2026-01-01T00:00:00.000Z",
+    durationMs: 10_000,
+    gates: [{
+      cacheHit: false,
+      commandFingerprint: "sha256:stale",
+      durationMs: 10_000,
+      exitCode: 0,
+      name: "timing-sensitive",
+      status: "pass",
+    }],
+    mode: "ci",
+    strategy: "throughput",
+  });
+  appendQualityEvent(tmp, {
+    completedAt: "2026-01-01T00:01:00.000Z",
+    durationMs: 600,
+    gates: [{
+      cacheHit: false,
+      commandFingerprint: computeGateTimingFingerprint(timingGate),
+      durationMs: 600,
+      exitCode: 0,
+      name: "timing-sensitive",
+      status: "pass",
+    }],
+    mode: "ci",
+    strategy: "throughput",
+  });
+  appendQualityEvent(tmp, {
+    completedAt: "2026-01-01T00:02:00.000Z",
+    durationMs: 20_000,
+    gates: [{
+      cacheHit: false,
+      commandFingerprint: "sha256:retired",
+      durationMs: 20_000,
+      exitCode: 0,
+      name: "retired-gate",
+      status: "pass",
+    }],
+    mode: "ci",
+    strategy: "throughput",
+  });
+  const timingStats = summarizeQualityEvents(tmp, {
+    currentGates: [timingGate],
+    limit: 20,
+  });
+  assert.equal(
+    timingStats.recommendations.some((item) => item.gate === "timing-sensitive"),
+    false,
+    "fast compatible timing estimate must remove stale slow recommendation",
+  );
+  assert.equal(
+    timingStats.recommendations.some((item) => item.gate === "retired-gate"),
+    false,
+    "retired gates must not appear in active recommendations",
+  );
+  assert.equal(
+    timingStats.slowestCold.some((item) => item.name === "retired-gate"),
+    false,
+    "retired gates must not appear in active slowest lists",
+  );
+  const timingSensitiveStats = timingStats.gateStats["timing-sensitive"];
+  assert.equal(timingSensitiveStats.staleTimingCount, 1, "timing stats must count stale command fingerprints");
+  assert.equal(timingSensitiveStats.compatibleColdCount, 1, "timing stats must preserve compatible cold sample count");
+  assert.equal(timingSensitiveStats.estimatedMs, 600, "timing estimate must prefer compatible recent command samples over stale averages");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

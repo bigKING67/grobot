@@ -4,6 +4,7 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 
 import {
+  computeGateTimingFingerprint,
   computeGateCacheKey,
   createQualityCacheContext,
   flushQualityCacheContext,
@@ -115,7 +116,7 @@ function historicalDurationMs(gate, historicalStats = {}) {
     const fallback = { cheap: 750, medium: 5_000, expensive: 15_000 };
     return fallback[gate.cost] ?? 2_000;
   }
-  return Math.max(1, Number(stats.coldAvgMs || stats.avgMs || stats.p90Ms || 1));
+  return Math.max(1, Number(stats.estimatedMs || stats.recentColdWeightedMs || stats.coldAvgMs || stats.avgMs || stats.p90Ms || 1));
 }
 
 function computeCriticalPathScores(gates, dependents, historicalStats = {}) {
@@ -265,7 +266,7 @@ export async function runQualityGates(gates, options = {}) {
   } = options;
   const startedAt = performance.now();
   const { dependents, pendingDeps, selectedByName } = buildExecutionGraph(gates);
-  const historicalStats = summarizeQualityEvents(repoRoot, { limit: 200, slowLimit: 50 }).gateStats ?? {};
+  const historicalStats = summarizeQualityEvents(repoRoot, { currentGates: gates, limit: 200, slowLimit: 50 }).gateStats ?? {};
   const criticalPathScores = computeCriticalPathScores(gates, dependents, historicalStats);
   const cacheContext = cache ? createQualityCacheContext(repoRoot) : null;
   const completed = new Set();
@@ -295,6 +296,7 @@ export async function runQualityGates(gates, options = {}) {
       const result = {
         cacheHit: true,
         command,
+        commandFingerprint: computeGateTimingFingerprint(gate),
         durationMs: 0,
         exitCode: 0,
         gate,
@@ -311,6 +313,7 @@ export async function runQualityGates(gates, options = {}) {
     const result = {
       cacheHit: false,
       command,
+      commandFingerprint: computeGateTimingFingerprint(gate),
       durationMs: commandResult.durationMs,
       exitCode: commandResult.exitCode,
       gate,
@@ -401,6 +404,7 @@ export async function runQualityGates(gates, options = {}) {
             markComplete(gateName, {
               cacheHit: false,
               command: gate.command,
+              commandFingerprint: computeGateTimingFingerprint(gate),
               durationMs: 0,
               exitCode: 1,
               gate,
@@ -429,7 +433,7 @@ export function planQualityGates(gates, options = {}) {
   } = options;
   const { dependents, pendingDeps, selectedByName } = buildExecutionGraph(gates);
   const depsByName = reverseGraph(dependents);
-  const historicalStats = summarizeQualityEvents(repoRoot, { limit: 200, slowLimit: 50 }).gateStats ?? {};
+  const historicalStats = summarizeQualityEvents(repoRoot, { currentGates: gates, limit: 200, slowLimit: 50 }).gateStats ?? {};
   const criticalPathScores = computeCriticalPathScores(gates, dependents, historicalStats);
   const levels = new Map();
   function level(gateName) {

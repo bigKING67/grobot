@@ -133,6 +133,10 @@ High-value surfaces:
 - `gateway/src/extensions/contracts/runtime-smoke-contract/mcp-cases.mjs` maps
   directly to the MCP call/session/server suites, so edits to shared MCP
   contract helpers cannot silently fall back to unrelated gateway smoke.
+- Timing estimates use the current gate command fingerprint and a recency
+  weighted cold window before falling back to historical averages. This keeps
+  scheduler plans responsive after a slow suite is split or a fixed wait is
+  removed, instead of letting stale samples dominate critical-path ordering.
 - `gateway/src/cli/tui/**` and ask-user UI: gateway TS and `gateway:tui` suite.
 - `gateway/src/cli/start/**` or plan paths: gateway TS plus gateway/runtime plan
   suites.

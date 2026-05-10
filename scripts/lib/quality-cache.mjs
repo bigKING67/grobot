@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, wri
 import path from "node:path";
 
 const CACHE_SCHEMA_VERSION = 2;
+export const QUALITY_TIMING_MODEL_VERSION = "quality-timing-v2";
 const CACHE_ROOT = ".cache/grobot-quality";
 const ACTION_CACHE_DIR = "ac";
 const CAS_DIR = "cas";
@@ -11,9 +12,26 @@ const MANIFEST_DIR = "manifests";
 const FILE_DIGEST_MANIFEST = "file-digests.json";
 const RESULT_CACHE_DIR = "results";
 const EVENTS_FILE = "events.jsonl";
+const RECENT_TIMING_WINDOW = 5;
+const RECENT_TIMING_ALPHA = 0.9;
 
 function hashString(value) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+export function computeGateTimingFingerprint(gate) {
+  const hash = createHash("sha256");
+  hash.update(`timing=${QUALITY_TIMING_MODEL_VERSION}\n`);
+  hash.update(`name=${gate?.name ?? ""}\n`);
+  hash.update(`command=${gate?.command ?? ""}\n`);
+  hash.update(`deps=${(gate?.deps ?? []).join(",")}\n`);
+  hash.update(`inputs=${(gate?.inputs ?? []).join(",")}\n`);
+  hash.update(`cachePolicy=${gate?.cachePolicy ?? ""}\n`);
+  hash.update(`parallel=${String(gate?.parallel !== false)}\n`);
+  hash.update(`resourceClass=${gate?.resourceClass ?? ""}\n`);
+  hash.update(`resourceCost=${String(gate?.resourceCost ?? 1)}\n`);
+  hash.update(`exclusiveGroup=${gate?.exclusiveGroup ?? ""}\n`);
+  return `sha256:${hash.digest("hex")}`;
 }
 
 function normalizePath(filePath) {
@@ -436,14 +454,33 @@ function percentile(values, p) {
   return sorted[index];
 }
 
+function weightedRecentDuration(values) {
+  if (values.length === 0) {
+    return 0;
+  }
+  let estimate = values[0];
+  for (const value of values.slice(1)) {
+    estimate = RECENT_TIMING_ALPHA * value + (1 - RECENT_TIMING_ALPHA) * estimate;
+  }
+  return Math.round(estimate);
+}
+
+function currentTimingFingerprints(gates = []) {
+  return new Map(
+    gates
+      .filter((gate) => gate?.name)
+      .map((gate) => [gate.name, computeGateTimingFingerprint(gate)]),
+  );
+}
+
 function recommendationsForSummaries(summaries) {
   const recommendations = [];
   const coldSlow = summaries
-    .filter((item) => item.coldCount > 0)
-    .sort((left, right) => right.coldTotalMs - left.coldTotalMs)
+    .filter((item) => item.active !== false && item.coldCount > 0)
+    .sort((left, right) => right.estimatedMs - left.estimatedMs || right.coldTotalMs - left.coldTotalMs)
     .slice(0, 5);
   for (const gate of coldSlow) {
-    if (gate.cacheHitRate === 0 && gate.coldAvgMs >= 10_000) {
+    if (gate.cacheHitRate === 0 && gate.estimatedMs >= 10_000) {
       recommendations.push({
         gate: gate.name,
         reason: "slow cold gate with no cache hits",
@@ -451,6 +488,7 @@ function recommendationsForSummaries(summaries) {
           ? "split into smaller gateway smoke cases or enable timing-based sharding"
           : "narrow inputs, add hermetic cache policy, or move repeated work into a shared helper",
         coldAvgMs: gate.coldAvgMs,
+        estimatedMs: gate.estimatedMs,
       });
     }
   }
@@ -459,6 +497,8 @@ function recommendationsForSummaries(summaries) {
 
 export function summarizeQualityEvents(repoRoot, options = {}) {
   const { limit = 200, slowLimit = 10 } = options;
+  const fingerprints = currentTimingFingerprints(options.currentGates ?? options.gates ?? []);
+  const hasCurrentGateSet = fingerprints.size > 0;
   const eventPath = path.join(getQualityCacheRoot(repoRoot), EVENTS_FILE);
   if (!existsSync(eventPath)) {
     return {
@@ -499,12 +539,31 @@ export function summarizeQualityEvents(repoRoot, options = {}) {
         failures: 0,
         durations: [],
         coldDurations: [],
+        timingRecords: [],
       };
       const durationMs = Number(result.durationMs ?? 0);
+      const commandFingerprint = typeof result.commandFingerprint === "string"
+        ? result.commandFingerprint
+        : "";
+      const currentFingerprint = fingerprints.get(result.name) ?? "";
+      const timingCompatible =
+        currentFingerprint.length > 0
+        && commandFingerprint.length > 0
+        && commandFingerprint === currentFingerprint;
+      const timingStale =
+        currentFingerprint.length > 0
+        && commandFingerprint.length > 0
+        && commandFingerprint !== currentFingerprint;
       current.count += 1;
       current.totalMs += durationMs;
       current.maxMs = Math.max(current.maxMs, durationMs);
       current.durations.push(durationMs);
+      current.timingRecords.push({
+        cacheHit: result.cacheHit === true,
+        compatible: timingCompatible,
+        durationMs,
+        stale: timingStale,
+      });
       if (result.status !== "pass") {
         current.failures += 1;
       }
@@ -520,26 +579,60 @@ export function summarizeQualityEvents(repoRoot, options = {}) {
     }
   }
 
-  const summaries = [...gates.values()].map((item) => ({
-    name: item.name,
-    cachedCount: item.cachedCount,
-    coldCount: item.coldCount,
-    coldMaxMs: item.coldMaxMs,
-    coldTotalMs: item.coldTotalMs,
-    count: item.count,
-    failures: item.failures,
-    maxMs: item.maxMs,
-    totalMs: item.totalMs,
-    avgMs: Math.round(item.totalMs / item.count),
-    cacheHitRate: item.count === 0 ? 0 : item.cachedCount / item.count,
-    coldAvgMs: item.coldCount === 0 ? 0 : Math.round(item.coldTotalMs / item.coldCount),
-    failureRate: item.count === 0 ? 0 : item.failures / item.count,
-    p50Ms: percentile(item.durations, 50),
-    p90Ms: percentile(item.durations, 90),
-    p95Ms: percentile(item.durations, 95),
-    coldP90Ms: percentile(item.coldDurations, 90),
-  }));
+  const summaries = [...gates.values()].map((item) => {
+    const recentDurations = item.durations.slice(-RECENT_TIMING_WINDOW);
+    const recentColdDurations = item.coldDurations.slice(-RECENT_TIMING_WINDOW);
+    const compatibleColdDurations = item.timingRecords
+      .filter((record) => !record.cacheHit && record.compatible)
+      .map((record) => record.durationMs)
+      .slice(-RECENT_TIMING_WINDOW);
+    const staleTimingCount = item.timingRecords.filter((record) => record.stale).length;
+    const legacyTimingCount = item.timingRecords.filter((record) => {
+      const hasCurrent = fingerprints.has(item.name);
+      return hasCurrent && !record.compatible && !record.stale;
+    }).length;
+    const compatibleEstimate = compatibleColdDurations.length > 0
+      ? weightedRecentDuration(compatibleColdDurations)
+      : 0;
+    const recentEstimate = recentColdDurations.length > 0
+      ? weightedRecentDuration(recentColdDurations)
+      : weightedRecentDuration(recentDurations);
+    const coldAverage = item.coldCount === 0 ? 0 : Math.round(item.coldTotalMs / item.coldCount);
+    const estimatedMs = Math.max(1, compatibleEstimate || recentEstimate || coldAverage || Math.round(item.totalMs / item.count) || 1);
+    return {
+      active: !hasCurrentGateSet || fingerprints.has(item.name),
+      name: item.name,
+      cachedCount: item.cachedCount,
+      coldCount: item.coldCount,
+      coldMaxMs: item.coldMaxMs,
+      coldTotalMs: item.coldTotalMs,
+      compatibleColdCount: compatibleColdDurations.length,
+      count: item.count,
+      estimatedMs,
+      failures: item.failures,
+      legacyTimingCount,
+      maxMs: item.maxMs,
+      recentColdAvgMs: recentColdDurations.length === 0
+        ? 0
+        : Math.round(recentColdDurations.reduce((sum, value) => sum + value, 0) / recentColdDurations.length),
+      recentColdCount: recentColdDurations.length,
+      recentColdP50Ms: percentile(recentColdDurations, 50),
+      recentColdWeightedMs: recentEstimate,
+      staleTimingCount,
+      timingModelVersion: QUALITY_TIMING_MODEL_VERSION,
+      totalMs: item.totalMs,
+      avgMs: Math.round(item.totalMs / item.count),
+      cacheHitRate: item.count === 0 ? 0 : item.cachedCount / item.count,
+      coldAvgMs: coldAverage,
+      failureRate: item.count === 0 ? 0 : item.failures / item.count,
+      p50Ms: percentile(item.durations, 50),
+      p90Ms: percentile(item.durations, 90),
+      p95Ms: percentile(item.durations, 95),
+      coldP90Ms: percentile(item.coldDurations, 90),
+    };
+  });
   const byGate = Object.fromEntries(summaries.map((item) => [item.name, item]));
+  const activeSummaries = summaries.filter((item) => item.active !== false);
 
   return {
     cacheHits,
@@ -547,8 +640,8 @@ export function summarizeQualityEvents(repoRoot, options = {}) {
     gateStats: byGate,
     modes,
     recommendations: recommendationsForSummaries(summaries),
-    slowest: [...summaries].sort((a, b) => b.maxMs - a.maxMs).slice(0, slowLimit),
-    slowestCold: [...summaries].filter((item) => item.coldCount > 0).sort((a, b) => b.coldMaxMs - a.coldMaxMs).slice(0, slowLimit),
+    slowest: [...activeSummaries].sort((a, b) => b.maxMs - a.maxMs).slice(0, slowLimit),
+    slowestCold: [...activeSummaries].filter((item) => item.coldCount > 0).sort((a, b) => b.coldMaxMs - a.coldMaxMs).slice(0, slowLimit),
     totalGateResults,
     totalRuns: events.length,
   };
