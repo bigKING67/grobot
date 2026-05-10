@@ -387,13 +387,19 @@ function cleanOldFilesDirectory(args: {
 }
 
 function resolveDefaultTypescriptRunnerCacheRoot(): string {
-  const cacheRootOverride = process.env.GROBOT_TS_DEV_CLI_CACHE_ROOT;
-  if (typeof cacheRootOverride === "string" && cacheRootOverride.trim().length > 0) {
-    return cacheRootOverride.trim();
+  const cacheRootOverride = readGcPathEnv(
+    "GROBOT_TS_DEV_CLI_CACHE_ROOT",
+    "ts-dev-cli-cache-root",
+  );
+  if (cacheRootOverride) {
+    return cacheRootOverride;
   }
-  const groupRoot = process.env.GROBOT_TS_DEV_CACHE_ROOT;
-  if (typeof groupRoot === "string" && groupRoot.trim().length > 0) {
-    return `${groupRoot.trim().replace(/[\\/]+$/, "")}/ts-dev-cli`;
+  const groupRoot = readGcPathEnv(
+    "GROBOT_TS_DEV_CACHE_ROOT",
+    "ts-dev-cache-root",
+  );
+  if (groupRoot) {
+    return `${groupRoot.replace(/[\\/]+$/, "")}/ts-dev-cli`;
   }
 
   const home = process.env.HOME?.trim() || process.cwd();
@@ -406,6 +412,18 @@ function resolveDefaultTypescriptRunnerCacheRoot(): string {
     return `${xdg.replace(/[\\/]+$/, "")}/grobot/ts-dev-cli`;
   }
   return `${home}/.cache/grobot/ts-dev-cli`;
+}
+
+function readGcPathEnv(envKey: string, field: string): string | undefined {
+  const raw = process.env[envKey];
+  if (raw === undefined) {
+    return undefined;
+  }
+  const normalized = raw.trim();
+  if (!normalized) {
+    throw new GcInputError(field, `${field} must be a non-empty path`);
+  }
+  return normalized;
 }
 
 function summarize(targets: TargetSummary[]): GcSummary["totals"] {
@@ -459,6 +477,9 @@ export async function runGc(options: Record<string, OptionValue>): Promise<numbe
   let projectStateRoot = "";
   let configTomlPath: string | undefined;
   let policy: GcPolicy = DEFAULT_POLICY;
+  let includeGlobal = false;
+  let includeProject = false;
+  let typescriptRunnerCacheRoot = "";
   try {
     scope = parseGcScopeOption({
       options,
@@ -482,6 +503,11 @@ export async function runGc(options: Record<string, OptionValue>): Promise<numbe
     projectStateRoot = resolveProjectStateRoot(workDir);
     configTomlPath = resolveConfigTomlPath(options, homeDir, { workDir, projectRoot });
     policy = resolvePolicy(options, configTomlPath);
+    includeGlobal = scope === "global" || scope === "all";
+    includeProject = scope === "project" || scope === "all";
+    if (includeGlobal) {
+      typescriptRunnerCacheRoot = resolveDefaultTypescriptRunnerCacheRoot();
+    }
   } catch (error) {
     if (error instanceof GcInputError) {
       writeGcInputError(error, outputJson);
@@ -491,9 +517,6 @@ export async function runGc(options: Record<string, OptionValue>): Promise<numbe
   }
   const cutoffMs = Date.now() - policy.retentionDays * 24 * 60 * 60 * 1000;
   const targets: TargetSummary[] = [];
-
-  const includeGlobal = scope === "global" || scope === "all";
-  const includeProject = scope === "project" || scope === "all";
 
   if (includeGlobal) {
     targets.push(cleanSessionDirectory({
@@ -518,7 +541,7 @@ export async function runGc(options: Record<string, OptionValue>): Promise<numbe
     }));
     targets.push(cleanOldFilesDirectory({
       name: "typescript_runner_cache",
-      path: resolveDefaultTypescriptRunnerCacheRoot(),
+      path: typescriptRunnerCacheRoot,
       cutoffMs,
       apply: mode === "apply",
     }));

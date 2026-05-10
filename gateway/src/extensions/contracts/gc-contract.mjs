@@ -166,6 +166,32 @@ async function runGcInputValidation(options) {
     "--scope",
     "workspace",
   ]);
+  const emptyCliCacheRoot = await runRepoCommand(
+    repoRoot,
+    [
+      ...commonArgs,
+      "--config",
+      validConfig,
+      "--scope",
+      "global",
+    ],
+    {
+      GROBOT_TS_DEV_CLI_CACHE_ROOT: "   ",
+    },
+  );
+  const emptyGroupCacheRoot = await runRepoCommand(
+    repoRoot,
+    [
+      ...commonArgs,
+      "--config",
+      validConfig,
+      "--scope",
+      "global",
+    ],
+    {
+      GROBOT_TS_DEV_CACHE_ROOT: "",
+    },
+  );
   const invalidToml = await runRepoCommand(repoRoot, commonArgs);
   const validDefault = await runRepoCommand(repoRoot, [
     ...commonArgs,
@@ -191,13 +217,17 @@ async function runGcInputValidation(options) {
     missingPlans.stderr,
     invalidScope.stdout,
     invalidScope.stderr,
+    emptyCliCacheRoot.stdout,
+    emptyCliCacheRoot.stderr,
+    emptyGroupCacheRoot.stdout,
+    emptyGroupCacheRoot.stderr,
     invalidToml.stdout,
     invalidToml.stderr,
     validDefault.stdout,
     validDefault.stderr,
   ].join("\n");
 
-  return {
+  const payload = {
     invalid_retention_exit_code: invalidRetention.exit_code,
     invalid_retention_has_stable_error: hasStableTextError(
       invalidRetention,
@@ -228,6 +258,18 @@ async function runGcInputValidation(options) {
       "invalid_scope",
       "scope must be global, project, all",
     ),
+    empty_cli_cache_root_exit_code: emptyCliCacheRoot.exit_code,
+    empty_cli_cache_root_has_stable_error: hasStableTextError(
+      emptyCliCacheRoot,
+      "invalid_ts_dev_cli_cache_root",
+      "ts-dev-cli-cache-root must be a non-empty path",
+    ),
+    empty_group_cache_root_exit_code: emptyGroupCacheRoot.exit_code,
+    empty_group_cache_root_has_stable_error: hasStableTextError(
+      emptyGroupCacheRoot,
+      "invalid_ts_dev_cache_root",
+      "ts-dev-cache-root must be a non-empty path",
+    ),
     invalid_toml_exit_code: invalidToml.exit_code,
     invalid_toml_has_stable_error: hasStableTextError(
       invalidToml,
@@ -243,8 +285,19 @@ async function runGcInputValidation(options) {
     invalid_inputs_do_not_emit_gc_summary:
       !invalidRetention.stdout.includes("[gc] totals")
       && !overSessions.stdout.includes("[gc] totals")
+      && !emptyCliCacheRoot.stdout.includes("[gc] totals")
+      && !emptyGroupCacheRoot.stdout.includes("[gc] totals")
       && !invalidToml.stdout.includes("[gc] totals"),
   };
+  if (
+    payload.empty_cli_cache_root_exit_code !== 2
+    || payload.empty_cli_cache_root_has_stable_error !== true
+    || payload.empty_group_cache_root_exit_code !== 2
+    || payload.empty_group_cache_root_has_stable_error !== true
+  ) {
+    throw new Error("empty gc cache root env controls must fail closed");
+  }
+  return payload;
 }
 
 async function runCli(argv) {

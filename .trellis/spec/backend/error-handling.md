@@ -77,6 +77,9 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     malformed, zero/negative, or out-of-range explicit CLI/config values for
     retention/session/plan cleanup controls must exit `2` with stable
     `invalid_<field>` errors instead of silently falling back or clamping.
+    Explicit empty cache path env overrides such as
+    `GROBOT_TS_DEV_CLI_CACHE_ROOT` and `GROBOT_TS_DEV_CACHE_ROOT` must fail
+    closed before scanning cleanup targets.
 11. Start/session controls must fail closed on malformed explicit values.
     `grobot start` may default history, handoff, and rewind behavior only when
     those controls are omitted; malformed, missing-value, or out-of-range
