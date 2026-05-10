@@ -11,6 +11,10 @@ import {
   resolveProjectTomlPath,
   resolveWorkDir,
 } from "../../cli/services/runtime-paths";
+import {
+  isRuntimeRepoRootPathInputError,
+  resolveRuntimeBinaryPath,
+} from "../../tools/runtime/runtime-binary-path";
 
 function assertEqual(actual: unknown, expected: unknown, message: string): void {
   if (actual !== expected) {
@@ -31,6 +35,18 @@ function captureStringOptionErrorCode(callback: () => unknown): string | null {
     return null;
   } catch (error) {
     if (isCliStringOptionInputError(error)) {
+      return error.code;
+    }
+    throw error;
+  }
+}
+
+function captureRuntimeRepoRootErrorCode(callback: () => unknown): string | null {
+  try {
+    callback();
+    return null;
+  } catch (error) {
+    if (isRuntimeRepoRootPathInputError(error)) {
       return error.code;
     }
     throw error;
@@ -164,6 +180,24 @@ function main(): void {
         "   ",
         () => captureStringOptionErrorCode(() => resolveHomeDir({})) === "invalid_home",
       ),
+      empty_ts_dev_repo_root_rejected:
+        captureRuntimeRepoRootErrorCode(() => resolveRuntimeBinaryPath({
+          env: { GROBOT_TS_DEV_REPO_ROOT: "" },
+          cwd: isolatedProjectRoot,
+          platform: "darwin",
+        })) === "invalid_ts_dev_repo_root",
+      whitespace_ts_dev_repo_root_rejected:
+        captureRuntimeRepoRootErrorCode(() => resolveRuntimeBinaryPath({
+          env: { GROBOT_TS_DEV_REPO_ROOT: "   " },
+          cwd: isolatedProjectRoot,
+          platform: "darwin",
+        })) === "invalid_ts_dev_repo_root",
+      ts_dev_repo_root_trims_and_resolves_runtime_path:
+        resolveRuntimeBinaryPath({
+          env: { GROBOT_TS_DEV_REPO_ROOT: ` ${devRepoRoot}/ ` },
+          cwd: isolatedProjectRoot,
+          platform: "darwin",
+        }) === `${devRepoRoot}/runtime/target/debug/grobot-runtime`,
     };
 
     assertEqual(
@@ -198,6 +232,21 @@ function main(): void {
     assertEqual(payload.empty_home_dir_rejected, true, "empty --home-dir should fail closed");
     assertEqual(payload.empty_env_config_rejected, true, "empty GROBOT_CONFIG should fail closed");
     assertEqual(payload.empty_env_home_rejected, true, "empty GROBOT_HOME should fail closed");
+    assertEqual(
+      payload.empty_ts_dev_repo_root_rejected,
+      true,
+      "empty GROBOT_TS_DEV_REPO_ROOT should fail closed",
+    );
+    assertEqual(
+      payload.whitespace_ts_dev_repo_root_rejected,
+      true,
+      "whitespace GROBOT_TS_DEV_REPO_ROOT should fail closed",
+    );
+    assertEqual(
+      payload.ts_dev_repo_root_trims_and_resolves_runtime_path,
+      true,
+      "non-empty GROBOT_TS_DEV_REPO_ROOT should trim and resolve runtime path",
+    );
 
     process.stdout.write(`${JSON.stringify(payload)}\n`);
   } finally {

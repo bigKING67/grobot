@@ -14,6 +14,22 @@ export function isRuntimeBinaryPathInputError(
   return error instanceof RuntimeBinaryPathInputError;
 }
 
+export class RuntimeRepoRootPathInputError extends Error {
+  readonly code = "invalid_ts_dev_repo_root";
+  readonly field = "ts-dev-repo-root";
+
+  constructor() {
+    super("ts-dev-repo-root must be a non-empty path");
+    this.name = "RuntimeRepoRootPathInputError";
+  }
+}
+
+export function isRuntimeRepoRootPathInputError(
+  error: unknown,
+): error is RuntimeRepoRootPathInputError {
+  return error instanceof RuntimeRepoRootPathInputError;
+}
+
 function removeTrailingSlashes(value: string): string {
   if (/^[\\/]+$/.test(value)) {
     return value.startsWith("\\") ? "\\" : "/";
@@ -51,8 +67,11 @@ export function resolveRuntimeBinaryPath(
   const platform = input.platform ?? (process as unknown as { platform?: string }).platform;
   const exeSuffix = platform === "win32" ? ".exe" : "";
   const repoRoot = env.GROBOT_TS_DEV_REPO_ROOT;
-  if (typeof repoRoot === "string" && repoRoot.trim().length > 0) {
-    return `${removeTrailingSlashes(repoRoot)}/runtime/target/debug/grobot-runtime${exeSuffix}`;
+  if (typeof repoRoot === "string") {
+    if (repoRoot.trim().length === 0) {
+      throw new RuntimeRepoRootPathInputError();
+    }
+    return `${removeTrailingSlashes(repoRoot.trim())}/runtime/target/debug/grobot-runtime${exeSuffix}`;
   }
   return `${input.cwd ?? process.cwd()}/runtime/target/debug/grobot-runtime${exeSuffix}`;
 }

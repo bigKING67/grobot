@@ -53,7 +53,10 @@ import {
   normalizePositiveInt,
 } from "./context/window-runtime";
 import { isToolSurfaceProfileInputError } from "../../tools/runtime/default-enabled-tools";
-import { isRuntimeBinaryPathInputError } from "../../tools/runtime/runtime-binary-path";
+import {
+  isRuntimeBinaryPathInputError,
+  isRuntimeRepoRootPathInputError,
+} from "../../tools/runtime/runtime-binary-path";
 import {
   buildExperienceSchedulerTaskFailedSurface,
   buildExperienceSchedulerTickErrorSurface,
@@ -119,6 +122,10 @@ export async function runStart(
       return 2;
     }
     if (isRuntimeBinaryPathInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    if (isRuntimeRepoRootPathInputError(error)) {
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }

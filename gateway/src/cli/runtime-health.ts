@@ -1,6 +1,8 @@
 export {
   isRuntimeBinaryPathInputError,
+  isRuntimeRepoRootPathInputError,
   RuntimeBinaryPathInputError,
+  RuntimeRepoRootPathInputError,
   resolveRuntimeBinaryPath,
 } from "./runtime-health/path";
 export { runRuntimeHealthcheck } from "./runtime-health/healthcheck";

@@ -1,5 +1,6 @@
 import {
   isRuntimeBinaryPathInputError,
+  isRuntimeRepoRootPathInputError,
   resolveRuntimeBinaryPath,
 } from "../runtime-health";
 import { writeStatusInputError } from "./input-error-output";
@@ -19,7 +20,10 @@ export function resolveStatusRuntimeBinaryPath(
   try {
     return { runtimeBinaryPath: resolveRuntimeBinaryPath() };
   } catch (error) {
-    if (isRuntimeBinaryPathInputError(error)) {
+    if (
+      isRuntimeBinaryPathInputError(error)
+      || isRuntimeRepoRootPathInputError(error)
+    ) {
       writeStatusInputError(error, outputJson);
       return { exitCode: 2 };
     }

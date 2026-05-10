@@ -258,9 +258,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     values must exit `2` with `invalid_tool_surface_profile` before start turn
     execution or status rendering.
 35. Runtime binary path controls must fail closed on explicit empty values.
-    `GROBOT_RUNTIME_BIN` and direct stdio runtime binary overrides may use the
-    derived repository runtime path only when omitted; explicit empty or
-    whitespace-only values must exit `2` with `invalid_runtime_bin` before
+    `GROBOT_RUNTIME_BIN`, direct stdio runtime binary overrides, and
+    `GROBOT_TS_DEV_REPO_ROOT` may use the derived repository runtime path only
+    when omitted; explicit empty or whitespace-only binary path values must
+    exit `2` with `invalid_runtime_bin`, and explicit empty or whitespace-only
+    repo-root values must exit `2` with `invalid_ts_dev_repo_root`, before
     runtime health checks, status rendering, or Rust turn execution.
 36. Gateway path env overrides must fail closed on explicit empty values.
     `GROBOT_CONFIG` and `GROBOT_HOME` may use discovered config paths or the
