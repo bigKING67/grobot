@@ -204,6 +204,65 @@
     }
 
     #[test]
+    fn dispatcher_rejects_invalid_bash_allowlist_entries() {
+        let workspace = make_temp_workspace("bash-allowlist-invalid");
+        let executor = LocalToolExecutor;
+
+        let empty_rule_input = make_bash_input(
+            &workspace,
+            vec!["printf".to_string(), "   ".to_string()],
+        );
+        let empty_rule_error = execute_tool_payload(
+            &executor,
+            &empty_rule_input,
+            TOOL_BASH,
+            json!({
+                "command": "printf hello"
+            }),
+        )
+        .expect_err("empty bash allowlist rules must fail closed");
+        assert_eq!(empty_rule_error.error_class, "tool_context_invalid");
+        let empty_rule_data = empty_rule_error
+            .data
+            .as_ref()
+            .expect("empty bash allowlist error should include structured data");
+        assert_eq!(
+            empty_rule_data["field"].as_str(),
+            Some("tool_context.bash_allowlist[1]")
+        );
+        assert_eq!(empty_rule_data["raw_value"].as_str(), Some("   "));
+
+        let duplicate_rule_input = make_bash_input(
+            &workspace,
+            vec!["printf".to_string(), " printf ".to_string()],
+        );
+        let duplicate_rule_error = execute_tool_payload(
+            &executor,
+            &duplicate_rule_input,
+            TOOL_BASH,
+            json!({
+                "command": "printf hello"
+            }),
+        )
+        .expect_err("duplicate bash allowlist rules must fail closed");
+        assert_eq!(duplicate_rule_error.error_class, "tool_context_invalid");
+        let duplicate_rule_data = duplicate_rule_error
+            .data
+            .as_ref()
+            .expect("duplicate bash allowlist error should include structured data");
+        assert_eq!(
+            duplicate_rule_data["field"].as_str(),
+            Some("tool_context.bash_allowlist[1]")
+        );
+        assert_eq!(
+            duplicate_rule_data["raw_value"].as_str(),
+            Some(" printf ")
+        );
+
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
     fn read_slim_surface_rejects_hidden_range_and_media_args() {
         let workspace = make_temp_workspace("read-slim-hidden-args");
         fs::write(workspace.join("notes.txt"), "line 1\nline 2\n").expect("write notes");

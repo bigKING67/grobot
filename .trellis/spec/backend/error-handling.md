@@ -272,7 +272,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     `tool_context.model_visible_tools` lists may be empty to hide/disable all
     tools, but their entries must be known, non-empty, and unique after
     normalization; malformed entries must return structured
-    `tool_context_invalid` errors before dispatch.
+    `tool_context_invalid` errors before dispatch. Explicit runtime
+    `tool_context.bash_allowlist` lists may be empty to require permission
+    checks for every command, but their entries must be non-empty and unique
+    after trimming; malformed entries must return structured
+    `tool_context_invalid` errors before bash policy evaluation.
 35. Runtime binary path controls must fail closed on explicit empty values.
     `GROBOT_RUNTIME_BIN`, direct stdio runtime binary overrides, and
     `GROBOT_TS_DEV_REPO_ROOT` may use the derived repository runtime path only

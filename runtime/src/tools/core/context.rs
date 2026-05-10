@@ -50,18 +50,7 @@ fn parse_tool_context(input: &TurnExecuteInput) -> Result<ToolContextResolved, T
     let model_visible_tools = normalize_tool_name_set(tool_context.model_visible_tools.as_ref(), "model_visible_tools")?
         .unwrap_or_else(|| enabled_tools.clone());
     let advanced_tool_schema = tool_context.advanced_tool_schema.unwrap_or(false);
-    let bash_allowlist = tool_context
-        .bash_allowlist
-        .as_ref()
-        .map(|values| {
-            values
-                .iter()
-                .map(|item| item.trim())
-                .filter(|item| !item.is_empty())
-                .map(|item| item.to_string())
-                .collect::<Vec<String>>()
-        })
-        .unwrap_or_default();
+    let bash_allowlist = normalize_bash_allowlist(tool_context.bash_allowlist.as_ref())?;
     let session_key = input.session_key.trim().to_string();
     Ok(ToolContextResolved {
         session_key,
@@ -113,14 +102,51 @@ fn resolve_tool_context_surface_profile(raw: Option<&str>) -> Result<String, Too
     Ok(profile.to_string())
 }
 
-fn invalid_tool_context_entry_error(field: &str, raw_value: &str, detail: impl Into<String>) -> ToolExecutionError {
+fn invalid_tool_context_entry_error(
+    field: &str,
+    raw_value: &str,
+    detail: impl Into<String>,
+) -> ToolExecutionError {
     ToolExecutionError::new("tool_context_invalid", detail.into()).with_data(json!({
         "diagnostic_kind": "tool_context_invalid",
         "field": field,
         "source": field,
         "raw_value": raw_value,
-        "recovery_hint": "fix the runtime tool context tool list, or omit it to use the derived surface defaults"
+        "recovery_hint": "fix the runtime tool context list entries, or omit them to use the derived defaults"
     }))
+}
+
+fn normalize_bash_allowlist(
+    values: Option<&Vec<String>>,
+) -> Result<Vec<String>, ToolExecutionError> {
+    values
+        .map(|rows| {
+            let mut set = HashSet::new();
+            let mut normalized = Vec::with_capacity(rows.len());
+            for (index, item) in rows.iter().enumerate() {
+                let trimmed = item.trim();
+                if trimmed.is_empty() {
+                    return Err(invalid_tool_context_entry_error(
+                        &format!("tool_context.bash_allowlist[{index}]"),
+                        item,
+                        format!(
+                            "tool_context.bash_allowlist[{index}] must be a non-empty bash allowlist rule"
+                        ),
+                    ));
+                }
+                if !set.insert(trimmed.to_string()) {
+                    return Err(invalid_tool_context_entry_error(
+                        &format!("tool_context.bash_allowlist[{index}]"),
+                        item,
+                        "tool_context.bash_allowlist must not contain duplicate rules",
+                    ));
+                }
+                normalized.push(trimmed.to_string());
+            }
+            Ok(normalized)
+        })
+        .transpose()
+        .map(|values| values.unwrap_or_default())
 }
 
 fn normalize_tool_name_set(
