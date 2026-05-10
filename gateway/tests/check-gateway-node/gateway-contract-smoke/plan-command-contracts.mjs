@@ -1,24 +1,16 @@
 import assert from "node:assert/strict";
-import { resolve } from "node:path";
 import {
   assertSuccess,
-  contractsRoot,
-  isRecord,
   logStep,
-  makeTempDir,
   parseJsonOutput,
   runCommand,
-  runCommandAsync,
-  runContract,
-  runTsContract,
-  writeFixtureFile,
 } from "../harness.mjs";
 
 function assertPayloadFlags(payload, flagNames) {
   for (const flagName of flagNames) assert.equal(payload[flagName], true);
 }
 
-export async function runPlanCommandContracts() {
+export function runPlanInputKeybindingContract() {
   const startInputKeybindingContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -245,7 +237,9 @@ export async function runPlanCommandContracts() {
     "prompt_slot_runtime_short_fullscreen_draft_hides_footer",
   ]);
   logStep("start-input-keybinding-contract");
+}
 
+export function runPlanFailurePolicyContracts() {
   const startPlanFailurePolicyContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -325,7 +319,9 @@ export async function runPlanCommandContracts() {
   assert.equal(bridgePlanFailurePolicyContractPayload.generic_failure_reason_matches, true);
   assert.equal(bridgePlanFailurePolicyContractPayload.generic_failure_diagnostic_matches, true);
   logStep("bridge-plan-failure-policy-contract");
+}
 
+export function runPlanModeContract() {
   const startPlanModeContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -442,7 +438,9 @@ export async function runPlanCommandContracts() {
   assert.equal(startPlanModeContractPayload.compact_apply_failed_status_surface_hides_machine_fields, true);
   assert.equal(startPlanModeContractPayload.stderr_empty_on_success_path, true);
   logStep("start-plan-mode-contract");
+}
 
+export function runPlanUserCommandContracts() {
   const userCommandsContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -480,7 +478,9 @@ export async function runPlanCommandContracts() {
   assert.equal(userCommandsContractPayload.menu_hint_omits_secondary_key_chords, true);
   assert.equal(userCommandsContractPayload.menu_cancel_is_silent, true);
   logStep("user-commands-contract");
+}
 
+export function runPlanAgentsInstructionsContract() {
   const agentsInstructionsContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -497,7 +497,9 @@ export async function runPlanCommandContracts() {
   assert.equal(Number(agentsInstructionsContractPayload.outside_sources_count), 1);
   assert.equal(agentsInstructionsContractPayload.system_prompt_loaded, true);
   logStep("agents-instructions-contract");
+}
 
+export function runPlanSlashSuggestionsContract() {
   const startSlashSuggestionsContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -551,7 +553,9 @@ export async function runPlanCommandContracts() {
   assert.equal(startSlashSuggestionsContractPayload.ship_filter_has_user_command, true);
   assert.equal(startSlashSuggestionsContractPayload.plain_input_returns_empty, true);
   logStep("start-slash-suggestions-contract");
+}
 
+export function runPlanBridgeCliContract() {
   const bridgeCliContractResult = runCommand("node", [
     "gateway/src/extensions/contracts/bridge-cli-contract.mjs",
   ], {
@@ -594,7 +598,9 @@ export async function runPlanCommandContracts() {
   assert.equal(bridgeCliContractPayload.empty_guard_mode_error_code, "invalid_plan_quality_guard_mode");
   assert.equal(bridgeCliContractPayload.empty_guard_mode_field, "plan-quality-guard-mode");
   logStep("bridge-cli-contract");
+}
 
+export function runPlanBridgeApplyFailureContract() {
   const bridgePlanApplyFailureContractResult = runCommand("node", [
     "gateway/src/extensions/contracts/bridge-plan-apply-failure-contract.mjs",
   ], {
@@ -641,7 +647,9 @@ export async function runPlanCommandContracts() {
   assert.equal(bridgePlanApplyFailureContractPayload.events_has_policy_reason, true);
   assert.equal(bridgePlanApplyFailureContractPayload.events_has_diagnostic_code, true);
   logStep("bridge-plan-apply-failure-contract");
+}
 
+export function runPlanBridgeErrorCodesSchemaContract() {
   const bridgeErrorCodesSchemaContractResult = runCommand("node", [
     "gateway/src/extensions/contracts/bridge-error-codes-schema-contract.mjs",
   ], {
@@ -661,7 +669,9 @@ export async function runPlanCommandContracts() {
   assert.equal(Array.isArray(bridgeErrorCodesSchemaContractPayload.observed_codes), true);
   assert.equal(bridgeErrorCodesSchemaContractPayload.fatal_error_code, "BRIDGE_FATAL");
   logStep("bridge-error-codes-schema-contract");
+}
 
+export function runPlanEventsPolicyGuardContract() {
   const planEventsPolicyGuardContractResult = runCommand("node", [
     "gateway/src/extensions/contracts/plan-events-policy-guard-contract.mjs",
   ], {
@@ -680,7 +690,9 @@ export async function runPlanCommandContracts() {
   assert.equal(planEventsPolicyGuardContractPayload.overlap_rejected, true);
   assert.equal(planEventsPolicyGuardContractPayload.text_mode_has_scope_counts, true);
   logStep("plan-events-policy-guard-contract");
+}
 
+export function runPlanQualityBenchmarkContract() {
   const planQualityBenchmarkContractResult = runCommand("node", [
     "gateway/src/extensions/contracts/plan-quality-benchmark-contract.mjs",
   ], {
@@ -703,4 +715,18 @@ export async function runPlanCommandContracts() {
   assert.equal(planQualityBenchmarkContractPayload.empty_guard_mode_exit_code, 2);
   assert.equal(planQualityBenchmarkContractPayload.empty_guard_mode_has_stable_error, true);
   logStep("plan-quality-benchmark-contract");
+}
+
+export async function runPlanCommandContracts() {
+  runPlanInputKeybindingContract();
+  runPlanFailurePolicyContracts();
+  runPlanModeContract();
+  runPlanUserCommandContracts();
+  runPlanAgentsInstructionsContract();
+  runPlanSlashSuggestionsContract();
+  runPlanBridgeCliContract();
+  runPlanBridgeApplyFailureContract();
+  runPlanBridgeErrorCodesSchemaContract();
+  runPlanEventsPolicyGuardContract();
+  runPlanQualityBenchmarkContract();
 }

@@ -2,6 +2,19 @@ import { runContextGraphContracts } from "./gateway-contract-smoke/context-graph
 import { runContextHistoryContracts } from "./gateway-contract-smoke/context-history-contracts.mjs";
 import { runContextPromptQualityContracts } from "./gateway-contract-smoke/context-prompt-quality-contracts.mjs";
 import {
+  runPlanAgentsInstructionsContract,
+  runPlanBridgeApplyFailureContract,
+  runPlanBridgeCliContract,
+  runPlanBridgeErrorCodesSchemaContract,
+  runPlanEventsPolicyGuardContract,
+  runPlanFailurePolicyContracts,
+  runPlanInputKeybindingContract,
+  runPlanModeContract,
+  runPlanQualityBenchmarkContract,
+  runPlanSlashSuggestionsContract,
+  runPlanUserCommandContracts,
+} from "./gateway-contract-smoke/plan-command-contracts.mjs";
+import {
   runRuntimeBareInteractiveSessionFlowSmoke,
   runRuntimeImOnlyRejectFlowSmoke,
   runRuntimeInteractiveDiagnosticsBaseFlowSmoke,
@@ -58,6 +71,61 @@ export const CASES = Object.freeze({
     suite: "gateway:context",
     description: "Context graph contracts.",
     run: runContextGraphContracts,
+  },
+  "gateway:plan:input-keybinding": {
+    suite: "gateway:plan",
+    description: "Plan-adjacent input keybinding and prompt UI contracts.",
+    run: runPlanInputKeybindingContract,
+  },
+  "gateway:plan:failure-policy": {
+    suite: "gateway:plan",
+    description: "Start and bridge plan failure policy contracts.",
+    run: runPlanFailurePolicyContracts,
+  },
+  "gateway:plan:mode": {
+    suite: "gateway:plan",
+    description: "Plan mode lifecycle, surfaces, and apply contracts.",
+    run: runPlanModeContract,
+  },
+  "gateway:plan:user-commands": {
+    suite: "gateway:plan",
+    description: "User command contracts for plan command surfaces.",
+    run: runPlanUserCommandContracts,
+  },
+  "gateway:plan:agents-instructions": {
+    suite: "gateway:plan",
+    description: "AGENTS instructions discovery contract.",
+    run: runPlanAgentsInstructionsContract,
+  },
+  "gateway:plan:slash-suggestions": {
+    suite: "gateway:plan",
+    description: "Plan slash suggestions and recommendation contracts.",
+    run: runPlanSlashSuggestionsContract,
+  },
+  "gateway:plan:bridge-cli": {
+    suite: "gateway:plan",
+    description: "Bridge CLI plan command contract.",
+    run: runPlanBridgeCliContract,
+  },
+  "gateway:plan:bridge-apply-failure": {
+    suite: "gateway:plan",
+    description: "Bridge plan apply failure contract.",
+    run: runPlanBridgeApplyFailureContract,
+  },
+  "gateway:plan:bridge-error-codes": {
+    suite: "gateway:plan",
+    description: "Bridge error code schema contract.",
+    run: runPlanBridgeErrorCodesSchemaContract,
+  },
+  "gateway:plan:events-policy": {
+    suite: "gateway:plan",
+    description: "Plan events policy guard contract.",
+    run: runPlanEventsPolicyGuardContract,
+  },
+  "gateway:plan:quality-benchmark": {
+    suite: "gateway:plan",
+    description: "Plan quality benchmark contract.",
+    run: runPlanQualityBenchmarkContract,
   },
   "runtime:controls:context-engine": {
     suite: "runtime:controls",

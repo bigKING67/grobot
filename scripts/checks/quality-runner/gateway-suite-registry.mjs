@@ -60,6 +60,16 @@ assert.equal(
   "gateway context must expose case-level history contracts",
 );
 assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "gateway:plan:input-keybinding"),
+  true,
+  "gateway plan must expose case-level input keybinding contracts",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "gateway:plan:bridge-error-codes"),
+  true,
+  "gateway plan must expose case-level bridge error code contracts",
+);
+assert.equal(
   casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:status-line"),
   true,
   "runtime controls must expose case-level status-line contracts",
