@@ -313,9 +313,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     state use a single canonical identity.
 40. Runtime health cache-window controls must fail closed on explicit invalid
     values. `runtime.health` may omit `cache_stats_window_ms` to disable window
-    rotation, but an explicit zero must return JSON-RPC `-32602` with
-    structured `invalid_cache_stats_window_ms` data instead of silently behaving
-    like an omitted window policy.
+    rotation, but explicit `null`, non-integer, or zero values must return
+    JSON-RPC `-32602` with structured `invalid_cache_stats_window_ms` data
+    instead of silently behaving like an omitted window policy. Explicit
+    malformed `cache_stats_reset_window` values must return structured
+    `invalid_cache_stats_reset_window` data instead of falling back to `false`.
 
 ---
 

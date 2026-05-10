@@ -33,17 +33,79 @@ fn parse_event_stream_mode(value: Option<&str>) -> Result<bool, Value> {
     }))
 }
 
-fn validate_runtime_health_params(params: &RuntimeHealthParams) -> Result<(), Value> {
-    if params.cache_stats_window_ms == Some(0) {
-        return Err(json!({
-            "diagnostic_kind": "invalid_cache_stats_window_ms",
-            "field": "cache_stats_window_ms",
-            "source": "runtime.health.params.cache_stats_window_ms",
-            "raw_value": 0,
-            "recovery_hint": "omit cache_stats_window_ms to disable window rotation, or set it to a positive integer",
-        }));
+fn invalid_runtime_health_field(field: &str, raw_value: Value, recovery_hint: &str) -> Value {
+    json!({
+        "diagnostic_kind": format!("invalid_{field}"),
+        "field": field,
+        "source": format!("runtime.health.params.{field}"),
+        "raw_value": raw_value,
+        "recovery_hint": recovery_hint,
+    })
+}
+
+fn parse_runtime_health_params(params: &Value) -> Result<RuntimeHealthParams, Value> {
+    if params.is_null() {
+        return Ok(RuntimeHealthParams::default());
     }
-    Ok(())
+    let Some(params_object) = params.as_object() else {
+        return Err(json!({
+            "diagnostic_kind": "invalid_runtime_health_params",
+            "field": "params",
+            "source": "runtime.health.params",
+            "raw_value": params,
+            "recovery_hint": "omit runtime.health params or pass an object with supported health controls",
+        }));
+    };
+
+    let cache_stats_window_ms = match params_object.get("cache_stats_window_ms") {
+        Some(value) => {
+            let Some(raw_u64) = value.as_u64() else {
+                return Err(invalid_runtime_health_field(
+                    "cache_stats_window_ms",
+                    value.clone(),
+                    "omit cache_stats_window_ms to disable window rotation, or set it to a positive integer",
+                ));
+            };
+            if raw_u64 == 0 {
+                return Err(invalid_runtime_health_field(
+                    "cache_stats_window_ms",
+                    value.clone(),
+                    "omit cache_stats_window_ms to disable window rotation, or set it to a positive integer",
+                ));
+            }
+            Some(raw_u64)
+        }
+        None => None,
+    };
+
+    let cache_stats_reset_window = match params_object.get("cache_stats_reset_window") {
+        Some(value) => Some(value.as_bool().ok_or_else(|| {
+            invalid_runtime_health_field(
+                "cache_stats_reset_window",
+                value.clone(),
+                "omit cache_stats_reset_window to keep the window, or set it to true or false",
+            )
+        })?),
+        None => None,
+    };
+
+    Ok(RuntimeHealthParams {
+        cache_stats_window_ms,
+        cache_stats_reset_window,
+    })
+}
+
+fn invalid_runtime_health_message(data: &Value) -> &'static str {
+    match data
+        .get("diagnostic_kind")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+    {
+        "invalid_cache_stats_reset_window" => "invalid_cache_stats_reset_window",
+        "invalid_cache_stats_window_ms" => "invalid_cache_stats_window_ms",
+        "invalid_runtime_health_params" => "invalid_runtime_health_params",
+        _ => "invalid runtime.health params",
+    }
 }
 
 pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErrorResponse> {
@@ -53,17 +115,11 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
 
     match request.method.as_str() {
         "runtime.health" => {
-            let params: RuntimeHealthParams = if request.params.is_null() {
-                RuntimeHealthParams::default()
-            } else {
-                serde_json::from_value(request.params.clone())
-                    .map_err(|_| error(request.id.clone(), -32602, "invalid params"))?
-            };
-            validate_runtime_health_params(&params).map_err(|data| {
+            let params = parse_runtime_health_params(&request.params).map_err(|data| {
                 error_with_data(
                     request.id.clone(),
                     -32602,
-                    "invalid_cache_stats_window_ms",
+                    invalid_runtime_health_message(&data),
                     data,
                 )
             })?;
