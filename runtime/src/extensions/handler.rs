@@ -15,11 +15,22 @@ impl crate::models::engine::RuntimeEventSink for StderrJsonlRuntimeEventSink {
     }
 }
 
-fn use_stderr_jsonl_event_stream(value: Option<&str>) -> bool {
-    matches!(
-        value.map(str::trim).map(str::to_ascii_lowercase).as_deref(),
-        Some(STDERR_EVENT_STREAM_MODE) | Some("stderr-jsonl")
-    )
+fn parse_event_stream_mode(value: Option<&str>) -> Result<bool, Value> {
+    let Some(raw_value) = value else {
+        return Ok(false);
+    };
+    let normalized = raw_value.trim().to_ascii_lowercase().replace('-', "_");
+    if normalized == STDERR_EVENT_STREAM_MODE {
+        return Ok(true);
+    }
+    Err(json!({
+        "diagnostic_kind": "invalid_event_stream",
+        "field": "event_stream",
+        "source": "event_stream",
+        "raw_value": raw_value,
+        "valid_values": [STDERR_EVENT_STREAM_MODE, "stderr-jsonl"],
+        "recovery_hint": "omit event_stream to disable runtime event streaming, or set it to stderr_jsonl",
+    }))
 }
 
 pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErrorResponse> {
@@ -86,7 +97,10 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                 return Err(error(request.id, -32602, "empty request fields"));
             }
 
-            let event_stream = params.event_stream.clone();
+            let use_stderr_event_stream = parse_event_stream_mode(params.event_stream.as_deref())
+                .map_err(|data| {
+                    error_with_data(request.id.clone(), -32602, "invalid event_stream", data)
+                })?;
             let turn_input = TurnExecuteInput {
                 request_id: params.request_id,
                 session_key: params.session_key,
@@ -149,7 +163,7 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                     })
                     .collect(),
             };
-            let execution_result = if use_stderr_jsonl_event_stream(event_stream.as_deref()) {
+            let execution_result = if use_stderr_event_stream {
                 let mut event_sink = StderrJsonlRuntimeEventSink;
                 execute_turn_with_event_sink(turn_input, &mut event_sink)
             } else {

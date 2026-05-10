@@ -198,4 +198,35 @@ mod tests {
         assert_eq!(payload["error"]["code"], -32602);
         assert_eq!(payload["error"]["message"], "empty request fields");
     }
+
+    #[test]
+    fn turn_execute_rejects_invalid_event_stream() {
+        let input = r#"{
+            "jsonrpc":"2.0",
+            "id":"event-stream",
+            "method":"runtime.turn.execute",
+            "params":{
+                "request_id":"req_1",
+                "session_key":"feishu:tenant:dm:user",
+                "user_message":"hello",
+                "event_stream":"stdout_jsonl"
+            }
+        }"#;
+        let output = handle_json_line(input);
+        let payload: Value = serde_json::from_str(&output).expect("valid json");
+        assert_eq!(payload["error"]["code"], -32602);
+        assert_eq!(payload["error"]["message"], "invalid event_stream");
+        assert_eq!(
+            payload["error"]["data"]["diagnostic_kind"].as_str(),
+            Some("invalid_event_stream")
+        );
+        assert_eq!(
+            payload["error"]["data"]["field"].as_str(),
+            Some("event_stream")
+        );
+        assert_eq!(
+            payload["error"]["data"]["raw_value"].as_str(),
+            Some("stdout_jsonl")
+        );
+    }
 }

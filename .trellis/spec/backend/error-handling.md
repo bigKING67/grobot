@@ -297,6 +297,12 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     omitted; explicit empty or whitespace-only values must return structured
     `config_invalid` model errors with env-key diagnostics instead of silently
     applying defaults.
+38. Runtime protocol event stream controls must fail closed on malformed
+    explicit values. `runtime.turn.execute` may omit `event_stream` to disable
+    streaming and may use `stderr_jsonl` / `stderr-jsonl` to enable stderr JSONL
+    runtime events, but explicit empty, whitespace-only, or unsupported values
+    must return JSON-RPC `-32602` with structured `invalid_event_stream` data
+    before runtime turn execution starts.
 
 ---
 
