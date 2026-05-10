@@ -10,7 +10,7 @@ import {
   runContractAsync,
 } from "../harness.mjs";
 
-export function runRuntimeProviderFailureStatusSmoke() {
+export function runRuntimeProviderUpstreamFailureStatusSmoke() {
   const upstreamFailureResult = runContract("start-smoke-contract.mjs", "failover-runs-ts-rust", ["--repo-root", repoRoot], {
     timeoutMs: 240_000,
     env: {
@@ -28,7 +28,15 @@ export function runRuntimeProviderFailureStatusSmoke() {
   assert.equal(String(upstreamFailurePayload.stderr).includes("runtime rpc error -32001"), false);
   assert.equal(String(upstreamFailurePayload.stderr).includes("upstream_connect_failed"), false);
   logStep("start-smoke-contract failover-runs-ts-rust-upstream-failure");
+}
 
+export function runRuntimeProviderFailureStatusSmoke() {
+  runRuntimeProviderUpstreamFailureStatusSmoke();
+
+  runRuntimeProviderPersistedFailureStatusSmoke();
+}
+
+export function runRuntimeProviderPersistedFailureStatusSmoke() {
   const providerFailureStatusResult = runContract(
     "start-smoke-contract.mjs",
     "provider-failure-route-status-ts-rust",
@@ -89,7 +97,7 @@ export function runRuntimeProviderFailureStatusSmoke() {
   logStep("start-smoke-contract provider-failure-route-status-ts-rust");
 }
 
-export async function runRuntimeProviderManagementStatusSmoke() {
+export async function runRuntimeProviderCleanAlternateStatusSmoke() {
   const providerFailureCleanAlternateModel = await startMockModelServer();
   try {
     const providerFailureCleanAlternateResult = await runContractAsync(
@@ -128,7 +136,15 @@ export async function runRuntimeProviderManagementStatusSmoke() {
   } finally {
     await providerFailureCleanAlternateModel.close();
   }
+}
 
+export async function runRuntimeProviderManagementStatusSmoke() {
+  await runRuntimeProviderCleanAlternateStatusSmoke();
+
+  await runRuntimeProviderManagementApiStatusSmoke();
+}
+
+export async function runRuntimeProviderManagementApiStatusSmoke() {
   const managementProviderFailurePort = await reserveFreePort();
   const managementProviderFailureWorkDir = makeTempDir("serve-provider-failure-status-work");
   const managementProviderFailureResult = runContract(

@@ -114,6 +114,16 @@ assert.equal(
   true,
   "runtime model controls must expose case-level CLI/env controls",
 );
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:provider-status:persisted-failure"),
+  true,
+  "runtime provider status must expose case-level persisted failure status smoke",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:provider-status:clean-alternate"),
+  true,
+  "runtime provider status must expose case-level clean alternate smoke",
+);
 
 const shardResult = spawnSync("node", ["gateway/tests/check-gateway-node.mjs", "--suite", "workflow", "--shard", "1/1", "--json"], {
   encoding: "utf8",

@@ -276,6 +276,10 @@ for high-value composite smoke surfaces. Current split cases include:
 - `runtime:model-controls:search-routing`
 - `runtime:model-controls:cli-env`
 - `runtime:model-controls:valid-boundary`
+- `runtime:provider-status:upstream-failure`
+- `runtime:provider-status:persisted-failure`
+- `runtime:provider-status:clean-alternate`
+- `runtime:provider-status:management-api`
 
 Suite selection expands to split cases when a suite has them; direct
 `<suite>:full` cases remain available for aggregate reproduction. Shards are
@@ -308,9 +312,10 @@ suite implementation detail. Parent JSON reports keep the run diagnosable:
 worker executions add structured worker bucket entries and aggregate child case
 results, while parent `steps` records one `gateway-worker-N` step per worker.
 Heavy split suites (`gateway:plan`, `gateway:context`, `runtime:status`,
-`runtime:context`, `runtime:controls`, `runtime:plan`, and
-`runtime:model-controls`) are invoked with internal workers from the quality
-gate registry so full CI gets the same coverage with less monolithic wall time.
+`runtime:context`, `runtime:controls`, `runtime:plan`,
+`runtime:model-controls`, and `runtime:provider-status`) are invoked with
+internal workers from the quality gate registry so full CI gets the same
+coverage with less monolithic wall time.
 Gateway plan cases are split by contract domain (input/keybinding, failure
 policy, plan mode, user commands, instructions, slash suggestions, bridge
 CLI/apply/error-codes, events policy, and benchmark) while preserving
@@ -326,7 +331,10 @@ replayable as an isolated worker case instead of depending on sibling case
 side-effects. Runtime model-control cases are split by validation domain (Kimi
 options, prompt cache, provider metadata, search routing, CLI/env overrides,
 and valid boundary) while preserving `runtime:model-controls:full` as the
-aggregate reproduction path.
+aggregate reproduction path. Runtime provider-status cases are split by
+route-diagnostic surface (upstream failure text/redaction, persisted status and
+registry data, clean alternate selection, and management API status) while
+preserving `runtime:provider-status:full` as the aggregate reproduction path.
 
 ### 6. Events and stats
 

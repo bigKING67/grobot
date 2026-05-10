@@ -43,6 +43,12 @@ import {
   assertRuntimeModelSearchRoutingControlSmoke,
   assertRuntimeModelValidBoundarySmoke,
 } from "./runtime-smoke/runtime-model-controls.mjs";
+import {
+  runRuntimeProviderCleanAlternateStatusSmoke,
+  runRuntimeProviderManagementApiStatusSmoke,
+  runRuntimeProviderPersistedFailureStatusSmoke,
+  runRuntimeProviderUpstreamFailureStatusSmoke,
+} from "./runtime-smoke/provider-status.mjs";
 import { assertContextEngineControlSmoke } from "./runtime-smoke/context-engine-controls.mjs";
 import { assertExperienceRuntimeControlSmoke } from "./runtime-smoke/experience-runtime-controls.mjs";
 import { assertExperienceSchedulerControlSmoke } from "./runtime-smoke/experience-scheduler-controls.mjs";
@@ -314,5 +320,25 @@ export const CASES = Object.freeze({
     suite: "runtime:model-controls",
     description: "Runtime model valid boundary reaches runtime.",
     run: assertRuntimeModelValidBoundarySmoke,
+  },
+  "runtime:provider-status:upstream-failure": {
+    suite: "runtime:provider-status",
+    description: "Provider upstream failure human status and redaction smoke.",
+    run: runRuntimeProviderUpstreamFailureStatusSmoke,
+  },
+  "runtime:provider-status:persisted-failure": {
+    suite: "runtime:provider-status",
+    description: "Provider failure persisted status and registry smoke.",
+    run: runRuntimeProviderPersistedFailureStatusSmoke,
+  },
+  "runtime:provider-status:clean-alternate": {
+    suite: "runtime:provider-status",
+    description: "Provider failure clean alternate route status smoke.",
+    run: runRuntimeProviderCleanAlternateStatusSmoke,
+  },
+  "runtime:provider-status:management-api": {
+    suite: "runtime:provider-status",
+    description: "Provider failure management API status smoke.",
+    run: runRuntimeProviderManagementApiStatusSmoke,
   },
 });
