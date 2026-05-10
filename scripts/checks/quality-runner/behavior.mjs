@@ -158,9 +158,24 @@ assert.equal(
 assert.equal(registry.byName.get("check:runtime:check")?.parallel, false, "cargo check must remain exclusive");
 assert.equal(registry.byName.get("check:runtime:check")?.resourceClass, "rust", "cargo gates must advertise rust resources");
 assert.equal(
+  registry.byName.get("check:runtime:check")?.exclusiveGroup,
+  "rust",
+  "cargo check must only serialize the rust resource class",
+);
+assert.equal(
+  registry.byName.get("check:runtime:test")?.exclusiveGroup,
+  "rust",
+  "cargo test must only serialize the rust resource class",
+);
+assert.equal(
   registry.byName.get("check:gateway:suite:gateway:semantic-benchmark")?.parallel,
   false,
   "timing benchmark suite must remain exclusive",
+);
+assert.equal(
+  registry.byName.get("check:gateway:suite:gateway:semantic-benchmark")?.exclusiveGroup,
+  "global",
+  "timing benchmark suite must keep global exclusive scheduling",
 );
 
 const affectedRunnerSource = readFileSync("scripts/quality-runner.mjs", "utf8");
@@ -189,6 +204,8 @@ try {
   writeFileSync(join(tmp, "pass-a.mjs"), "process.exit(0);\n");
   writeFileSync(join(tmp, "pass-b.mjs"), "process.exit(0);\n");
   writeFileSync(join(tmp, "fail.mjs"), "process.exit(3);\n");
+  writeFileSync(join(tmp, "slow-a.mjs"), "await new Promise((resolve) => setTimeout(resolve, 600));\nprocess.exit(0);\n");
+  writeFileSync(join(tmp, "slow-b.mjs"), "await new Promise((resolve) => setTimeout(resolve, 600));\nprocess.exit(0);\n");
   execFileSync("git", ["init"], { cwd: tmp, stdio: "ignore" });
   execFileSync("git", ["config", "user.email", "quality-runner@example.invalid"], { cwd: tmp, stdio: "ignore" });
   execFileSync("git", ["config", "user.name", "Quality Runner"], { cwd: tmp, stdio: "ignore" });
@@ -330,6 +347,40 @@ try {
   ], { cache: false, repoRoot: tmp });
   assert.equal(failRun.status, "fail", "failed dependency graph must fail");
   assert.equal(failRun.results.some((result) => result.gate.name === "blocked" && result.skipped === true), true, "dependent gate must be marked skipped");
+
+  const scopedExclusiveRun = await runQualityGates([
+    {
+      cacheable: false,
+      command: "node slow-a.mjs",
+      cost: "cheap",
+      deps: [],
+      exclusiveGroup: "rust",
+      group: "test",
+      inputs: ["slow-a.mjs"],
+      name: "scoped-exclusive",
+      parallel: false,
+      resourceClass: "rust",
+      resourceCost: 1,
+    },
+    {
+      cacheable: false,
+      command: "node slow-b.mjs",
+      cost: "cheap",
+      deps: [],
+      group: "test",
+      inputs: ["slow-b.mjs"],
+      name: "parallel-peer",
+      parallel: true,
+      resourceClass: "node",
+      resourceCost: 1,
+    },
+  ], { cache: false, parallel: 2, repoRoot: tmp });
+  assert.equal(scopedExclusiveRun.status, "pass", "scoped exclusive graph must pass");
+  assert.equal(
+    scopedExclusiveRun.durationMs < 1_100,
+    true,
+    "scoped exclusive gates must not block unrelated resource classes",
+  );
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

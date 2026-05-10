@@ -157,6 +157,7 @@ const BASE_GATE_DEFINITIONS = Object.freeze([
     modes: ["ci"],
     cacheable: false,
     parallel: false,
+    exclusiveGroup: "rust",
   },
   {
     name: "check:gateway:suite-registry",
@@ -214,6 +215,7 @@ function gatewaySuiteGate(id) {
     modes: ["ci"],
     cacheable: false,
     parallel: !isBenchmark,
+    ...(isBenchmark ? { exclusiveGroup: "global" } : {}),
     ...(gatewaySmokeCost > 1 ? { resourceCost: gatewaySmokeCost } : {}),
   };
 }

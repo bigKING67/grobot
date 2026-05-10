@@ -157,13 +157,16 @@ The scheduler lives in `scripts/lib/quality-scheduler.mjs`.
 - Resource tokens prevent oversubscription. Rust and TypeScript compiler gates
   use dedicated resource classes; gateway smoke suites share a separate
   `gateway-smoke` pool instead of consuming all generic Node capacity.
-- `parallel: false` gates run in an exclusive window. This is used for shared
-  compiler/build-resource gates such as `tsc`, `cargo`, and release scripts.
+- `parallel: false` gates use scoped exclusive groups instead of a blanket
+  global lock. Rust gates serialize only the `rust` resource class, TypeScript
+  gates serialize only the `typescript` class, and release gates serialize only
+  `release`. This keeps compiler/build resources safe without blocking
+  unrelated gateway smoke work. Timing benchmarks such as
+  `gateway:semantic-benchmark` explicitly use `exclusiveGroup=global`, stay
+  globally exclusive, and use broad ceiling assertions plus structured warning
+  output for trend jitter rather than brittle wall-clock ordering comparisons.
   Most gateway smoke suites run as isolated child processes with temp workdirs
   and are allowed to run in parallel after their hard dependencies pass.
-  Timing benchmarks such as `gateway:semantic-benchmark` stay exclusive and use
-  broad ceiling assertions plus structured warning output for trend jitter,
-  rather than brittle wall-clock ordering comparisons.
 - `node scripts/quality-runner.mjs plan <mode>` prints the executable plan with
   dependency level, estimated duration, critical-path score, resource class, and
   cacheability before running anything.

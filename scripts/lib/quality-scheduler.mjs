@@ -158,8 +158,24 @@ function orderReadyGates(ready, selectedByName, options = {}) {
   return sortReadyGates(ready, selectedByName);
 }
 
-function hasExclusiveRunning(running, selectedByName) {
-  return [...running].some((gateName) => selectedByName.get(gateName)?.parallel === false);
+function exclusiveGroup(gate) {
+  return String(gate?.exclusiveGroup ?? "").trim();
+}
+
+function hasGlobalExclusiveRunning(running, selectedByName) {
+  return [...running].some((gateName) => exclusiveGroup(selectedByName.get(gateName)) === "global");
+}
+
+function conflictsWithExclusiveGroup(gate, running, selectedByName) {
+  const group = exclusiveGroup(gate);
+  if (!group) {
+    return hasGlobalExclusiveRunning(running, selectedByName);
+  }
+  if (group === "global") {
+    return running.size > 0;
+  }
+  return hasGlobalExclusiveRunning(running, selectedByName)
+    || [...running].some((gateName) => exclusiveGroup(selectedByName.get(gateName)) === group);
 }
 
 function defaultResourceLimits(parallel) {
@@ -369,10 +385,7 @@ export async function runQualityGates(gates, options = {}) {
         if (!gate) {
           continue;
         }
-        if (hasExclusiveRunning(running, selectedByName)) {
-          break;
-        }
-        if (gate.parallel === false && running.size > 0) {
+        if (conflictsWithExclusiveGroup(gate, running, selectedByName)) {
           continue;
         }
         if (!canRunWithResources(gate, running, selectedByName, resourceLimits)) {
@@ -397,7 +410,7 @@ export async function runQualityGates(gates, options = {}) {
             });
             schedule();
           });
-        if (gate.parallel === false) {
+        if (exclusiveGroup(gate) === "global") {
           break;
         }
       }
@@ -442,6 +455,7 @@ export function planQualityGates(gates, options = {}) {
     criticalPathMs: Math.round(criticalPathScores.get(gate.name) ?? 0),
     resourceClass: gate.resourceClass ?? "node",
     resourceCost: gate.resourceCost ?? 1,
+    exclusiveGroup: gate.exclusiveGroup ?? "",
     cacheable: gate.cacheable === true,
     parallel: gate.parallel !== false,
   })).sort((left, right) => (
