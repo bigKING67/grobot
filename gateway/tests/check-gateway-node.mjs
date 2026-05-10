@@ -302,7 +302,7 @@ function suiteIdForCase(caseId) {
 function expandSuitesToCases(suiteIdsToExpand) {
   return suiteIdsToExpand.flatMap((suiteId) => {
     const splitCaseIds = Object.entries(CASES)
-      .filter(([, testCase]) => testCase.suite === suiteId)
+      .filter(([, testCase]) => testCase.suite === suiteId && testCase.run?.aggregateOnly !== true)
       .map(([caseId]) => caseId);
     return splitCaseIds.length > 0 ? splitCaseIds : [caseIdForSuite(suiteId)];
   });

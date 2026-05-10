@@ -64,12 +64,35 @@ import {
   runRuntimeProviderPersistedFailureStatusSmoke,
   runRuntimeProviderUpstreamFailureStatusSmoke,
 } from "./runtime-smoke/provider-status.mjs";
-import { assertContextEngineControlSmoke } from "./runtime-smoke/context-engine-controls.mjs";
-import { assertExperienceRuntimeControlSmoke } from "./runtime-smoke/experience-runtime-controls.mjs";
-import { assertExperienceSchedulerControlSmoke } from "./runtime-smoke/experience-scheduler-controls.mjs";
+import {
+  assertContextEngineControlSmoke,
+  assertContextEngineEnvControlSmoke,
+  assertContextEngineStatusControlSmoke,
+  assertContextEngineTomlControlSmoke,
+  assertContextEngineValidBoundarySmoke,
+} from "./runtime-smoke/context-engine-controls.mjs";
+import {
+  assertExperienceRuntimeControlSmoke,
+  assertExperienceRuntimeServeControlSmoke,
+  assertExperienceRuntimeStartControlSmoke,
+} from "./runtime-smoke/experience-runtime-controls.mjs";
+import {
+  assertExperienceSchedulerControlSmoke,
+  assertExperienceSchedulerEnvControlSmoke,
+  assertExperienceSchedulerTomlControlSmoke,
+  assertExperienceSchedulerValidBoundarySmoke,
+} from "./runtime-smoke/experience-scheduler-controls.mjs";
 import { assertMcpInstructionControlSmoke } from "./runtime-smoke/mcp-instruction-controls.mjs";
 import { assertRuntimeBinControlSmoke } from "./runtime-smoke/runtime-bin-controls.mjs";
-import { assertStatusLineControlSmoke } from "./runtime-smoke/status-line-controls.mjs";
+import {
+  assertStatusLineBasicControlSmoke,
+  assertStatusLineCacheControlSmoke,
+  assertStatusLineControlSmoke,
+  assertStatusLineSegmentOrderControlSmoke,
+  assertStatusLineSegmentToggleControlSmoke,
+  assertStatusLineThresholdControlSmoke,
+  assertStatusLineValidBoundarySmoke,
+} from "./runtime-smoke/status-line-controls.mjs";
 import { assertToolSurfaceProfileControlSmoke } from "./runtime-smoke/tool-surface-profile-controls.mjs";
 import {
   runRuntimeContextGraphAutotuneAdaptiveSequenceFlowSmoke,
@@ -82,6 +105,8 @@ import {
   runRuntimeContextPreSendHeadTrimFlowSmoke,
   runRuntimeContextQualityGuardFlowSmoke,
 } from "./runtime-smoke/context-quality-flows.mjs";
+
+const aggregateOnly = (run) => Object.assign(run, { aggregateOnly: true });
 
 export const CASES = Object.freeze({
   "gateway:context:history": {
@@ -176,18 +201,63 @@ export const CASES = Object.freeze({
   },
   "runtime:controls:context-engine": {
     suite: "runtime:controls",
-    description: "Context engine control rejection smoke.",
-    run: assertContextEngineControlSmoke,
+    description: "Context engine aggregate control rejection smoke.",
+    run: aggregateOnly(assertContextEngineControlSmoke),
+  },
+  "runtime:controls:context-engine-env": {
+    suite: "runtime:controls",
+    description: "Context engine environment control rejection smoke.",
+    run: assertContextEngineEnvControlSmoke,
+  },
+  "runtime:controls:context-engine-toml": {
+    suite: "runtime:controls",
+    description: "Context engine project TOML control rejection smoke.",
+    run: assertContextEngineTomlControlSmoke,
+  },
+  "runtime:controls:context-engine-status": {
+    suite: "runtime:controls",
+    description: "Context engine status surface control rejection smoke.",
+    run: assertContextEngineStatusControlSmoke,
+  },
+  "runtime:controls:context-engine-valid-boundary": {
+    suite: "runtime:controls",
+    description: "Context engine valid boundary reaches runtime.",
+    run: assertContextEngineValidBoundarySmoke,
   },
   "runtime:controls:experience-scheduler": {
     suite: "runtime:controls",
-    description: "Experience scheduler control rejection smoke.",
-    run: assertExperienceSchedulerControlSmoke,
+    description: "Experience scheduler aggregate control rejection smoke.",
+    run: aggregateOnly(assertExperienceSchedulerControlSmoke),
+  },
+  "runtime:controls:experience-scheduler-env": {
+    suite: "runtime:controls",
+    description: "Experience scheduler environment control rejection smoke.",
+    run: assertExperienceSchedulerEnvControlSmoke,
+  },
+  "runtime:controls:experience-scheduler-toml": {
+    suite: "runtime:controls",
+    description: "Experience scheduler project TOML control rejection smoke.",
+    run: assertExperienceSchedulerTomlControlSmoke,
+  },
+  "runtime:controls:experience-scheduler-valid-boundary": {
+    suite: "runtime:controls",
+    description: "Experience scheduler valid boundary reaches runtime.",
+    run: assertExperienceSchedulerValidBoundarySmoke,
   },
   "runtime:controls:experience-runtime": {
     suite: "runtime:controls",
-    description: "Experience runtime control rejection smoke.",
-    run: assertExperienceRuntimeControlSmoke,
+    description: "Experience runtime aggregate control rejection smoke.",
+    run: aggregateOnly(assertExperienceRuntimeControlSmoke),
+  },
+  "runtime:controls:experience-runtime-start": {
+    suite: "runtime:controls",
+    description: "Experience runtime start boundary control rejection smoke.",
+    run: assertExperienceRuntimeStartControlSmoke,
+  },
+  "runtime:controls:experience-runtime-serve": {
+    suite: "runtime:controls",
+    description: "Experience runtime serve boundary control rejection smoke.",
+    run: assertExperienceRuntimeServeControlSmoke,
   },
   "runtime:controls:tool-surface-profile": {
     suite: "runtime:controls",
@@ -206,8 +276,38 @@ export const CASES = Object.freeze({
   },
   "runtime:controls:status-line": {
     suite: "runtime:controls",
-    description: "Status line control rejection smoke.",
-    run: assertStatusLineControlSmoke,
+    description: "Status line aggregate control rejection smoke.",
+    run: aggregateOnly(assertStatusLineControlSmoke),
+  },
+  "runtime:controls:status-line-basic": {
+    suite: "runtime:controls",
+    description: "Status line basic config control rejection smoke.",
+    run: assertStatusLineBasicControlSmoke,
+  },
+  "runtime:controls:status-line-segment-order": {
+    suite: "runtime:controls",
+    description: "Status line segment order control rejection smoke.",
+    run: assertStatusLineSegmentOrderControlSmoke,
+  },
+  "runtime:controls:status-line-thresholds": {
+    suite: "runtime:controls",
+    description: "Status line threshold control rejection smoke.",
+    run: assertStatusLineThresholdControlSmoke,
+  },
+  "runtime:controls:status-line-cache": {
+    suite: "runtime:controls",
+    description: "Status line cache and width control rejection smoke.",
+    run: assertStatusLineCacheControlSmoke,
+  },
+  "runtime:controls:status-line-segment-toggle": {
+    suite: "runtime:controls",
+    description: "Status line segment toggle control rejection smoke.",
+    run: assertStatusLineSegmentToggleControlSmoke,
+  },
+  "runtime:controls:status-line-valid-boundary": {
+    suite: "runtime:controls",
+    description: "Status line valid boundary reaches runtime.",
+    run: assertStatusLineValidBoundarySmoke,
   },
   "runtime:context:mcp-instruction": {
     suite: "runtime:context",

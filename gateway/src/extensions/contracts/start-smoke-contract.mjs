@@ -89,9 +89,16 @@ import {
 } from "./start-smoke-contract/memory-strategy-profile-control-flow.mjs";
 import {
   runStartInvalidContextEngineControlsRejectFlow,
+  runStartInvalidContextEngineEnvControlsRejectFlow,
+  runStartInvalidContextEngineTomlControlsRejectFlow,
+  runStartContextEngineValidBoundaryFlow,
+  runStatusInvalidContextEngineControlsRejectFlow,
 } from "./start-smoke-contract/context-engine-control-flows.mjs";
 import {
   runStartInvalidExperienceSchedulerControlsRejectFlow,
+  runStartExperienceSchedulerValidBoundaryFlow,
+  runStartInvalidExperienceSchedulerEnvControlsRejectFlow,
+  runStartInvalidExperienceSchedulerTomlControlsRejectFlow,
 } from "./start-smoke-contract/experience-scheduler-control-flows.mjs";
 import {
   runStartInvalidPlanArtifactControlsRejectFlow,
@@ -106,6 +113,12 @@ import {
 } from "./start-smoke-contract/mcp-instruction-control-flows.mjs";
 import {
   runStartInvalidStatusLineControlsRejectFlow,
+  runStartInvalidStatusLineBasicControlsRejectFlow,
+  runStartInvalidStatusLineCacheControlsRejectFlow,
+  runStartInvalidStatusLineSegmentOrderControlsRejectFlow,
+  runStartInvalidStatusLineSegmentToggleControlsRejectFlow,
+  runStartInvalidStatusLineThresholdControlsRejectFlow,
+  runStartStatusLineValidBoundaryFlow,
 } from "./start-smoke-contract/status-line-control-flows.mjs";
 import {
   runFailoverRejectsPython,
@@ -159,8 +172,29 @@ function runCli(argv) {
     case "start-invalid-context-engine-controls-reject-flow":
       payload = runStartInvalidContextEngineControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
+    case "start-invalid-context-engine-env-controls-reject-flow":
+      payload = runStartInvalidContextEngineEnvControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-context-engine-toml-controls-reject-flow":
+      payload = runStartInvalidContextEngineTomlControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "status-invalid-context-engine-controls-reject-flow":
+      payload = runStatusInvalidContextEngineControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-context-engine-valid-boundary-flow":
+      payload = runStartContextEngineValidBoundaryFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
     case "start-invalid-experience-scheduler-controls-reject-flow":
       payload = runStartInvalidExperienceSchedulerControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-experience-scheduler-env-controls-reject-flow":
+      payload = runStartInvalidExperienceSchedulerEnvControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-experience-scheduler-toml-controls-reject-flow":
+      payload = runStartInvalidExperienceSchedulerTomlControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-experience-scheduler-valid-boundary-flow":
+      payload = runStartExperienceSchedulerValidBoundaryFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "start-invalid-experience-controls-reject-flow":
       payload = runStartInvalidExperienceControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
@@ -255,6 +289,24 @@ function runCli(argv) {
       break;
     case "start-invalid-status-line-controls-reject-flow":
       payload = runStartInvalidStatusLineControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-status-line-basic-controls-reject-flow":
+      payload = runStartInvalidStatusLineBasicControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-status-line-segment-order-controls-reject-flow":
+      payload = runStartInvalidStatusLineSegmentOrderControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-status-line-threshold-controls-reject-flow":
+      payload = runStartInvalidStatusLineThresholdControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-status-line-cache-controls-reject-flow":
+      payload = runStartInvalidStatusLineCacheControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-status-line-segment-toggle-controls-reject-flow":
+      payload = runStartInvalidStatusLineSegmentToggleControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-status-line-valid-boundary-flow":
+      payload = runStartStatusLineValidBoundaryFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "failover-rejects-python":
       payload = runFailoverRejectsPython(buildStartSmokeFlowContext(repoRoot));

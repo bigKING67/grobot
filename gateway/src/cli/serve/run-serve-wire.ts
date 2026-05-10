@@ -11,6 +11,10 @@ import {
 import { redisGetJson, redisSetJson } from "../services/redis-client";
 import { createExperiencePoolRuntime } from "../services/experience-pool-runtime";
 import {
+  readExperiencePoolPathOverrideFromEnv,
+  readExperiencePublishModeFromEnv,
+  readExperienceRecallLimitFromEnv,
+  readExperienceTeamFromEnv,
   resolveExperiencePoolPathOverride,
   resolveExperiencePublishMode,
   resolveExperienceRecallLimit,
@@ -84,6 +88,8 @@ export async function createRunServeWire(input: CreateRunServeWireInput): Promis
   const memoryOperations = createMemoryOperations(memoryRecordsBySession);
   const experiencePoolPathOverride = resolveExperiencePoolPathOverride();
   const experienceTeam = resolveExperienceTeam();
+  const experiencePublishMode = resolveExperiencePublishMode();
+  const experienceRecallLimit = resolveExperienceRecallLimit();
   const experiencePoolPath =
     typeof experiencePoolPathOverride === "string"
       ? experiencePoolPathOverride
@@ -95,8 +101,8 @@ export async function createRunServeWire(input: CreateRunServeWireInput): Promis
   const experiencePoolRuntime = createExperiencePoolRuntime({
     poolPath: experiencePoolPath,
     legacyPoolPath: resolveLegacyExperiencePoolPath(context.homeDir),
-    publishMode: resolveExperiencePublishMode(),
-    recallLimit: resolveExperienceRecallLimit(),
+    publishMode: experiencePublishMode,
+    recallLimit: experienceRecallLimit,
     teamDefault: experienceTeam,
   });
   const applyMcpReset = createRunServeMcpReset({
@@ -124,4 +130,11 @@ export async function createRunServeWire(input: CreateRunServeWireInput): Promis
     runtimeState,
     managementRoutesContext,
   };
+}
+
+export function validateRunServeExperienceControlInputs(): void {
+  readExperienceTeamFromEnv();
+  readExperiencePoolPathOverrideFromEnv();
+  readExperiencePublishModeFromEnv();
+  readExperienceRecallLimitFromEnv();
 }

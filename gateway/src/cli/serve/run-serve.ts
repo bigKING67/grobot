@@ -5,7 +5,10 @@ import { writeJson } from "./http-utils";
 import { type MCPRuntimeState } from "./mcp-runtime";
 import { runServeServerLifecycle } from "./server-lifecycle";
 import { resolveRunServeContext } from "./run-serve-context";
-import { createRunServeWire } from "./run-serve-wire";
+import {
+  createRunServeWire,
+  validateRunServeExperienceControlInputs,
+} from "./run-serve-wire";
 import { isRouteDecisionNamespaceInputError } from "../status/route-namespace";
 import { isBindConfigInputError } from "./bind-config";
 import { isCliNumericOptionInputError } from "../status/option-parsing";
@@ -15,6 +18,7 @@ import { isExperienceControlInputError } from "../services/experience-controls";
 
 export async function runServe(options: Record<string, OptionValue>): Promise<number> {
   try {
+    validateRunServeExperienceControlInputs();
     const context = resolveRunServeContext(options);
     const { bind } = context;
     const mcpSessions = new Set<string>();

@@ -46,6 +46,14 @@ export function resolveExperiencePublishMode(
   );
 }
 
+export function readExperiencePublishModeFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): ExperiencePublishMode | undefined {
+  return env.GROBOT_EXPERIENCE_PUBLISH_MODE === undefined
+    ? undefined
+    : resolveExperiencePublishMode(env.GROBOT_EXPERIENCE_PUBLISH_MODE);
+}
+
 export function resolveExperienceRecallLimit(
   raw = process.env.GROBOT_EXPERIENCE_RECALL_LIMIT,
 ): number {
@@ -69,6 +77,14 @@ export function resolveExperienceRecallLimit(
   return parsed;
 }
 
+export function readExperienceRecallLimitFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): number | undefined {
+  return env.GROBOT_EXPERIENCE_RECALL_LIMIT === undefined
+    ? undefined
+    : resolveExperienceRecallLimit(env.GROBOT_EXPERIENCE_RECALL_LIMIT);
+}
+
 export function resolveExperienceTeam(
   options?: Record<string, OptionValue>,
   env: Record<string, string | undefined> = process.env,
@@ -82,6 +98,12 @@ export function resolveExperienceTeam(
   return readEnvOptionalNonEmptyString(env, "GROBOT_TEAM", "team") ?? "default";
 }
 
+export function readExperienceTeamFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): string | undefined {
+  return readEnvOptionalNonEmptyString(env, "GROBOT_TEAM", "team");
+}
+
 export function resolveExperiencePoolPathOverride(
   env: Record<string, string | undefined> = process.env,
 ): string | undefined {
@@ -90,4 +112,10 @@ export function resolveExperiencePoolPathOverride(
     "GROBOT_EXPERIENCE_POOL_PATH",
     "experience-pool-path",
   );
+}
+
+export function readExperiencePoolPathOverrideFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): string | undefined {
+  return resolveExperiencePoolPathOverride(env);
 }

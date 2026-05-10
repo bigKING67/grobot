@@ -17,7 +17,7 @@ function writeSchedulerProjectToml(workDir, lines) {
   );
 }
 
-export function runStartInvalidExperienceSchedulerControlsRejectFlow(context) {
+function createExperienceSchedulerControlFlow(context) {
   const {
     repoRoot,
     createTempDir,
@@ -57,6 +57,14 @@ export function runStartInvalidExperienceSchedulerControlsRejectFlow(context) {
     );
   };
 
+  return {
+    makeCase,
+    hasStartBannerMarker,
+  };
+}
+
+export function runStartInvalidExperienceSchedulerEnvControlsRejectFlow(context) {
+  const { makeCase, hasStartBannerMarker } = createExperienceSchedulerControlFlow(context);
   const invalidEnvBooleanResult = makeCase(
     "env-boolean",
     { env: { GROBOT_EXPERIENCE_SCHEDULER_ENABLED: "maybe" } },
@@ -77,39 +85,6 @@ export function runStartInvalidExperienceSchedulerControlsRejectFlow(context) {
     "env-default-delay",
     { env: { GROBOT_EXPERIENCE_SCHEDULER_DEFAULT_MAX_DELAY_HOURS: "25" } },
   );
-  const invalidTomlBooleanResult = makeCase(
-    "toml-boolean",
-    { projectTomlLines: ["enabled = maybe"] },
-  );
-  const invalidTomlIntervalResult = makeCase(
-    "toml-interval",
-    { projectTomlLines: ["interval_ms = 0"] },
-  );
-  const invalidTomlIntervalSecsResult = makeCase(
-    "toml-interval-secs",
-    { projectTomlLines: ["interval_secs = 9"] },
-  );
-  const invalidTomlPathResult = makeCase(
-    "toml-path",
-    { projectTomlLines: ['log_path = ""'] },
-  );
-  const invalidTomlDefaultDelayResult = makeCase(
-    "toml-default-delay",
-    { projectTomlLines: ["default_max_delay_hours = 0"] },
-  );
-  const validBoundaryResult = makeCase(
-    "valid-boundary",
-    {
-      env: {
-        GROBOT_EXPERIENCE_SCHEDULER_ENABLED: "off",
-        GROBOT_EXPERIENCE_SCHEDULER_INTERVAL_MS: "10000",
-        GROBOT_EXPERIENCE_SCHEDULER_TASKS_DIR: ".grobot/scheduler/tasks",
-        GROBOT_EXPERIENCE_SCHEDULER_DONE_DIR: ".grobot/scheduler/done",
-        GROBOT_EXPERIENCE_SCHEDULER_LOG_PATH: ".grobot/scheduler/scheduler.log",
-        GROBOT_EXPERIENCE_SCHEDULER_DEFAULT_MAX_DELAY_HOURS: "24",
-      },
-    },
-  );
   const combinedOutput = [
     invalidEnvBooleanResult.stdout,
     invalidEnvBooleanResult.stderr,
@@ -121,16 +96,6 @@ export function runStartInvalidExperienceSchedulerControlsRejectFlow(context) {
     invalidEnvTasksDirResult.stderr,
     invalidEnvDefaultDelayResult.stdout,
     invalidEnvDefaultDelayResult.stderr,
-    invalidTomlBooleanResult.stdout,
-    invalidTomlBooleanResult.stderr,
-    invalidTomlIntervalResult.stdout,
-    invalidTomlIntervalResult.stderr,
-    invalidTomlIntervalSecsResult.stdout,
-    invalidTomlIntervalSecsResult.stderr,
-    invalidTomlPathResult.stdout,
-    invalidTomlPathResult.stderr,
-    invalidTomlDefaultDelayResult.stdout,
-    invalidTomlDefaultDelayResult.stderr,
   ].join("\n");
   return {
     invalid_env_boolean_exit_code: invalidEnvBooleanResult.exit_code,
@@ -155,6 +120,46 @@ export function runStartInvalidExperienceSchedulerControlsRejectFlow(context) {
     invalid_env_default_delay_has_stable_error:
       invalidEnvDefaultDelayResult.stderr.includes("error: invalid_experience_scheduler_default_max_delay_hours:")
       && invalidEnvDefaultDelayResult.stderr.includes("experience-scheduler-default-max-delay-hours must be an integer between 1 and 24"),
+    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
+    has_start_banner: hasStartBannerMarker(combinedOutput),
+  };
+}
+
+export function runStartInvalidExperienceSchedulerTomlControlsRejectFlow(context) {
+  const { makeCase, hasStartBannerMarker } = createExperienceSchedulerControlFlow(context);
+  const invalidTomlBooleanResult = makeCase(
+    "toml-boolean",
+    { projectTomlLines: ["enabled = maybe"] },
+  );
+  const invalidTomlIntervalResult = makeCase(
+    "toml-interval",
+    { projectTomlLines: ["interval_ms = 0"] },
+  );
+  const invalidTomlIntervalSecsResult = makeCase(
+    "toml-interval-secs",
+    { projectTomlLines: ["interval_secs = 9"] },
+  );
+  const invalidTomlPathResult = makeCase(
+    "toml-path",
+    { projectTomlLines: ['log_path = ""'] },
+  );
+  const invalidTomlDefaultDelayResult = makeCase(
+    "toml-default-delay",
+    { projectTomlLines: ["default_max_delay_hours = 0"] },
+  );
+  const combinedOutput = [
+    invalidTomlBooleanResult.stdout,
+    invalidTomlBooleanResult.stderr,
+    invalidTomlIntervalResult.stdout,
+    invalidTomlIntervalResult.stderr,
+    invalidTomlIntervalSecsResult.stdout,
+    invalidTomlIntervalSecsResult.stderr,
+    invalidTomlPathResult.stdout,
+    invalidTomlPathResult.stderr,
+    invalidTomlDefaultDelayResult.stdout,
+    invalidTomlDefaultDelayResult.stderr,
+  ].join("\n");
+  return {
     invalid_toml_boolean_exit_code: invalidTomlBooleanResult.exit_code,
     invalid_toml_boolean_has_stable_error:
       invalidTomlBooleanResult.stderr.includes("error: invalid_experience_scheduler_enabled:")
@@ -176,11 +181,46 @@ export function runStartInvalidExperienceSchedulerControlsRejectFlow(context) {
     invalid_toml_default_delay_has_stable_error:
       invalidTomlDefaultDelayResult.stderr.includes("error: invalid_experience_scheduler_default_max_delay_hours:")
       && invalidTomlDefaultDelayResult.stderr.includes("experience-scheduler-default-max-delay-hours must be an integer between 1 and 24"),
+    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
+    has_start_banner: hasStartBannerMarker(combinedOutput),
+  };
+}
+
+export function runStartExperienceSchedulerValidBoundaryFlow(context) {
+  const { makeCase } = createExperienceSchedulerControlFlow(context);
+  const validBoundaryResult = makeCase(
+    "valid-boundary",
+    {
+      env: {
+        GROBOT_EXPERIENCE_SCHEDULER_ENABLED: "off",
+        GROBOT_EXPERIENCE_SCHEDULER_INTERVAL_MS: "10000",
+        GROBOT_EXPERIENCE_SCHEDULER_TASKS_DIR: ".grobot/scheduler/tasks",
+        GROBOT_EXPERIENCE_SCHEDULER_DONE_DIR: ".grobot/scheduler/done",
+        GROBOT_EXPERIENCE_SCHEDULER_LOG_PATH: ".grobot/scheduler/scheduler.log",
+        GROBOT_EXPERIENCE_SCHEDULER_DEFAULT_MAX_DELAY_HOURS: "24",
+      },
+    },
+  );
+  return {
     valid_boundary_exit_code: validBoundaryResult.exit_code,
     valid_boundary_reached_runtime:
       validBoundaryResult.stderr.includes("Turn failed")
       || validBoundaryResult.stderr.includes("Upstream connection failed"),
-    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
-    has_start_banner: hasStartBannerMarker(combinedOutput),
+  };
+}
+
+export function runStartInvalidExperienceSchedulerControlsRejectFlow(context) {
+  const envControls = runStartInvalidExperienceSchedulerEnvControlsRejectFlow(context);
+  const tomlControls = runStartInvalidExperienceSchedulerTomlControlsRejectFlow(context);
+  return {
+    ...envControls,
+    ...tomlControls,
+    ...runStartExperienceSchedulerValidBoundaryFlow(context),
+    hides_top_level_fatal:
+      envControls.hides_top_level_fatal
+      && tomlControls.hides_top_level_fatal,
+    has_start_banner:
+      envControls.has_start_banner
+      || tomlControls.has_start_banner,
   };
 }

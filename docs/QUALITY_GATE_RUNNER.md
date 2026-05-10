@@ -250,12 +250,27 @@ for high-value composite smoke surfaces. Current split cases include:
 - `runtime:status:surface`
 - `runtime:status:window-size`
 - `runtime:controls:context-engine`
+- `runtime:controls:context-engine-env`
+- `runtime:controls:context-engine-toml`
+- `runtime:controls:context-engine-status`
+- `runtime:controls:context-engine-valid-boundary`
 - `runtime:controls:experience-scheduler`
+- `runtime:controls:experience-scheduler-env`
+- `runtime:controls:experience-scheduler-toml`
+- `runtime:controls:experience-scheduler-valid-boundary`
 - `runtime:controls:experience-runtime`
+- `runtime:controls:experience-runtime-start`
+- `runtime:controls:experience-runtime-serve`
 - `runtime:controls:tool-surface-profile`
 - `runtime:controls:runtime-bin`
 - `runtime:controls:mcp-instruction`
 - `runtime:controls:status-line`
+- `runtime:controls:status-line-basic`
+- `runtime:controls:status-line-segment-order`
+- `runtime:controls:status-line-thresholds`
+- `runtime:controls:status-line-cache`
+- `runtime:controls:status-line-segment-toggle`
+- `runtime:controls:status-line-valid-boundary`
 - `runtime:context:mcp-instruction`
 - `runtime:context:pre-send-head-trim`
 - `runtime:context:quality-guard`
@@ -356,6 +371,13 @@ preserving `runtime:provider-status:full` as the aggregate reproduction path.
 Runtime describe fallback cases are split by fallback/invalid-runtime surface
 and management validation domain while preserving `runtime:describe:full` as
 the aggregate reproduction path.
+Runtime controls cases keep the original aggregate case ids available for
+focused reproduction, but suite selection runs finer case-level shards for the
+large domains: context-engine env/TOML/status/boundary, experience scheduler
+env/TOML/boundary, experience runtime start/serve, and status-line
+basic/order/threshold/cache/segment/boundary. The quality registry runs this
+suite with five internal workers so CI no longer serializes the former
+large control monoliths.
 The runtime context memory-decay hysteresis case uses seeded prompt-quality
 evidence and an aggressive test-local EMA alpha to prove tighten, no-early-relax,
 monotonic update, and relax-window behavior in at most three relax rounds instead
