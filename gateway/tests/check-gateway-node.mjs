@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import {
   runCoreContracts,
@@ -203,12 +203,72 @@ export const SUITES = Object.freeze({
   },
 });
 
+export const CASES = Object.freeze({
+  "gateway:context:history": {
+    suite: "gateway:context",
+    description: "Context history contracts.",
+    run: runContextHistoryContracts,
+  },
+  "gateway:context:prompt-quality": {
+    suite: "gateway:context",
+    description: "Context prompt quality contracts.",
+    run: runContextPromptQualityContracts,
+  },
+  "gateway:context:graph": {
+    suite: "gateway:context",
+    description: "Context graph contracts.",
+    run: runContextGraphContracts,
+  },
+  "runtime:controls:context-engine": {
+    suite: "runtime:controls",
+    description: "Context engine control rejection smoke.",
+    run: assertContextEngineControlSmoke,
+  },
+  "runtime:controls:experience-scheduler": {
+    suite: "runtime:controls",
+    description: "Experience scheduler control rejection smoke.",
+    run: assertExperienceSchedulerControlSmoke,
+  },
+  "runtime:controls:experience-runtime": {
+    suite: "runtime:controls",
+    description: "Experience runtime control rejection smoke.",
+    run: assertExperienceRuntimeControlSmoke,
+  },
+  "runtime:controls:tool-surface-profile": {
+    suite: "runtime:controls",
+    description: "Tool surface profile control rejection smoke.",
+    run: assertToolSurfaceProfileControlSmoke,
+  },
+  "runtime:controls:runtime-bin": {
+    suite: "runtime:controls",
+    description: "Runtime binary control rejection smoke.",
+    run: assertRuntimeBinControlSmoke,
+  },
+  "runtime:controls:mcp-instruction": {
+    suite: "runtime:controls",
+    description: "MCP instruction control rejection smoke.",
+    run: assertMcpInstructionControlSmoke,
+  },
+  "runtime:controls:status-line": {
+    suite: "runtime:controls",
+    description: "Status line control rejection smoke.",
+    run: assertStatusLineControlSmoke,
+  },
+});
+
 function suiteIds() {
   return Object.keys(SUITES);
 }
 
 function caseIdForSuite(suiteId) {
   return `${suiteId}:full`;
+}
+
+function caseIds() {
+  return [
+    ...Object.keys(CASES),
+    ...suiteIds().map(caseIdForSuite),
+  ];
 }
 
 const TIMINGS_PATH = resolve(repoRoot, ".cache/grobot-quality/gateway-timings.json");
@@ -249,13 +309,17 @@ function writeTiming(caseId, durationMs, status) {
 
 function listCases() {
   const timings = loadTimings();
-  return suiteIds().map((suiteId) => ({
-    id: caseIdForSuite(suiteId),
-    suite: suiteId,
-    description: SUITES[suiteId].description,
-    estimatedMs: Number(timings[caseIdForSuite(suiteId)]?.avgMs ?? 0),
-    isolation: "process",
-  }));
+  return caseIds().map((caseId) => {
+    const splitCase = CASES[caseId];
+    const suiteId = splitCase?.suite ?? caseId.replace(/:full$/, "");
+    return {
+      id: caseId,
+      suite: suiteId,
+      description: splitCase?.description ?? SUITES[suiteId]?.description ?? "",
+      estimatedMs: Number(timings[caseId]?.avgMs ?? 0),
+      isolation: "process",
+    };
+  });
 }
 
 function parseShard(value) {
@@ -271,52 +335,107 @@ function parseShard(value) {
   return { index, total };
 }
 
-function shardSuites(suites, shardValue) {
+function shardCases(caseIdsToShard, shardValue) {
   if (!shardValue) {
-    return suites;
+    return caseIdsToShard;
   }
   const { index, total } = parseShard(shardValue);
   const cases = listCases()
-    .filter((testCase) => suites.includes(testCase.suite))
+    .filter((testCase) => caseIdsToShard.includes(testCase.id))
     .sort((left, right) => (right.estimatedMs - left.estimatedMs) || left.id.localeCompare(right.id));
-  const buckets = Array.from({ length: total }, () => ({ totalMs: 0, suites: [] }));
+  const buckets = Array.from({ length: total }, () => ({ caseIds: [], totalMs: 0 }));
   for (const testCase of cases) {
     const bucket = buckets.sort((left, right) => left.totalMs - right.totalMs)[0];
-    bucket.suites.push(testCase.suite);
+    bucket.caseIds.push(testCase.id);
     bucket.totalMs += Math.max(1, testCase.estimatedMs || 1);
   }
-  return buckets[index - 1]?.suites ?? [];
+  return buckets[index - 1]?.caseIds ?? [];
 }
 
 function suiteIdForCase(caseId) {
-  const found = listCases().find((entry) => entry.id === caseId);
-  return found?.suite ?? "";
+  return CASES[caseId]?.suite ?? (caseId.endsWith(":full") ? caseId.replace(/:full$/, "") : "");
 }
 
-async function runSuitesInWorkers(suiteIdsToRun, workers) {
-  if (workers <= 1 || suiteIdsToRun.length <= 1) {
+function expandSuitesToCases(suiteIdsToExpand) {
+  return suiteIdsToExpand.flatMap((suiteId) => {
+    const splitCaseIds = Object.entries(CASES)
+      .filter(([, testCase]) => testCase.suite === suiteId)
+      .map(([caseId]) => caseId);
+    return splitCaseIds.length > 0 ? splitCaseIds : [caseIdForSuite(suiteId)];
+  });
+}
+
+function readRunPlan(planPath) {
+  const resolvedPath = resolve(repoRoot, planPath);
+  const payload = JSON.parse(readFileSync(resolvedPath, "utf8"));
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error(`run plan must be a JSON object: ${resolvedPath}`);
+  }
+  if (payload.schema !== 1) {
+    throw new Error(`unsupported run plan schema: ${String(payload.schema)}`);
+  }
+  if (!Array.isArray(payload.cases) || payload.cases.some((caseId) => typeof caseId !== "string" || !caseId)) {
+    throw new Error("run plan must contain a cases string array");
+  }
+  return [...new Set(payload.cases)];
+}
+
+function writeRunPlan(planPath, caseIdsToWrite, metadata = {}) {
+  const resolvedPath = resolve(repoRoot, planPath);
+  mkdirSync(dirname(resolvedPath), { recursive: true });
+  writeFileSync(
+    resolvedPath,
+    `${JSON.stringify({
+      schema: 1,
+      generatedAt: new Date().toISOString(),
+      cases: caseIdsToWrite,
+      ...metadata,
+    }, null, 2)}\n`,
+    "utf8",
+  );
+  return resolvedPath;
+}
+
+function resolveSelectedCases(cli) {
+  if (cli.run_plan) {
+    return readRunPlan(cli.run_plan);
+  }
+  if (cli.case_ids.length > 0) {
+    return [...new Set(cli.case_ids)];
+  }
+  if (cli.suites.length > 0) {
+    return expandSuitesToCases(cli.suites);
+  }
+  if (cli.mode === "runtime-smoke-only") {
+    return expandSuitesToCases(suiteIds().filter((id) => id.startsWith("runtime:")));
+  }
+  return expandSuitesToCases(suiteIds());
+}
+
+async function runCasesInWorkers(caseIdsToRun, workers) {
+  if (workers <= 1 || caseIdsToRun.length <= 1) {
     return false;
   }
-  const buckets = Array.from({ length: Math.min(workers, suiteIdsToRun.length) }, (_, index) => ({
+  const buckets = Array.from({ length: Math.min(workers, caseIdsToRun.length) }, (_, index) => ({
+    caseIds: [],
     index,
-    suites: [],
     totalMs: 0,
   }));
-  const casesBySuite = new Map(listCases().map((testCase) => [testCase.suite, testCase]));
-  const ordered = [...suiteIdsToRun].sort((left, right) => {
-    const leftMs = casesBySuite.get(left)?.estimatedMs ?? 1;
-    const rightMs = casesBySuite.get(right)?.estimatedMs ?? 1;
+  const casesById = new Map(listCases().map((testCase) => [testCase.id, testCase]));
+  const ordered = [...caseIdsToRun].sort((left, right) => {
+    const leftMs = casesById.get(left)?.estimatedMs ?? 1;
+    const rightMs = casesById.get(right)?.estimatedMs ?? 1;
     return rightMs - leftMs || left.localeCompare(right);
   });
-  for (const suiteId of ordered) {
+  for (const caseId of ordered) {
     const bucket = buckets.sort((left, right) => left.totalMs - right.totalMs)[0];
-    bucket.suites.push(suiteId);
-    bucket.totalMs += Math.max(1, casesBySuite.get(suiteId)?.estimatedMs ?? 1);
+    bucket.caseIds.push(caseId);
+    bucket.totalMs += Math.max(1, casesById.get(caseId)?.estimatedMs ?? 1);
   }
   const results = await Promise.all(buckets
-    .filter((bucket) => bucket.suites.length > 0)
+    .filter((bucket) => bucket.caseIds.length > 0)
     .map((bucket) => runNodeScriptAsync("gateway/tests/check-gateway-node.mjs", [
-      ...bucket.suites.flatMap((suiteId) => ["--suite", suiteId]),
+      ...bucket.caseIds.flatMap((caseId) => ["--case", caseId]),
       "--json",
     ])));
   const failures = results.filter((result) => result.code !== 0);
@@ -460,15 +579,8 @@ async function main() {
     }
     return;
   }
-  if (cli.case_id) {
-    const suiteId = suiteIdForCase(cli.case_id);
-    if (!suiteId) {
-      throw new Error(`unknown case: ${cli.case_id}`);
-    }
-    cli.suites = [suiteId];
-  }
   const reporter = createRunReporter({
-    mode: cli.case_id ? "case" : cli.suites.length > 0 ? "suite" : cli.mode,
+    mode: cli.case_ids.length > 0 ? "case" : cli.run_plan ? "run-plan" : cli.suites.length > 0 ? "suite" : cli.mode,
     emitText: !cli.json,
     failOnRetry: cli.fail_on_retry,
   });
@@ -481,62 +593,53 @@ async function main() {
   setRunReporter(reporter);
   try {
     ensureContractsExist();
-    async function runSuite(suiteId) {
+    async function runCase(caseId) {
+      const splitCase = CASES[caseId];
+      const suiteId = suiteIdForCase(caseId);
       const suite = SUITES[suiteId];
-      if (!suite) {
-        throw new Error(`unknown suite: ${suiteId}`);
+      if (!splitCase && (!suite || caseId !== caseIdForSuite(suiteId))) {
+        throw new Error(`unknown case: ${caseId}`);
       }
       const startedAt = performance.now();
       try {
-        await suite.run();
-        writeTiming(caseIdForSuite(suiteId), Math.round(performance.now() - startedAt), "ok");
+        if (splitCase) {
+          await splitCase.run();
+        } else {
+          await suite.run();
+        }
+        writeTiming(caseId, Math.round(performance.now() - startedAt), "ok");
       } catch (error) {
-        writeTiming(caseIdForSuite(suiteId), Math.round(performance.now() - startedAt), "failed");
+        writeTiming(caseId, Math.round(performance.now() - startedAt), "failed");
         throw error;
       }
     }
 
-    if (cli.suites.length > 0) {
-      const selectedSuites = shardSuites(cli.suites, cli.shard);
-      const workerRan = await runSuitesInWorkers(selectedSuites, cli.workers);
-      if (!workerRan) {
-        for (const suiteId of selectedSuites) {
-          await runSuite(suiteId);
-        }
-      }
-      enforceRetryGate(cli, reporter);
-      reporter.finish("ok");
-      if (cli.json || cli.json_output) {
-        emitJsonReport(cli, reporter, baselineReportPath, baselineReportPayload);
-      }
-      if (!cli.json) {
-        process.stdout.write(`gateway suite checks completed: ${selectedSuites.join(", ")}.\n`);
+    const rawSelectedCases = resolveSelectedCases(cli);
+    const knownCaseIds = new Set(listCases().map((testCase) => testCase.id));
+    const unknownCases = rawSelectedCases.filter((caseId) => !knownCaseIds.has(caseId));
+    if (unknownCases.length > 0) {
+      throw new Error(`unknown case: ${unknownCases.join(", ")}`);
+    }
+    const selectedCases = shardCases(rawSelectedCases, cli.shard);
+    if (cli.write_run_plan) {
+      const outputPath = writeRunPlan(cli.write_run_plan, selectedCases, {
+        selection: {
+          mode: cli.mode,
+          suites: cli.suites,
+          source: cli.run_plan ? "run-plan" : cli.case_ids.length > 0 ? "case" : cli.suites.length > 0 ? "suite" : cli.mode,
+        },
+      });
+      if (cli.json) {
+        console.log(JSON.stringify({ path: outputPath, schema: 1, cases: selectedCases }, null, 2));
+      } else {
+        process.stdout.write(`gateway run plan written: ${outputPath}\n`);
       }
       return;
     }
-    if (cli.mode === "runtime-smoke-only") {
-      const selectedSuites = shardSuites(suiteIds().filter((id) => id.startsWith("runtime:")), cli.shard);
-      const workerRan = await runSuitesInWorkers(selectedSuites, cli.workers);
-      if (!workerRan) {
-        for (const suiteId of selectedSuites) {
-          await runSuite(suiteId);
-        }
-      }
-      enforceRetryGate(cli, reporter);
-      reporter.finish("ok");
-      if (cli.json || cli.json_output) {
-        emitJsonReport(cli, reporter, baselineReportPath, baselineReportPayload);
-      }
-      if (!cli.json) {
-        process.stdout.write("gateway runtime smoke checks completed.\n");
-      }
-      return;
-    }
-    const selectedSuites = shardSuites(suiteIds(), cli.shard);
-    const workerRan = await runSuitesInWorkers(selectedSuites, cli.workers);
+    const workerRan = await runCasesInWorkers(selectedCases, cli.workers);
     if (!workerRan) {
-      for (const suiteId of selectedSuites) {
-        await runSuite(suiteId);
+      for (const caseId of selectedCases) {
+        await runCase(caseId);
       }
     }
     enforceRetryGate(cli, reporter);
@@ -545,8 +648,21 @@ async function main() {
       emitJsonReport(cli, reporter, baselineReportPath, baselineReportPayload);
     }
     if (!cli.json) {
+      if (cli.suites.length > 0) {
+        process.stdout.write(`gateway suite checks completed: ${cli.suites.join(", ")}.\n`);
+        return;
+      }
+      if (cli.case_ids.length > 0 || cli.run_plan) {
+        process.stdout.write(`gateway case checks completed: ${selectedCases.join(", ")}.\n`);
+        return;
+      }
+      if (cli.mode === "runtime-smoke-only") {
+        process.stdout.write("gateway runtime smoke checks completed.\n");
+        return;
+      }
       process.stdout.write("gateway node checks completed.\n");
     }
+    return;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     reporter.finish("failed", message);

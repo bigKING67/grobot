@@ -441,15 +441,18 @@ export function parseCliOptions(argv) {
   const options = {
     baseline_json: "",
     case_id: "",
+    case_ids: [],
     fail_on_retry: false,
     json: false,
     json_output: "",
     list_cases: false,
     list_suites: false,
     mode: "full",
+    run_plan: "",
     shard: "",
     suites: [],
     workers: 1,
+    write_run_plan: "",
   };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index] ?? "";
@@ -480,6 +483,25 @@ export function parseCliOptions(argv) {
         throw new Error("missing value for --case");
       }
       options.case_id = value;
+      options.case_ids.push(value);
+      index += 1;
+      continue;
+    }
+    if (token === "--run-plan") {
+      const value = argv[index + 1] ?? "";
+      if (!value || value.startsWith("--")) {
+        throw new Error("missing value for --run-plan");
+      }
+      options.run_plan = value;
+      index += 1;
+      continue;
+    }
+    if (token === "--write-run-plan") {
+      const value = argv[index + 1] ?? "";
+      if (!value || value.startsWith("--")) {
+        throw new Error("missing value for --write-run-plan");
+      }
+      options.write_run_plan = value;
       index += 1;
       continue;
     }

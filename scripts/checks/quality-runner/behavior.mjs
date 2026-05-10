@@ -2,12 +2,12 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildQualityGateRegistry, QUALITY_ENTRYPOINT_SCRIPTS, validateQualityGateRegistry } from "../../lib/quality-gate-registry.mjs";
 import { explainAffectedSelection, listChangedFiles, selectAffectedGates } from "../../lib/quality-affected.mjs";
-import { explainGateCache } from "../../lib/quality-cache.mjs";
+import { createQualityCacheContext, explainGateCache } from "../../lib/quality-cache.mjs";
 import { planQualityGates, runQualityGates } from "../../lib/quality-scheduler.mjs";
 
 function packageJson() {
@@ -45,6 +45,11 @@ assert.equal(
   runtimeExplanation.surfaces.some((surface) => surface.surfaces.includes("runtime.extensions")),
   true,
   "affected explanation must include surface graph hits",
+);
+assert.equal(
+  runtimeExplanation.surfaces.some((surface) => surface.impactedSurfaces.includes("runtime.tool-contracts")),
+  true,
+  "affected explanation must include impacted surface closure",
 );
 
 const tui = selectAffectedGates(registry, ["gateway/src/cli/tui/components/prompt-input/controller.ts"]).names;
@@ -229,6 +234,42 @@ try {
   });
   assert.equal(cacheExplanation.status, "miss", "uncached gate explanation must report miss");
   assert.equal(cacheExplanation.cacheable, true, "cache explanation must expose cacheability");
+  assert.equal(
+    existsSync(join(tmp, ".cache/grobot-quality/manifests/file-digests.json")),
+    true,
+    "cache explanation must persist a file digest manifest",
+  );
+  const manifest = JSON.parse(readFileSync(join(tmp, ".cache/grobot-quality/manifests/file-digests.json"), "utf8"));
+  assert.equal(typeof manifest["pass-a.mjs"]?.digest, "string", "digest manifest must track hashed input files");
+
+  const reusedContext = createQualityCacheContext(tmp);
+  const firstReuse = explainGateCache(tmp, {
+    cacheable: true,
+    command: "node pass-a.mjs",
+    cost: "cheap",
+    deps: [],
+    env: [],
+    group: "test",
+    inputs: ["pass-a.mjs"],
+    name: "cache-test",
+    parallel: true,
+    resourceClass: "node",
+    resourceCost: 1,
+  }, reusedContext);
+  const secondReuse = explainGateCache(tmp, {
+    cacheable: true,
+    command: "node pass-a.mjs",
+    cost: "cheap",
+    deps: [],
+    env: [],
+    group: "test",
+    inputs: ["pass-a.mjs"],
+    name: "cache-test",
+    parallel: true,
+    resourceClass: "node",
+    resourceCost: 1,
+  }, reusedContext);
+  assert.equal(firstReuse.cacheKey, secondReuse.cacheKey, "digest manifest reuse must preserve cache key stability");
 
   const failRun = await runQualityGates([
     {

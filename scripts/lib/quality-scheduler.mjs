@@ -6,6 +6,7 @@ import { performance } from "node:perf_hooks";
 import {
   computeGateCacheKey,
   createQualityCacheContext,
+  flushQualityCacheContext,
   readGateCache,
   summarizeQualityEvents,
   writeGateCache,
@@ -312,6 +313,7 @@ export async function runQualityGates(gates, options = {}) {
     function finishIfDone() {
       const totalDone = completed.size + failed.size;
       if ((stopped || totalDone === gates.length) && running.size === 0) {
+        flushQualityCacheContext(cacheContext);
         resolve({
           durationMs: Math.round(performance.now() - startedAt),
           results,

@@ -7,6 +7,8 @@ const CACHE_SCHEMA_VERSION = 2;
 const CACHE_ROOT = ".cache/grobot-quality";
 const ACTION_CACHE_DIR = "ac";
 const CAS_DIR = "cas";
+const MANIFEST_DIR = "manifests";
+const FILE_DIGEST_MANIFEST = "file-digests.json";
 const RESULT_CACHE_DIR = "results";
 const EVENTS_FILE = "events.jsonl";
 
@@ -116,13 +118,68 @@ function expandInputPatterns(repoRoot, patterns, context) {
   return expanded;
 }
 
+function readJsonFile(filePath) {
+  try {
+    return JSON.parse(readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function digestManifestPath(repoRoot) {
+  return path.join(getQualityCacheRoot(repoRoot), MANIFEST_DIR, FILE_DIGEST_MANIFEST);
+}
+
+function loadDigestManifest(repoRoot, context) {
+  if (context?.digestManifest) {
+    return context.digestManifest;
+  }
+  const manifest = readJsonFile(digestManifestPath(repoRoot)) ?? {};
+  if (context) {
+    context.digestManifest = manifest;
+  }
+  return manifest;
+}
+
+function writeDigestManifest(repoRoot, manifest, context) {
+  mkdirSync(path.join(getQualityCacheRoot(repoRoot), MANIFEST_DIR), { recursive: true });
+  writeFileSync(digestManifestPath(repoRoot), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  if (context) {
+    context.digestManifestDirty = false;
+  }
+}
+
 function fileDigest(repoRoot, file, context) {
   if (context?.fileDigests.has(file)) {
     return context.fileDigests.get(file);
   }
   let digest = "<missing>";
+  const absolutePath = path.join(repoRoot, file);
   try {
-    digest = `sha256:${hashString(readFileSync(path.join(repoRoot, file)))}`;
+    const stat = statSync(absolutePath);
+    const manifest = loadDigestManifest(repoRoot, context);
+    const cached = manifest[file];
+    if (
+      cached
+      && cached.mtimeMs === stat.mtimeMs
+      && cached.size === stat.size
+      && typeof cached.digest === "string"
+    ) {
+      digest = cached.digest;
+    } else {
+      digest = `sha256:${hashString(readFileSync(absolutePath))}`;
+      manifest[file] = {
+        digest,
+        mtimeMs: stat.mtimeMs,
+        size: stat.size,
+        updatedAt: new Date().toISOString(),
+      };
+      if (context) {
+        context.digestManifestDirty = true;
+      } else {
+        writeDigestManifest(repoRoot, manifest, null);
+      }
+    }
   } catch {
     // Missing files are part of the key so deleted inputs invalidate cache.
   }
@@ -143,11 +200,20 @@ function toolVersion(repoRoot, command, args, context) {
 export function createQualityCacheContext(repoRoot) {
   return {
     repoRoot,
+    digestManifest: null,
+    digestManifestDirty: false,
     expandedInputs: new Map(),
     fileDigests: new Map(),
     toolVersions: new Map(),
     trackedFiles: null,
   };
+}
+
+export function flushQualityCacheContext(context) {
+  if (!context?.digestManifestDirty || !context.repoRoot || !context.digestManifest) {
+    return;
+  }
+  writeDigestManifest(context.repoRoot, context.digestManifest, context);
 }
 
 export function getQualityCacheRoot(repoRoot) {
@@ -158,6 +224,7 @@ export function ensureQualityCacheDirs(repoRoot) {
   const root = getQualityCacheRoot(repoRoot);
   mkdirSync(path.join(root, ACTION_CACHE_DIR), { recursive: true });
   mkdirSync(path.join(root, CAS_DIR), { recursive: true });
+  mkdirSync(path.join(root, MANIFEST_DIR), { recursive: true });
   mkdirSync(path.join(root, RESULT_CACHE_DIR), { recursive: true });
   return root;
 }
@@ -184,6 +251,7 @@ export function computeGateCacheKey(repoRoot, gate, context = null) {
     hash.update(fileDigest(repoRoot, file, context));
     hash.update("\n");
   }
+  flushQualityCacheContext(context);
   return {
     cacheKey: hash.digest("hex"),
     files,
@@ -218,14 +286,6 @@ function writeCasText(repoRoot, value) {
     digest,
     sizeBytes: Buffer.byteLength(text),
   };
-}
-
-function readJsonFile(filePath) {
-  try {
-    return JSON.parse(readFileSync(filePath, "utf8"));
-  } catch {
-    return null;
-  }
 }
 
 function readMostRecentActionCacheEntry(repoRoot, gateName) {
@@ -533,6 +593,7 @@ export function gcQualityCache(repoRoot, options = {}) {
   }
   walk(path.join(root, ACTION_CACHE_DIR));
   walk(path.join(root, CAS_DIR));
+  walk(path.join(root, MANIFEST_DIR));
   walk(path.join(root, RESULT_CACHE_DIR));
   return { deleted, maxAgeDays, root };
 }

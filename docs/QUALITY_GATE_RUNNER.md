@@ -97,6 +97,15 @@ surfaces, surfaces expand to gates, and selected gates then include hard DAG
 dependencies from the registry. The current graph is intentionally conservative
 and keeps unknown files on a safe fallback path.
 
+The v3 selector also supports explicit impact closure. A direct surface can
+declare downstream `impacts`, and affected explanation reports both the direct
+surface and the impacted surfaces. This keeps the daily path narrow without
+silently missing cross-layer contracts. Current examples:
+
+- `runtime.extensions` impacts `runtime.tool-contracts`.
+- `gateway.memory` impacts `gateway.context`.
+- `gateway.plan` impacts `runtime.plan`.
+
 High-value surfaces:
 
 - `runtime/src/extensions/**`: Rust check/test, runtime-tool schema/report/parity,
@@ -174,6 +183,11 @@ Rules:
   The legacy `results/` pass cache is still written for backward compatibility.
 - A single runner process reuses git file lists, glob expansion, file digests,
   and tool version probes to reduce repeated scanning.
+- v3 persists a best-effort file digest manifest under
+  `manifests/file-digests.json`. Each entry is keyed by repo-relative path and
+  guarded by `mtimeMs` plus file size. Unchanged files reuse their digest instead
+  of being re-read for every action hash, while changed files are immediately
+  rehashed and the manifest is refreshed.
 - Runtime smoke, gateway smoke, release gates, and `cargo test` are not cached
   by default because they are stateful or expensive enough to deserve fresh
   execution when selected.
@@ -195,17 +209,48 @@ node gateway/tests/check-gateway-node.mjs --suite runtime:status --shard 1/1 --j
 node gateway/tests/check-gateway-node.mjs --runtime-smoke-only --workers 4 --json
 ```
 
-Case ids currently map one-to-one with suite ids (`<suite>:full`). This keeps
-the external contract stable while allowing future suite internals to split into
-smaller timed cases without changing the quality-runner registry shape. Shards
-are deterministic and 1-based (`N/TOTAL`). When timing data exists, the shard
+Case ids include stable suite fallbacks (`<suite>:full`) and real split cases
+for high-value composite smoke surfaces. Current split cases include:
+
+- `gateway:context:history`
+- `gateway:context:prompt-quality`
+- `gateway:context:graph`
+- `runtime:controls:context-engine`
+- `runtime:controls:experience-scheduler`
+- `runtime:controls:experience-runtime`
+- `runtime:controls:tool-surface-profile`
+- `runtime:controls:runtime-bin`
+- `runtime:controls:mcp-instruction`
+- `runtime:controls:status-line`
+
+Suite selection expands to split cases when a suite has them; direct
+`<suite>:full` cases remain available for aggregate reproduction. Shards are
+deterministic and 1-based (`N/TOTAL`). When timing data exists, the shard
 partitioner uses greedy longest-processing-time bin packing from
 `.cache/grobot-quality/gateway-timings.json`; without timing data it falls back
-to stable deterministic distribution. Each suite/case run updates the timing
-file so later shards become better balanced. `--workers N` runs selected suites
-through isolated child-process workers using the same timing-aware bin packing,
-so large gateway smoke profiles can parallelize internally without forcing the
-outer quality-runner to know every suite implementation detail.
+to stable deterministic distribution. Each case run updates the timing file so
+later shards become better balanced.
+
+Gateway smoke also supports replayable run plans:
+
+```bash
+node gateway/tests/check-gateway-node.mjs --suite gateway:context --write-run-plan /tmp/gateway-context-plan.json
+node gateway/tests/check-gateway-node.mjs --run-plan /tmp/gateway-context-plan.json --workers 3 --json
+```
+
+Plan files use schema `1`:
+
+```json
+{
+  "schema": 1,
+  "cases": ["gateway:context:history", "gateway:context:prompt-quality"]
+}
+```
+
+`--workers N` runs selected cases through isolated child-process workers using
+the same timing-aware bin packing, so large gateway smoke profiles can
+parallelize internally without forcing the outer quality-runner to know every
+suite implementation detail.
 
 ### 6. Events and stats
 

@@ -125,6 +125,7 @@ const SURFACE_GRAPH = Object.freeze([
     id: "runtime.extensions",
     patterns: [/^runtime\/src\/extensions\//],
     gates: RUNTIME_EXTENSION_GATES,
+    impacts: ["runtime.tool-contracts"],
     reason: "runtime extension protocol/handler change",
   },
   {
@@ -143,6 +144,7 @@ const SURFACE_GRAPH = Object.freeze([
     id: "gateway.plan",
     patterns: [/^gateway\/src\/cli\/start\//, /plan/],
     gates: GATEWAY_PLAN_GATES,
+    impacts: ["runtime.plan"],
     reason: "start/plan flow change",
   },
   {
@@ -155,6 +157,7 @@ const SURFACE_GRAPH = Object.freeze([
     id: "gateway.memory",
     patterns: [/memory/, /experience/],
     gates: GATEWAY_MEMORY_GATES,
+    impacts: ["gateway.context"],
     reason: "memory/experience flow change",
   },
   {
@@ -166,6 +169,12 @@ const SURFACE_GRAPH = Object.freeze([
       "check:gateway:runtime-tools:quality-parity",
     ],
     reason: "runtime tool contract surface",
+  },
+  {
+    id: "runtime.plan",
+    patterns: [/^gateway\/tests\/check-gateway-node\/runtime-smoke\/interactive-plan-flow/, /^gateway\/tests\/check-gateway-node\/runtime-smoke\/plan-events-policy/],
+    gates: ["check:gateway:suite:runtime:plan"],
+    reason: "runtime plan flow impact",
   },
   {
     id: "gateway.semantic-benchmark",
@@ -288,6 +297,28 @@ function gateNamesByCommandTarget(registry, file) {
 
 function surfaceMatchesFile(surface, file) {
   return surface.patterns.some((pattern) => pattern.test(file));
+}
+
+function surfacesById() {
+  return new Map(SURFACE_GRAPH.map((surface) => [surface.id, surface]));
+}
+
+function impactedSurfacesFor(matches) {
+  const byId = surfacesById();
+  const impacted = new Map();
+  const queue = matches.flatMap((surface) => surface.impacts ?? []);
+  for (const id of queue) {
+    if (impacted.has(id) || matches.some((surface) => surface.id === id)) {
+      continue;
+    }
+    const surface = byId.get(id);
+    if (!surface) {
+      continue;
+    }
+    impacted.set(id, surface);
+    queue.push(...(surface.impacts ?? []));
+  }
+  return [...impacted.values()];
 }
 
 function matchingSurfaces(file) {
@@ -473,8 +504,12 @@ export function selectAffectedGates(registry, changedFiles) {
 
     const surfaces = matchingSurfaces(file);
     if (surfaces.length > 0) {
+      const impactedSurfaces = impactedSurfacesFor(surfaces);
       for (const surface of surfaces) {
         addNames(selected, surface.gates, `${file}: surface ${surface.id} -> ${surface.reason}`);
+      }
+      for (const surface of impactedSurfaces) {
+        addNames(selected, surface.gates, `${file}: impacted surface ${surface.id} -> ${surface.reason}`);
       }
       continue;
     }
@@ -495,12 +530,16 @@ export function explainAffectedSelection(registry, changedFiles) {
   const entries = dedupeEntries(changedFiles.map(parseChangedFileEntry));
   return {
     changedFiles,
-    surfaces: entries.map(({ file, status }) => ({
-      file,
-      status,
-      ignored: isIgnoredAffectedFile(file),
-      surfaces: matchingSurfaces(file).map((surface) => surface.id),
-    })),
+    surfaces: entries.map(({ file, status }) => {
+      const surfaces = matchingSurfaces(file);
+      return {
+        file,
+        status,
+        ignored: isIgnoredAffectedFile(file),
+        surfaces: surfaces.map((surface) => surface.id),
+        impactedSurfaces: impactedSurfacesFor(surfaces).map((surface) => surface.id),
+      };
+    }),
     gates: selection.names.map((name) => ({
       name,
       reasons: selection.reasons[name] ?? [],

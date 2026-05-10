@@ -2,6 +2,9 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { GATEWAY_SUITE_IDS } from "../../lib/quality-gate-registry.mjs";
 
 const result = spawnSync("node", ["gateway/tests/check-gateway-node.mjs", "--list-suites", "--json"], {
@@ -35,7 +38,12 @@ assert.equal(casesResult.status, 0, `--list-cases must pass\nstdout:\n${casesRes
 
 const casesPayload = JSON.parse(casesResult.stdout);
 assert.equal(Array.isArray(casesPayload.cases), true, "case list must expose cases array");
-const caseSuites = casesPayload.cases.map((testCase) => testCase.suite).sort();
+assert.equal(
+  casesPayload.cases.length > payload.suites.length,
+  true,
+  "case registry must expose split smoke cases beyond suite-level full fallbacks",
+);
+const caseSuites = [...new Set(casesPayload.cases.map((testCase) => testCase.suite))].sort();
 assert.deepEqual(caseSuites, expected, "gateway case registry must cover every suite");
 for (const testCase of casesPayload.cases) {
   assert.equal(typeof testCase.id, "string", "case id must be string");
@@ -43,7 +51,19 @@ for (const testCase of casesPayload.cases) {
   assert.equal(typeof testCase.description, "string", `case ${testCase.id} description must be string`);
   assert.notEqual(testCase.description.trim(), "", `case ${testCase.id} description must not be empty`);
   assert.equal(typeof testCase.estimatedMs, "number", `case ${testCase.id} estimatedMs must be number`);
+  assert.equal(typeof testCase.isolation, "string", `case ${testCase.id} isolation must be string`);
 }
+
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "gateway:context:history"),
+  true,
+  "gateway context must expose case-level history contracts",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:status-line"),
+  true,
+  "runtime controls must expose case-level status-line contracts",
+);
 
 const shardResult = spawnSync("node", ["gateway/tests/check-gateway-node.mjs", "--suite", "workflow", "--shard", "1/1", "--json"], {
   encoding: "utf8",
@@ -58,5 +78,26 @@ const workerResult = spawnSync("node", ["gateway/tests/check-gateway-node.mjs", 
   stdio: ["ignore", "pipe", "pipe"],
 });
 assert.equal(workerResult.status, 0, `multi-suite worker run must pass\nstdout:\n${workerResult.stdout}\nstderr:\n${workerResult.stderr}`);
+
+const caseResult = spawnSync("node", ["gateway/tests/check-gateway-node.mjs", "--case", "workflow:full", "--json"], {
+  encoding: "utf8",
+  maxBuffer: 1024 * 1024,
+  stdio: ["ignore", "pipe", "pipe"],
+});
+assert.equal(caseResult.status, 0, `single-case run must pass\nstdout:\n${caseResult.stdout}\nstderr:\n${caseResult.stderr}`);
+
+const tmp = mkdtempSync(join(tmpdir(), "grobot-gateway-run-plan-"));
+try {
+  const planPath = join(tmp, "plan.json");
+  writeFileSync(planPath, `${JSON.stringify({ schema: 1, cases: ["workflow:full"] }, null, 2)}\n`);
+  const runPlanResult = spawnSync("node", ["gateway/tests/check-gateway-node.mjs", "--run-plan", planPath, "--workers", "2", "--json"], {
+    encoding: "utf8",
+    maxBuffer: 1024 * 1024,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  assert.equal(runPlanResult.status, 0, `run-plan worker run must pass\nstdout:\n${runPlanResult.stdout}\nstderr:\n${runPlanResult.stderr}`);
+} finally {
+  rmSync(tmp, { recursive: true, force: true });
+}
 
 process.stdout.write("gateway suite registry checks passed.\n");
