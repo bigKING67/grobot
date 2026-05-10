@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
+import { ensureFreshRuntimeBinary } from "./runtime-binary.mjs";
 import { assertContextEngineStatusSurface } from "./status-surface/context-engine-assertions.mjs";
 import { assertContextGraphStatusSurface } from "./status-surface/context-graph-assertions.mjs";
 import { assertRuntimeToolStatusSurface } from "./status-surface/runtime-tool-assertions.mjs";
@@ -16,13 +17,10 @@ import {
   sleepMs,
 } from "../harness.mjs";
 
-export async function runRuntimeStatusSurfaceSmoke() {
-  const runtimeBuildResult = runCommand("cargo", ["build", "--manifest-path", "runtime/Cargo.toml"], {
-    timeoutMs: 240_000,
-  });
-  assertSuccess("runtime build for ts-rust smoke", runtimeBuildResult);
-  logStep("runtime build for ts-rust smoke");
-
+export async function runRuntimeInterruptContractSmoke(options = {}) {
+  if (options.ensureBinary !== false) {
+    await ensureFreshRuntimeBinary();
+  }
   const runtimeInterruptContractResult = runTsx("gateway/src/extensions/contracts/runtime-interrupt-contract.ts");
   assertSuccess("runtime-interrupt-contract", runtimeInterruptContractResult);
   const runtimeInterruptContractPayload = parseJsonOutput(
@@ -39,7 +37,9 @@ export async function runRuntimeStatusSurfaceSmoke() {
     duration_ms: runtimeInterruptContractPayload.duration_ms,
     call_count: runtimeInterruptContractPayload.call_count,
   });
+}
 
+export function runRuntimeStdioEventStreamContractSmoke() {
   const runtimeStdioEventStreamContractResult = runTsx("gateway/src/extensions/contracts/runtime-stdio-event-stream-contract.ts");
   assertSuccess("runtime-stdio-event-stream-contract", runtimeStdioEventStreamContractResult);
   const runtimeStdioEventStreamContractPayload = parseJsonOutput(
@@ -53,7 +53,12 @@ export async function runRuntimeStatusSurfaceSmoke() {
   assert.equal(runtimeStdioEventStreamContractPayload.stderr_event_payload_is_normalized, true);
   assert.equal(runtimeStdioEventStreamContractPayload.stderr_event_lines_are_stripped_from_nonzero_error, true);
   logStep("runtime-stdio-event-stream-contract");
+}
 
+export async function runRuntimeStatusContractSmoke(options = {}) {
+  if (options.ensureBinary !== false) {
+    await ensureFreshRuntimeBinary();
+  }
   let statusPayload = null;
   let statusAttempts = 0;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -93,6 +98,19 @@ export async function runRuntimeStatusSurfaceSmoke() {
   assertContextGraphStatusSurface(statusPayload);
   assertContextEngineStatusSurface(statusPayload);
   logStep("start-smoke-contract status-ts-rust", { attempts: statusAttempts });
+}
 
+export async function runRuntimeStatusWindowSizeSmoke(options = {}) {
+  if (options.ensureBinary !== false) {
+    await ensureFreshRuntimeBinary();
+  }
   assertStatusWindowSizeSurface();
+}
+
+export async function runRuntimeStatusSurfaceSmoke() {
+  await ensureFreshRuntimeBinary();
+  await runRuntimeInterruptContractSmoke({ ensureBinary: false });
+  runRuntimeStdioEventStreamContractSmoke();
+  await runRuntimeStatusContractSmoke({ ensureBinary: false });
+  await runRuntimeStatusWindowSizeSmoke({ ensureBinary: false });
 }

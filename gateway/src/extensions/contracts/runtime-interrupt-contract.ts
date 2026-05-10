@@ -8,10 +8,6 @@ interface MockServerHandle {
   close(): Promise<void>;
 }
 
-function sleep(delayMs: number): Promise<void> {
-  return new Promise((resolveDelay) => setTimeout(resolveDelay, delayMs));
-}
-
 function readUtf8Body(request: {
   on(event: "data", listener: (chunk: string | Uint8Array) => void): void;
   on(event: "end", listener: () => void): void;
@@ -27,7 +23,7 @@ function readUtf8Body(request: {
   });
 }
 
-async function startDelayedMockModelServer(responseDelayMs: number): Promise<MockServerHandle> {
+async function startHangingMockModelServer(): Promise<MockServerHandle> {
   let calls = 0;
   const server = createServer(async (request, response) => {
     if (request.method !== "POST" || request.url !== "/v1/chat/completions") {
@@ -37,25 +33,8 @@ async function startDelayedMockModelServer(responseDelayMs: number): Promise<Moc
     }
     calls += 1;
     await readUtf8Body(request);
-    await sleep(responseDelayMs);
-    response.statusCode = 200;
-    response.setHeader("content-type", "application/json");
-    response.end(
-      JSON.stringify({
-        id: "mock-chatcmpl",
-        object: "chat.completion",
-        choices: [
-          {
-            index: 0,
-            finish_reason: "stop",
-            message: {
-              role: "assistant",
-              content: "RUNTIME_INTERRUPT_CONTRACT_OK",
-            },
-          },
-        ],
-      }),
-    );
+    // Deliberately keep the response open so the contract measures client-side
+    // interruption without paying a fixed server delay during teardown.
   });
   const port = await new Promise<number>((resolvePort, rejectPort) => {
     server.listen(0, "127.0.0.1", () => {
@@ -107,7 +86,7 @@ function buildRequest(baseUrl: string): RuntimeRequest {
 }
 
 async function main(): Promise<void> {
-  const mockModel = await startDelayedMockModelServer(8_000);
+  const mockModel = await startHangingMockModelServer();
   try {
     const runtimeClient = new StdioRustRuntimeClient({
       runtimeBinaryPath: `${process.cwd()}/runtime/target/debug/grobot-runtime`,

@@ -15,6 +15,12 @@ import {
   runPlanUserCommandContracts,
 } from "./gateway-contract-smoke/plan-command-contracts.mjs";
 import {
+  runRuntimeInterruptContractSmoke,
+  runRuntimeStatusContractSmoke,
+  runRuntimeStatusWindowSizeSmoke,
+  runRuntimeStdioEventStreamContractSmoke,
+} from "./runtime-smoke/status-surface.mjs";
+import {
   runRuntimeBareInteractiveSessionFlowSmoke,
   runRuntimeImOnlyRejectFlowSmoke,
   runRuntimeInteractiveDiagnosticsBaseFlowSmoke,
@@ -126,6 +132,26 @@ export const CASES = Object.freeze({
     suite: "gateway:plan",
     description: "Plan quality benchmark contract.",
     run: runPlanQualityBenchmarkContract,
+  },
+  "runtime:status:interrupt": {
+    suite: "runtime:status",
+    description: "Runtime interrupt contract.",
+    run: runRuntimeInterruptContractSmoke,
+  },
+  "runtime:status:stdio-event-stream": {
+    suite: "runtime:status",
+    description: "Runtime stdio event stream contract.",
+    run: runRuntimeStdioEventStreamContractSmoke,
+  },
+  "runtime:status:surface": {
+    suite: "runtime:status",
+    description: "Runtime status JSON/text surface contract.",
+    run: runRuntimeStatusContractSmoke,
+  },
+  "runtime:status:window-size": {
+    suite: "runtime:status",
+    description: "Runtime status context graph window-size contract.",
+    run: runRuntimeStatusWindowSizeSmoke,
   },
   "runtime:controls:context-engine": {
     suite: "runtime:controls",

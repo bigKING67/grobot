@@ -70,6 +70,16 @@ assert.equal(
   "gateway plan must expose case-level bridge error code contracts",
 );
 assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:status:interrupt"),
+  true,
+  "runtime status must expose case-level interrupt contract",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:status:surface"),
+  true,
+  "runtime status must expose case-level status surface contract",
+);
+assert.equal(
   casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:status-line"),
   true,
   "runtime controls must expose case-level status-line contracts",

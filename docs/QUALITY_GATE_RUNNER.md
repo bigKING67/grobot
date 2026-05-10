@@ -229,6 +229,10 @@ for high-value composite smoke surfaces. Current split cases include:
 - `gateway:plan:bridge-error-codes`
 - `gateway:plan:events-policy`
 - `gateway:plan:quality-benchmark`
+- `runtime:status:interrupt`
+- `runtime:status:stdio-event-stream`
+- `runtime:status:surface`
+- `runtime:status:window-size`
 - `runtime:controls:context-engine`
 - `runtime:controls:experience-scheduler`
 - `runtime:controls:experience-runtime`
@@ -292,20 +296,26 @@ parallelize internally without forcing the outer quality-runner to know every
 suite implementation detail. Parent JSON reports keep the run diagnosable:
 worker executions add structured worker bucket entries and aggregate child case
 results, while parent `steps` records one `gateway-worker-N` step per worker.
-Heavy split suites (`gateway:plan`, `gateway:context`, `runtime:context`,
-`runtime:controls`, `runtime:plan`, and `runtime:model-controls`) are invoked
-with internal workers from the quality gate registry so full CI gets the same
-coverage with less monolithic wall time. Gateway plan cases are split by
-contract domain (input/keybinding, failure policy, plan mode, user commands,
-instructions, slash suggestions, bridge CLI/apply/error-codes, events policy,
-and benchmark) while preserving `gateway:plan:full` as the aggregate
-reproduction path. The `runtime:plan:events-policy` case intentionally creates
-fresh plan-mode and concurrency event sources before running the report/policy
-checks, so it stays replayable as an isolated worker case instead of depending
-on sibling case side-effects. Runtime model-control cases are split by
-validation domain (Kimi options, prompt cache, provider metadata, search
-routing, CLI/env overrides, and valid boundary) while preserving
-`runtime:model-controls:full` as the aggregate reproduction path.
+Heavy split suites (`gateway:plan`, `gateway:context`, `runtime:status`,
+`runtime:context`, `runtime:controls`, `runtime:plan`, and
+`runtime:model-controls`) are invoked with internal workers from the quality
+gate registry so full CI gets the same coverage with less monolithic wall time.
+Gateway plan cases are split by contract domain (input/keybinding, failure
+policy, plan mode, user commands, instructions, slash suggestions, bridge
+CLI/apply/error-codes, events policy, and benchmark) while preserving
+`gateway:plan:full` as the aggregate reproduction path. Runtime status cases
+are split by build/interrupt, stdio event stream, main status surface, and
+window-size surface. The shared runtime binary guard skips `cargo build` when
+the debug binary is newer than `runtime/Cargo.toml`, `runtime/Cargo.lock`, and
+`runtime/src/**`, and serializes the rare rebuild through a local lock so
+`runtime:status` does not fight `cargo test` on the common hot path. The
+`runtime:plan:events-policy` case intentionally creates fresh plan-mode and
+concurrency event sources before running the report/policy checks, so it stays
+replayable as an isolated worker case instead of depending on sibling case
+side-effects. Runtime model-control cases are split by validation domain (Kimi
+options, prompt cache, provider metadata, search routing, CLI/env overrides,
+and valid boundary) while preserving `runtime:model-controls:full` as the
+aggregate reproduction path.
 
 ### 6. Events and stats
 

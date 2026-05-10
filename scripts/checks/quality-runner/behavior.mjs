@@ -161,6 +161,16 @@ assert.equal(
   "gateway plan internal worker suite must reserve extra gateway-smoke resources without monopolizing the pool",
 );
 assert.equal(
+  registry.byName.get("check:gateway:suite:runtime:status")?.command,
+  "node gateway/tests/check-gateway-node.mjs --suite runtime:status --json --workers 3",
+  "runtime status suite gate must use internal case workers",
+);
+assert.equal(
+  registry.byName.get("check:gateway:suite:runtime:status")?.resourceCost,
+  2,
+  "runtime status internal worker suite must reserve extra gateway-smoke resources without monopolizing the pool",
+);
+assert.equal(
   registry.byName.get("check:gateway:suite:gateway:context")?.command,
   "node gateway/tests/check-gateway-node.mjs --suite gateway:context --json --workers 3",
   "gateway context suite gate must use internal case workers",
