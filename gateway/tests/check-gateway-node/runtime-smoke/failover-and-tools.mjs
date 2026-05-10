@@ -626,6 +626,10 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(serveInvalidConfigPayload.empty_env_management_token_has_stable_error, true);
   assert.equal(serveInvalidConfigPayload.empty_env_model_with_cli_base_url_exit_code, 2);
   assert.equal(serveInvalidConfigPayload.empty_env_model_with_cli_base_url_has_stable_error, true);
+  assert.equal(serveInvalidConfigPayload.empty_config_management_token_exit_code, 2);
+  assert.equal(serveInvalidConfigPayload.empty_config_management_token_has_stable_error, true);
+  assert.equal(serveInvalidConfigPayload.trailing_config_management_token_exit_code, 2);
+  assert.equal(serveInvalidConfigPayload.trailing_config_management_token_has_stable_error, true);
   assert.equal(serveInvalidConfigPayload.invalid_config_policy_trailing_exit_code, 2);
   assert.equal(serveInvalidConfigPayload.invalid_config_policy_trailing_has_stable_error, true);
   assert.equal(serveInvalidConfigPayload.invalid_experience_publish_mode_exit_code, 2);

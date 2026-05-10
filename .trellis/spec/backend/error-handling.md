@@ -221,6 +221,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     structured `config_invalid` model errors instead of falling through to
     lower-priority env/input sources. Missing required env remains
     `config_missing`.
+30. Management token TOML controls must fail closed on explicit malformed
+    values. `[management] token` may be omitted to leave management auth
+    unconfigured, but explicit empty strings or malformed quoted strings such
+    as `"secret" trailing` must exit `2` with `invalid_management_token`
+    instead of silently falling back to unauthenticated management defaults.
 
 ---
 

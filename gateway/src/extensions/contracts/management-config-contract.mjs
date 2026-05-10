@@ -166,6 +166,14 @@ async function runConfigControlsRejectFlow(options) {
       GROBOT_MODEL: "",
     },
   );
+  const emptyConfigManagementToken = await makeConfigTomlCase(
+    "management-token-empty",
+    ['token = ""'],
+  );
+  const trailingConfigManagementToken = await makeConfigTomlCase(
+    "management-token-trailing",
+    ['token = "secret" trailing'],
+  );
   const invalidConfigPolicyTrailing = await makeConfigTomlCase(
     "config-policy-trailing",
     ['config_read_policy = "auto" trailing'],
@@ -203,6 +211,10 @@ async function runConfigControlsRejectFlow(options) {
     emptyEnvManagementToken.stderr,
     emptyEnvModelWithCliBaseUrl.stdout,
     emptyEnvModelWithCliBaseUrl.stderr,
+    emptyConfigManagementToken.stdout,
+    emptyConfigManagementToken.stderr,
+    trailingConfigManagementToken.stdout,
+    trailingConfigManagementToken.stderr,
     invalidConfigPolicyTrailing.stdout,
     invalidConfigPolicyTrailing.stderr,
     invalidExperiencePublishMode.stdout,
@@ -247,6 +259,14 @@ async function runConfigControlsRejectFlow(options) {
     empty_env_model_with_cli_base_url_has_stable_error:
       emptyEnvModelWithCliBaseUrl.stderr.includes("error: invalid_model:")
       && emptyEnvModelWithCliBaseUrl.stderr.includes("model must be a non-empty string"),
+    empty_config_management_token_exit_code: emptyConfigManagementToken.exit_code,
+    empty_config_management_token_has_stable_error:
+      emptyConfigManagementToken.stderr.includes("error: invalid_management_token:")
+      && emptyConfigManagementToken.stderr.includes("management-token must be a non-empty string"),
+    trailing_config_management_token_exit_code: trailingConfigManagementToken.exit_code,
+    trailing_config_management_token_has_stable_error:
+      trailingConfigManagementToken.stderr.includes("error: invalid_management_token:")
+      && trailingConfigManagementToken.stderr.includes("management-token must be a non-empty string"),
     invalid_config_policy_trailing_exit_code: invalidConfigPolicyTrailing.exit_code,
     invalid_config_policy_trailing_has_stable_error:
       invalidConfigPolicyTrailing.stderr.includes("error: invalid_config_read_policy:")

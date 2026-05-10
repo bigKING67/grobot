@@ -167,7 +167,14 @@ function parseManagementTokenFromToml(rawToml: string): string | undefined {
     if (kvMatch[1] !== "token") {
       continue;
     }
-    return parseTomlString(kvMatch[2]);
+    const parsed = parseTomlString(kvMatch[2]);
+    if (typeof parsed !== "string" || parsed.trim().length === 0) {
+      throw new ManagementConfigInputError(
+        "management-token",
+        "management-token must be a non-empty string",
+      );
+    }
+    return parsed.trim();
   }
   return undefined;
 }
@@ -311,12 +318,11 @@ export function readManagementTokenFromToml(configTomlPath?: string): string | u
   }
   try {
     const raw = readFileSync(configTomlPath, "utf8");
-    const token = parseManagementTokenFromToml(raw);
-    if (typeof token === "string" && token.trim().length > 0) {
-      return token.trim();
+    return parseManagementTokenFromToml(raw);
+  } catch (error) {
+    if (isManagementConfigInputError(error)) {
+      throw error;
     }
-    return undefined;
-  } catch {
     return undefined;
   }
 }
