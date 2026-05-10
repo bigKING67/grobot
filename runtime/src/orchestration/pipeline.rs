@@ -131,6 +131,66 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
             .unwrap_or(false)
     }
 
+    fn invalid_turn_input_failure(
+        input: &TurnExecuteInput,
+        field: &str,
+        raw_value: &str,
+        event_sink: &mut dyn RuntimeEventSink,
+    ) -> TurnExecuteFailure {
+        let request_id = input.request_id.trim();
+        let request_id = if request_id.is_empty() {
+            "invalid_request".to_string()
+        } else {
+            request_id.to_string()
+        };
+        let session_key = input.session_key.trim();
+        let session_key = if session_key.is_empty() {
+            "invalid_session".to_string()
+        } else {
+            session_key.to_string()
+        };
+        let trace_id = format!("trace_{request_id}");
+        let turn_id = format!("turn_{request_id}");
+        let error_class = "turn_input_invalid".to_string();
+        let error_message = format!("{field} must be non-empty");
+        let error_data = json!({
+            "diagnostic_kind": "turn_input_invalid",
+            "field": field,
+            "source": field,
+            "raw_value": raw_value,
+            "recovery_hint": "fix the runtime turn input before retrying",
+        });
+        let mut events = Vec::new();
+        Self::push_event(
+            &mut events,
+            event_sink,
+            Self::build_event(
+                "turn_failed",
+                &turn_id,
+                Some(json!({
+                    "error_class": error_class.clone(),
+                    "error_message": error_message.clone(),
+                    "error_data": error_data.clone()
+                })),
+            ),
+        );
+        Self::push_event(
+            &mut events,
+            event_sink,
+            Self::build_event("turn_end", &turn_id, Some(json!({ "status": "failed" }))),
+        );
+
+        TurnExecuteFailure {
+            trace_id,
+            request_id,
+            session_key,
+            error_class,
+            error_message,
+            error_data: Some(error_data),
+            events,
+        }
+    }
+
     fn map_model_interrupt(interrupt: ModelExecutionInterrupt) -> TurnInterruptOutput {
         match interrupt {
             ModelExecutionInterrupt::AskUser(ask_user) => TurnInterruptOutput {
@@ -214,9 +274,36 @@ impl<M: ModelExecutor, T: ToolExecutor> TurnOrchestrator<M, T> {
 
     pub fn execute_turn_with_event_sink(
         &self,
-        input: TurnExecuteInput,
+        mut input: TurnExecuteInput,
         event_sink: &mut dyn RuntimeEventSink,
     ) -> Result<TurnExecuteOutput, TurnExecuteFailure> {
+        if input.request_id.trim().is_empty() {
+            return Err(Self::invalid_turn_input_failure(
+                &input,
+                "request_id",
+                input.request_id.as_str(),
+                event_sink,
+            ));
+        }
+        if input.session_key.trim().is_empty() {
+            return Err(Self::invalid_turn_input_failure(
+                &input,
+                "session_key",
+                input.session_key.as_str(),
+                event_sink,
+            ));
+        }
+        if input.user_message.trim().is_empty() {
+            return Err(Self::invalid_turn_input_failure(
+                &input,
+                "user_message",
+                input.user_message.as_str(),
+                event_sink,
+            ));
+        }
+        input.request_id = input.request_id.trim().to_string();
+        input.session_key = input.session_key.trim().to_string();
+
         let trace_id = format!("trace_{}", input.request_id);
         let turn_id = format!("turn_{}", input.request_id);
         let request_id = input.request_id.clone();

@@ -303,6 +303,14 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     runtime events, but explicit empty, whitespace-only, or unsupported values
     must return JSON-RPC `-32602` with structured `invalid_event_stream` data
     before runtime turn execution starts.
+39. Rust orchestration direct turn inputs must enforce the same required-field
+    boundary as the JSON-RPC handler. Direct `TurnExecuteInput` callers must not
+    bypass empty `request_id`, `session_key`, or `user_message` checks; empty or
+    whitespace-only values must return structured `turn_input_invalid` failures
+    with terminal `turn_failed` and `turn_end` events before model execution.
+    Non-empty `request_id` and `session_key` values should be trimmed at the
+    orchestration boundary so trace IDs, event IDs, and session-scoped runtime
+    state use a single canonical identity.
 
 ---
 

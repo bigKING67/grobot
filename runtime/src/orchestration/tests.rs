@@ -58,6 +58,60 @@ mod tests {
     }
 
     #[test]
+    fn direct_turn_execute_rejects_empty_input_fields() {
+        let orchestrator = TurnOrchestrator::new(StubSuccessModel, LocalToolExecutor);
+        let mut input = sample_input();
+        input.session_key = "   ".to_string();
+        let failure = orchestrator
+            .execute_turn(input)
+            .expect_err("empty direct session_key should fail closed");
+        assert_eq!(failure.error_class, "turn_input_invalid");
+        assert_eq!(
+            failure
+                .error_data
+                .as_ref()
+                .and_then(|data| data.get("field"))
+                .and_then(|value| value.as_str()),
+            Some("session_key")
+        );
+        let event_types: Vec<&str> = failure
+            .events
+            .iter()
+            .map(|event| event.event_type.as_str())
+            .collect();
+        assert_eq!(event_types, vec!["turn_failed", "turn_end"]);
+
+        let mut input = sample_input();
+        input.user_message = "\t \n".to_string();
+        let failure = orchestrator
+            .execute_turn(input)
+            .expect_err("empty direct user_message should fail closed");
+        assert_eq!(failure.error_class, "turn_input_invalid");
+        assert_eq!(
+            failure
+                .error_data
+                .as_ref()
+                .and_then(|data| data.get("field"))
+                .and_then(|value| value.as_str()),
+            Some("user_message")
+        );
+    }
+
+    #[test]
+    fn direct_turn_execute_normalizes_identity_fields() {
+        let orchestrator = TurnOrchestrator::new(StubSuccessModel, LocalToolExecutor);
+        let mut input = sample_input();
+        input.request_id = " req_2 ".to_string();
+        input.session_key = " feishu:tenant:dm:user-2 ".to_string();
+        let output = orchestrator
+            .execute_turn(input)
+            .expect("identity fields with surrounding whitespace should normalize");
+        assert_eq!(output.trace_id, "trace_req_2");
+        assert_eq!(output.request_id, "req_2");
+        assert_eq!(output.session_key, "feishu:tenant:dm:user-2");
+    }
+
+    #[test]
     fn success_path_contains_model_response_and_turn_end() {
         let orchestrator = TurnOrchestrator::new(StubSuccessModel, LocalToolExecutor);
         let output = orchestrator
