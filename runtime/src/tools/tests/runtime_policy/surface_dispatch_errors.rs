@@ -61,6 +61,67 @@
             .any(|value| value.as_str() == Some(TOOL_READ)));
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
     }
+
+    #[test]
+    fn dispatcher_rejects_invalid_tool_surface_profile_context() {
+        let workspace = make_temp_workspace("tool-surface-profile-invalid");
+        fs::write(workspace.join("notes.txt"), "secret").expect("write notes");
+        let executor = LocalToolExecutor;
+
+        let mut invalid_input = make_read_only_input(&workspace);
+        if let Some(context) = invalid_input.tool_context.as_mut() {
+            context.tool_surface_profile = Some("chaos".to_string());
+        }
+        let invalid_error = execute_tool_payload(
+            &executor,
+            &invalid_input,
+            TOOL_READ,
+            json!({
+                "path": "notes.txt"
+            }),
+        )
+        .expect_err("invalid runtime tool surface profile must fail closed");
+        assert_eq!(invalid_error.error_class, "tool_context_invalid");
+        assert!(invalid_error
+            .message
+            .contains("tool_context.tool_surface_profile must be one of"));
+        let invalid_data = invalid_error
+            .data
+            .as_ref()
+            .expect("invalid profile error should include structured data");
+        assert_eq!(invalid_data["diagnostic_kind"].as_str(), Some("tool_context_invalid"));
+        assert_eq!(invalid_data["field"].as_str(), Some("tool_context.tool_surface_profile"));
+        assert_eq!(invalid_data["raw_value"].as_str(), Some("chaos"));
+
+        let mut empty_input = make_read_only_input(&workspace);
+        if let Some(context) = empty_input.tool_context.as_mut() {
+            context.tool_surface_profile = Some("   ".to_string());
+        }
+        let empty_error = execute_tool_payload(
+            &executor,
+            &empty_input,
+            TOOL_READ,
+            json!({
+                "path": "notes.txt"
+            }),
+        )
+        .expect_err("empty runtime tool surface profile must fail closed");
+        assert_eq!(empty_error.error_class, "tool_context_invalid");
+        let empty_data = empty_error
+            .data
+            .as_ref()
+            .expect("empty profile error should include structured data");
+        assert_eq!(empty_data["raw_value"].as_str(), Some("   "));
+
+        assert_eq!(
+            resolve_tool_context_surface_profile(Some("browser-advanced"))
+                .expect("hyphenated profile should normalize"),
+            TOOL_SURFACE_BROWSER_ADVANCED
+        );
+
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
     #[test]
     fn read_slim_surface_rejects_hidden_range_and_media_args() {
         let workspace = make_temp_workspace("read-slim-hidden-args");

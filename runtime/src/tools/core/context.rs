@@ -46,8 +46,7 @@ fn parse_tool_context(input: &TurnExecuteInput) -> Result<ToolContextResolved, T
     }
     let enabled_tools =
         normalize_tool_name_set(tool_context.enabled_tools.as_ref()).unwrap_or_else(default_enabled_tools);
-    let profile =
-        canonical_tool_surface_profile(tool_context.tool_surface_profile.as_deref()).to_string();
+    let profile = resolve_tool_context_surface_profile(tool_context.tool_surface_profile.as_deref())?;
     let model_visible_tools = normalize_tool_name_set(tool_context.model_visible_tools.as_ref())
         .unwrap_or_else(|| enabled_tools.clone());
     let advanced_tool_schema = tool_context.advanced_tool_schema.unwrap_or(false);
@@ -73,6 +72,45 @@ fn parse_tool_context(input: &TurnExecuteInput) -> Result<ToolContextResolved, T
         advanced_tool_schema,
         bash_allowlist,
     })
+}
+
+fn resolve_tool_context_surface_profile(raw: Option<&str>) -> Result<String, ToolExecutionError> {
+    let Some(raw_value) = raw else {
+        return Ok(TOOL_SURFACE_CODING.to_string());
+    };
+    let normalized = raw_value.trim().to_ascii_lowercase().replace('-', "_");
+    let profile = match normalized.as_str() {
+        TOOL_SURFACE_MINIMAL => TOOL_SURFACE_MINIMAL,
+        TOOL_SURFACE_CODING => TOOL_SURFACE_CODING,
+        TOOL_SURFACE_BROWSER => TOOL_SURFACE_BROWSER,
+        TOOL_SURFACE_BROWSER_ADVANCED => TOOL_SURFACE_BROWSER_ADVANCED,
+        TOOL_SURFACE_CONTEXT => TOOL_SURFACE_CONTEXT,
+        TOOL_SURFACE_MCP => TOOL_SURFACE_MCP,
+        TOOL_SURFACE_FULL_DEBUG => TOOL_SURFACE_FULL_DEBUG,
+        _ => {
+            return Err(ToolExecutionError::new(
+                "tool_context_invalid",
+                "tool_context.tool_surface_profile must be one of: minimal, coding, browser, browser_advanced, context, mcp, full_debug",
+            )
+            .with_data(json!({
+                "diagnostic_kind": "tool_context_invalid",
+                "field": "tool_context.tool_surface_profile",
+                "source": "tool_context.tool_surface_profile",
+                "raw_value": raw_value,
+                "valid_values": [
+                    TOOL_SURFACE_MINIMAL,
+                    TOOL_SURFACE_CODING,
+                    TOOL_SURFACE_BROWSER,
+                    TOOL_SURFACE_BROWSER_ADVANCED,
+                    TOOL_SURFACE_CONTEXT,
+                    TOOL_SURFACE_MCP,
+                    TOOL_SURFACE_FULL_DEBUG
+                ],
+                "recovery_hint": "omit tool_context.tool_surface_profile to use coding defaults, or pass one of the documented surface profiles",
+            })));
+        }
+    };
+    Ok(profile.to_string())
 }
 
 fn normalize_tool_name_set(values: Option<&Vec<String>>) -> Option<HashSet<String>> {

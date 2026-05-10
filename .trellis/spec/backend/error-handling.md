@@ -264,7 +264,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     malformed env values. `GROBOT_TOOL_SURFACE_PROFILE` may use intent-based
     routing only when omitted; explicit empty, whitespace-only, or unsupported
     values must exit `2` with `invalid_tool_surface_profile` before start turn
-    execution or status rendering.
+    execution or status rendering. Rust runtime `tool_context.tool_surface_profile`
+    direct inputs follow the same fail-closed boundary: omitted values may use
+    `coding`, but explicit empty, whitespace-only, or unsupported profiles must
+    return structured `tool_context_invalid` errors instead of silently falling
+    back to `coding`.
 35. Runtime binary path controls must fail closed on explicit empty values.
     `GROBOT_RUNTIME_BIN`, direct stdio runtime binary overrides, and
     `GROBOT_TS_DEV_REPO_ROOT` may use the derived repository runtime path only
