@@ -55,6 +55,53 @@ mod tests {
     }
 
     #[test]
+    fn health_accepts_omitted_params() {
+        let input = r#"{"jsonrpc":"2.0","id":"health-omitted","method":"runtime.health"}"#;
+        let output = handle_json_line(input);
+        let payload: Value = serde_json::from_str(&output).expect("valid json");
+        assert_eq!(payload["id"].as_str(), Some("health-omitted"));
+        assert_eq!(payload["result"]["status"], "ok");
+    }
+
+    #[test]
+    fn health_rejects_null_params() {
+        let input = r#"{"jsonrpc":"2.0","id":"health-null-params","method":"runtime.health","params":null}"#;
+        let output = handle_json_line(input);
+        let payload: Value = serde_json::from_str(&output).expect("valid json");
+        assert_eq!(payload["id"].as_str(), Some("health-null-params"));
+        assert_eq!(payload["error"]["code"], -32602);
+        assert_eq!(
+            payload["error"]["message"],
+            "invalid_runtime_health_params"
+        );
+        assert_eq!(
+            payload["error"]["data"]["diagnostic_kind"].as_str(),
+            Some("invalid_runtime_health_params")
+        );
+        assert_eq!(payload["error"]["data"]["field"].as_str(), Some("params"));
+        assert!(payload["error"]["data"]["raw_value"].is_null());
+    }
+
+    #[test]
+    fn health_rejects_non_object_params() {
+        let input =
+            r#"{"jsonrpc":"2.0","id":"health-array-params","method":"runtime.health","params":[]}"#;
+        let output = handle_json_line(input);
+        let payload: Value = serde_json::from_str(&output).expect("valid json");
+        assert_eq!(payload["id"].as_str(), Some("health-array-params"));
+        assert_eq!(payload["error"]["code"], -32602);
+        assert_eq!(
+            payload["error"]["message"],
+            "invalid_runtime_health_params"
+        );
+        assert_eq!(
+            payload["error"]["data"]["diagnostic_kind"].as_str(),
+            Some("invalid_runtime_health_params")
+        );
+        assert!(payload["error"]["data"]["raw_value"].is_array());
+    }
+
+    #[test]
     fn health_rejects_zero_cache_stats_window() {
         let input = r#"{
             "jsonrpc":"2.0",
@@ -269,6 +316,45 @@ mod tests {
                 == Some("ask_user")
         });
         assert!(has_ask_user_tool);
+    }
+
+    #[test]
+    fn tools_describe_rejects_null_params() {
+        let input =
+            r#"{"jsonrpc":"2.0","id":"tools-null-params","method":"runtime.tools.describe","params":null}"#;
+        let output = handle_json_line(input);
+        let payload: Value = serde_json::from_str(&output).expect("valid json");
+        assert_eq!(payload["id"].as_str(), Some("tools-null-params"));
+        assert_eq!(payload["error"]["code"], -32602);
+        assert_eq!(
+            payload["error"]["message"],
+            "invalid_runtime_tools_describe_params"
+        );
+        assert_eq!(
+            payload["error"]["data"]["diagnostic_kind"].as_str(),
+            Some("invalid_runtime_tools_describe_params")
+        );
+        assert_eq!(payload["error"]["data"]["field"].as_str(), Some("params"));
+        assert!(payload["error"]["data"]["raw_value"].is_null());
+    }
+
+    #[test]
+    fn tools_describe_rejects_non_object_params() {
+        let input =
+            r#"{"jsonrpc":"2.0","id":"tools-array-params","method":"runtime.tools.describe","params":[]}"#;
+        let output = handle_json_line(input);
+        let payload: Value = serde_json::from_str(&output).expect("valid json");
+        assert_eq!(payload["id"].as_str(), Some("tools-array-params"));
+        assert_eq!(payload["error"]["code"], -32602);
+        assert_eq!(
+            payload["error"]["message"],
+            "invalid_runtime_tools_describe_params"
+        );
+        assert_eq!(
+            payload["error"]["data"]["diagnostic_kind"].as_str(),
+            Some("invalid_runtime_tools_describe_params")
+        );
+        assert!(payload["error"]["data"]["raw_value"].is_array());
     }
 
     include!("tests/request_envelope.rs");

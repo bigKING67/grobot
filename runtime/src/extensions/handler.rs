@@ -24,18 +24,32 @@ fn invalid_runtime_health_field(field: &str, raw_value: Value, recovery_hint: &s
     })
 }
 
-fn parse_runtime_health_params(params: &Value) -> Result<RuntimeHealthParams, Value> {
-    if params.is_null() {
+fn invalid_runtime_params_shape(
+    method: &str,
+    diagnostic_kind: &str,
+    raw_value: Value,
+    recovery_hint: &str,
+) -> Value {
+    json!({
+        "diagnostic_kind": diagnostic_kind,
+        "field": "params",
+        "source": format!("{method}.params"),
+        "raw_value": raw_value,
+        "recovery_hint": recovery_hint,
+    })
+}
+
+fn parse_runtime_health_params(params: Option<&Value>) -> Result<RuntimeHealthParams, Value> {
+    let Some(params) = params else {
         return Ok(RuntimeHealthParams::default());
-    }
+    };
     let Some(params_object) = params.as_object() else {
-        return Err(json!({
-            "diagnostic_kind": "invalid_runtime_health_params",
-            "field": "params",
-            "source": "runtime.health.params",
-            "raw_value": params,
-            "recovery_hint": "omit runtime.health params or pass an object with supported health controls",
-        }));
+        return Err(invalid_runtime_params_shape(
+            "runtime.health",
+            "invalid_runtime_health_params",
+            params.clone(),
+            "omit runtime.health params or pass an object with supported health controls",
+        ));
     };
 
     let cache_stats_window_ms = match params_object.get("cache_stats_window_ms") {
@@ -89,10 +103,36 @@ fn invalid_runtime_health_message(data: &Value) -> &'static str {
     }
 }
 
+fn validate_runtime_tools_describe_params(params: Option<&Value>) -> Result<(), Value> {
+    let Some(params) = params else {
+        return Ok(());
+    };
+    if params.as_object().is_some() {
+        return Ok(());
+    }
+    Err(invalid_runtime_params_shape(
+        "runtime.tools.describe",
+        "invalid_runtime_tools_describe_params",
+        params.clone(),
+        "omit runtime.tools.describe params or pass an object",
+    ))
+}
+
+fn invalid_runtime_tools_describe_message(data: &Value) -> &'static str {
+    match data
+        .get("diagnostic_kind")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+    {
+        "invalid_runtime_tools_describe_params" => "invalid_runtime_tools_describe_params",
+        _ => "invalid runtime.tools.describe params",
+    }
+}
+
 pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErrorResponse> {
     match request.method.as_str() {
         "runtime.health" => {
-            let params = parse_runtime_health_params(&request.params).map_err(|data| {
+            let params = parse_runtime_health_params(request.params.as_ref()).map_err(|data| {
                 error_with_data(
                     request.id.clone(),
                     -32602,
@@ -117,6 +157,14 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
             ))
         }
         "runtime.tools.describe" => {
+            validate_runtime_tools_describe_params(request.params.as_ref()).map_err(|data| {
+                error_with_data(
+                    request.id.clone(),
+                    -32602,
+                    invalid_runtime_tools_describe_message(&data),
+                    data,
+                )
+            })?;
             let schema_profiles = crate::tools::tools::tool_surface_schema_profiles();
             let schema_profiles_fingerprint =
                 crate::tools::tools::tool_surface_schema_profiles_fingerprint(&schema_profiles);
@@ -142,7 +190,8 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
             ))
         }
         "runtime.turn.execute" => {
-            validate_turn_execute_param_shapes(&request.params).map_err(|data| {
+            let params_value = request.params.unwrap_or(Value::Null);
+            validate_turn_execute_param_shapes(&params_value).map_err(|data| {
                 error_with_data(
                     request.id.clone(),
                     -32602,
@@ -150,11 +199,11 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                     data,
                 )
             })?;
-            let use_stderr_event_stream = parse_event_stream_mode(request.params.get("event_stream"))
+            let use_stderr_event_stream = parse_event_stream_mode(params_value.get("event_stream"))
                 .map_err(|data| {
                     error_with_data(request.id.clone(), -32602, "invalid event_stream", data)
                 })?;
-            let params: TurnExecuteParams = serde_json::from_value(request.params)
+            let params: TurnExecuteParams = serde_json::from_value(params_value)
                 .map_err(|_| error(request.id.clone(), -32602, "invalid params"))?;
             if params.request_id.trim().is_empty()
                 || params.session_key.trim().is_empty()

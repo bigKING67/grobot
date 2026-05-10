@@ -159,7 +159,7 @@ fn rpc_envelope_rejects_empty_method() {
 }
 
 #[test]
-fn rpc_envelope_defaults_missing_params_to_null() {
+fn rpc_envelope_allows_missing_params() {
     let input = r#"{"jsonrpc":"2.0","id":"tools-without-params","method":"runtime.tools.describe"}"#;
     let output = handle_json_line(input);
     let payload: Value = serde_json::from_str(&output).expect("valid json");

@@ -5,7 +5,7 @@ pub const RUNTIME_PROTOCOL_VERSION: &str = "runtime.v1";
 pub struct RpcRequest {
     pub id: Value,
     pub method: String,
-    pub params: Value,
+    pub params: Option<Value>,
 }
 
 #[derive(Debug, Serialize)]

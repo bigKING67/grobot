@@ -163,6 +163,6 @@ fn parse_rpc_request_envelope(line: &str) -> Result<RpcRequest, RpcErrorResponse
     Ok(RpcRequest {
         id: id_value.clone(),
         method: method.to_string(),
-        params: object.get("params").cloned().unwrap_or(Value::Null),
+        params: object.get("params").cloned(),
     })
 }

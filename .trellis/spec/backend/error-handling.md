@@ -341,9 +341,12 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     values. `runtime.health` may omit `cache_stats_window_ms` to disable window
     rotation, but explicit `null`, non-integer, or zero values must return
     JSON-RPC `-32602` with structured `invalid_cache_stats_window_ms` data
-    instead of silently behaving like an omitted window policy. Explicit
-    malformed `cache_stats_reset_window` values must return structured
-    `invalid_cache_stats_reset_window` data instead of falling back to `false`.
+    instead of silently behaving like an omitted window policy. Omitted
+    `params` may use health defaults, but explicit `params:null` or non-object
+    values must return structured `invalid_runtime_health_params` data.
+    Explicit malformed `cache_stats_reset_window` values must return
+    structured `invalid_cache_stats_reset_window` data instead of falling back
+    to `false`.
 42. Runtime JSON-RPC envelopes must fail closed before typed request
     deserialization. Each stdin line must be a JSON object with
     `jsonrpc:"2.0"`, a response-correlatable `id` (`string`, `number`, or
@@ -353,7 +356,12 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     `invalid_rpc_request_shape`, `invalid_jsonrpc_version`,
     `invalid_rpc_id_shape`, or `invalid_rpc_method_shape`. Invalid ids must
     produce a `null` response id; valid request ids must be preserved in error
-    responses. Malformed JSON remains JSON-RPC `-32700` parse error.
+    responses. Missing `params` remains allowed and is method-owned; explicit
+    malformed `params` values must be rejected by the target method instead of
+    being collapsed into omitted/default. `runtime.tools.describe` accepts
+    omitted or object params only; explicit `params:null` or non-object values
+    must return JSON-RPC `-32602` with `invalid_runtime_tools_describe_params`.
+    Malformed JSON remains JSON-RPC `-32700` parse error.
 
 ---
 
