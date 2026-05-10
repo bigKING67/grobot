@@ -3,7 +3,7 @@ fn run_contextweaver_bridge(
     payload: &Value,
     meta: &SemanticBridgeRequestMeta,
 ) -> Result<Value, ToolExecutionError> {
-    let bridge_script_path = resolve_bridge_script_path(meta.bridge_script_override).ok_or_else(|| {
+    let bridge_script_path = resolve_bridge_script_path(meta.bridge_script_override)?.ok_or_else(|| {
         ToolExecutionError::new(
             "semantic_tool_unavailable",
             "contextweaver bridge script not found; set GROBOT_CONTEXTWEAVER_BRIDGE_SCRIPT",
@@ -15,11 +15,7 @@ fn run_contextweaver_bridge(
             None,
         ))
     })?;
-    let node_bin = env::var("GROBOT_NODE_BIN")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "node".to_string());
+    let node_bin = resolve_contextweaver_node_bin()?;
     let payload_text = serde_json::to_string(payload).map_err(|error| {
         let mut data = semantic_error_data_map(
             "semantic_invalid_response",
@@ -186,24 +182,68 @@ fn parse_bridge_error_payload(raw: &str) -> Option<BridgeErrorPayload> {
     None
 }
 
-fn resolve_bridge_script_path(override_path: Option<&str>) -> Option<PathBuf> {
+fn invalid_contextweaver_env_error(key: &str, detail: &str) -> ToolExecutionError {
+    ToolExecutionError::new("invalid_tool_arguments", detail.to_string())
+        .with_data(json!({
+            "diagnostic_kind": "invalid_tool_arguments",
+            "env_key": key,
+            "source": "semantic.bridge",
+            "stage": "resolve_env_control",
+            "recovery_hint": "unset the env var to use discovery/defaults, or provide a valid non-empty value"
+        }))
+}
+
+fn resolve_contextweaver_node_bin() -> Result<String, ToolExecutionError> {
+    match env::var("GROBOT_NODE_BIN") {
+        Ok(value) => {
+            let normalized = value.trim();
+            if normalized.is_empty() {
+                return Err(invalid_contextweaver_env_error(
+                    "GROBOT_NODE_BIN",
+                    "GROBOT_NODE_BIN must be a non-empty executable path",
+                ));
+            }
+            Ok(normalized.to_string())
+        }
+        Err(env::VarError::NotPresent) => Ok("node".to_string()),
+        Err(env::VarError::NotUnicode(_)) => Err(invalid_contextweaver_env_error(
+            "GROBOT_NODE_BIN",
+            "GROBOT_NODE_BIN must be valid unicode",
+        )),
+    }
+}
+
+fn resolve_bridge_script_path(override_path: Option<&str>) -> Result<Option<PathBuf>, ToolExecutionError> {
     if let Some(value) = override_path {
         let normalized = value.trim();
         if normalized.is_empty() {
-            return None;
+            return Ok(None);
         }
         let candidate = PathBuf::from(normalized);
         return if candidate.is_file() {
-            Some(candidate)
+            Ok(Some(candidate))
         } else {
-            None
+            Ok(None)
         };
     }
     let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Ok(value) = env::var("GROBOT_CONTEXTWEAVER_BRIDGE_SCRIPT") {
-        let normalized = value.trim();
-        if !normalized.is_empty() {
+    match env::var("GROBOT_CONTEXTWEAVER_BRIDGE_SCRIPT") {
+        Ok(value) => {
+            let normalized = value.trim();
+            if normalized.is_empty() {
+                return Err(invalid_contextweaver_env_error(
+                    "GROBOT_CONTEXTWEAVER_BRIDGE_SCRIPT",
+                    "GROBOT_CONTEXTWEAVER_BRIDGE_SCRIPT must be a non-empty file path",
+                ));
+            }
             candidates.push(PathBuf::from(normalized));
+        }
+        Err(env::VarError::NotPresent) => {}
+        Err(env::VarError::NotUnicode(_)) => {
+            return Err(invalid_contextweaver_env_error(
+                "GROBOT_CONTEXTWEAVER_BRIDGE_SCRIPT",
+                "GROBOT_CONTEXTWEAVER_BRIDGE_SCRIPT must be valid unicode",
+            ));
         }
     }
     if let Ok(current_dir) = env::current_dir() {
@@ -228,8 +268,8 @@ fn resolve_bridge_script_path(override_path: Option<&str>) -> Option<PathBuf> {
     }
     for candidate in candidates {
         if candidate.is_file() {
-            return Some(candidate);
+            return Ok(Some(candidate));
         }
     }
-    None
+    Ok(None)
 }

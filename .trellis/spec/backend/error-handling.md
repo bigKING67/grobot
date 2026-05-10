@@ -226,6 +226,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     unconfigured, but explicit empty strings or malformed quoted strings such
     as `"secret" trailing` must exit `2` with `invalid_management_token`
     instead of silently falling back to unauthenticated management defaults.
+31. Runtime semantic bridge env controls must fail closed on explicit empty
+    values. `GROBOT_CONTEXTWEAVER_BRIDGE_SCRIPT` may use bridge discovery only
+    when omitted, and `GROBOT_NODE_BIN` may default to `node` only when
+    omitted; explicit empty or non-unicode values must return structured
+    `invalid_tool_arguments` errors instead of silently falling back.
 
 ---
 

@@ -433,6 +433,46 @@
             format!("GROBOT_CONTEXTWEAVER_TIMEOUT_MS must be <= {MAX_SEMANTIC_TIMEOUT_MS}")
         );
         env::remove_var("GROBOT_CONTEXTWEAVER_TIMEOUT_MS");
+
+        env::set_var("GROBOT_CONTEXTWEAVER_BRIDGE_SCRIPT", "");
+        let empty_bridge_script_env = execute_tool_payload(
+            &executor,
+            &input,
+            TOOL_SEMANTIC_SEARCH,
+            json!({
+                "query": "context budget"
+            }),
+        )
+        .expect_err("empty contextweaver bridge script env must fail closed");
+        assert_eq!(empty_bridge_script_env.error_class, "invalid_tool_arguments");
+        assert_eq!(
+            empty_bridge_script_env.message,
+            "GROBOT_CONTEXTWEAVER_BRIDGE_SCRIPT must be a non-empty file path"
+        );
+        env::remove_var("GROBOT_CONTEXTWEAVER_BRIDGE_SCRIPT");
+
+        let bridge_script = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("runtime crate should have repo parent")
+            .join("adapters/contextweaver/bridge/cli.mjs");
+        env::set_var("GROBOT_CONTEXTWEAVER_BRIDGE_SCRIPT", bridge_script);
+        env::set_var("GROBOT_NODE_BIN", "");
+        let empty_node_bin_env = execute_tool_payload(
+            &executor,
+            &input,
+            TOOL_SEMANTIC_SEARCH,
+            json!({
+                "query": "context budget"
+            }),
+        )
+        .expect_err("empty contextweaver node bin env must fail closed");
+        assert_eq!(empty_node_bin_env.error_class, "invalid_tool_arguments");
+        assert_eq!(
+            empty_node_bin_env.message,
+            "GROBOT_NODE_BIN must be a non-empty executable path"
+        );
+        env::remove_var("GROBOT_NODE_BIN");
+        env::remove_var("GROBOT_CONTEXTWEAVER_BRIDGE_SCRIPT");
         drop(env_lock);
 
         fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
