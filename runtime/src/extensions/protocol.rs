@@ -9,5 +9,6 @@ use serde_json::{json, Value};
 
 include!("contracts.rs");
 include!("response.rs");
+include!("turn_params.rs");
 include!("handler.rs");
 include!("tests.rs");

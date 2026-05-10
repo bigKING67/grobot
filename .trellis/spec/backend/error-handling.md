@@ -317,6 +317,26 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     runtime defaults/fallbacks, but explicit `null` or non-object values for
     those object controls must return JSON-RPC `-32602` with structured
     `invalid_*_shape` data instead of being treated as omitted.
+    Nested `tool_context` scalar/list controls follow the same boundary:
+    omitted fields may use documented defaults, but explicit `null`, wrong
+    scalar types, non-array list values, or non-string list entries for
+    `work_dir`, tool lists, surface metadata, `advanced_tool_schema`,
+    `bash_allowlist`, and tool-loop controls must return structured
+    `invalid_tool_context_*_shape` JSON-RPC errors before serde can collapse
+    them into omitted values.
+    Nested `model_config` controls also fail closed before serde parsing:
+    omitted fields may use env/runtime defaults, but explicit `null` or wrong
+    scalar/list/object shapes for model identity, timeout, provider kind, Kimi
+    option controls, official tool allowlists/formulas, and prompt-cache fields
+    must return structured `invalid_model_config_*_shape`,
+    `invalid_model_config_provider_options_kimi_*_shape`, or
+    `invalid_model_config_provider_options_kimi_prompt_cache_*_shape`
+    JSON-RPC errors instead of silently reverting to defaults.
+    Top-level optional turn controls follow the same rule. `system_prompt`,
+    `context_lines`, and `attachments` may be omitted, but explicit malformed
+    values must return JSON-RPC `-32602` with stable
+    `invalid_system_prompt_shape`, `invalid_context_lines_shape`, or
+    `invalid_attachments_*_shape` diagnostics before runtime execution.
 41. Runtime health cache-window controls must fail closed on explicit invalid
     values. `runtime.health` may omit `cache_stats_window_ms` to disable window
     rotation, but explicit `null`, non-integer, or zero values must return
