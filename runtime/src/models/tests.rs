@@ -253,6 +253,10 @@ mod tests {
         start_mock_http_server_sequence(&[(status_line, response_body)])
     }
 
+    fn start_mock_http_server_without_responses() -> MockHttpServer {
+        start_mock_http_server_sequence(&[])
+    }
+
     fn write_http_response(stream: &mut TcpStream, status: &str, response_payload: &str) {
         let response = format!(
             "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",

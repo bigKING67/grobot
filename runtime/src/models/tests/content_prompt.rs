@@ -581,7 +581,7 @@
     #[test]
     fn runtime_model_auto_cache_ttl_rejects_malformed_env() {
         let _guard = lock_env();
-        let server = start_mock_http_server("200 OK", r#"{"data":[{"id":"model-a"}]}"#);
+        let server = start_mock_http_server_without_responses();
         let model_config_input = RuntimeModelConfigInput {
             base_url: Some(server.base_url.clone()),
             api_key: Some("runtime-test-key".to_string()),
@@ -613,7 +613,7 @@
     #[test]
     fn runtime_model_auto_cache_ttl_rejects_empty_env() {
         let _guard = lock_env();
-        let server = start_mock_http_server("200 OK", r#"{"data":[{"id":"model-a"}]}"#);
+        let server = start_mock_http_server_without_responses();
         let model_config_input = RuntimeModelConfigInput {
             base_url: Some(server.base_url.clone()),
             api_key: Some("runtime-test-key".to_string()),

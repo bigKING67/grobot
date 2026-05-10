@@ -205,6 +205,11 @@ Rules:
 - Runtime smoke, gateway smoke, release gates, and `cargo test` are not cached
   by default because they are stateful or expensive enough to deserve fresh
   execution when selected.
+- Runtime model tests keep fail-closed config assertions on a deterministic
+  no-request mock-server path. Tests that prove invalid config fails before
+  `/models` should not register unused canned responses, because joining an
+  unused response slot waits for the mock listener deadline and creates a hidden
+  five-second tail without adding coverage.
 - `--no-cache` disables the outer runner cache.
 - `node scripts/quality-runner.mjs explain cache <gate>` reports the current
   action hash, cache status, input count, latest cached action, and miss reason.
