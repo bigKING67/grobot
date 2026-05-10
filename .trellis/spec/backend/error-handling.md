@@ -311,7 +311,13 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     Non-empty `request_id` and `session_key` values should be trimmed at the
     orchestration boundary so trace IDs, event IDs, and session-scoped runtime
     state use a single canonical identity.
-40. Runtime health cache-window controls must fail closed on explicit invalid
+40. Runtime turn object controls must fail closed on malformed explicit JSON-RPC
+    shapes. `runtime.turn.execute` may omit `model_config`, `tool_context`,
+    provider option objects, and prompt-cache objects to use the documented
+    runtime defaults/fallbacks, but explicit `null` or non-object values for
+    those object controls must return JSON-RPC `-32602` with structured
+    `invalid_*_shape` data instead of being treated as omitted.
+41. Runtime health cache-window controls must fail closed on explicit invalid
     values. `runtime.health` may omit `cache_stats_window_ms` to disable window
     rotation, but explicit `null`, non-integer, or zero values must return
     JSON-RPC `-32602` with structured `invalid_cache_stats_window_ms` data

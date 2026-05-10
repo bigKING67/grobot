@@ -281,6 +281,146 @@ mod tests {
     }
 
     #[test]
+    fn turn_execute_rejects_null_model_config() {
+        let input = r#"{
+            "jsonrpc":"2.0",
+            "id":"model-config-null",
+            "method":"runtime.turn.execute",
+            "params":{
+                "request_id":"req_1",
+                "session_key":"feishu:tenant:dm:user",
+                "user_message":"hello",
+                "model_config":null
+            }
+        }"#;
+        let output = handle_json_line(input);
+        let payload: Value = serde_json::from_str(&output).expect("valid json");
+        assert_eq!(payload["error"]["code"], -32602);
+        assert_eq!(payload["error"]["message"], "invalid_model_config");
+        assert_eq!(
+            payload["error"]["data"]["diagnostic_kind"].as_str(),
+            Some("invalid_model_config_shape")
+        );
+        assert_eq!(
+            payload["error"]["data"]["field"].as_str(),
+            Some("model_config")
+        );
+        assert!(payload["error"]["data"]["raw_value"].is_null());
+    }
+
+    #[test]
+    fn turn_execute_rejects_non_object_tool_context() {
+        let input = r#"{
+            "jsonrpc":"2.0",
+            "id":"tool-context-array",
+            "method":"runtime.turn.execute",
+            "params":{
+                "request_id":"req_1",
+                "session_key":"feishu:tenant:dm:user",
+                "user_message":"hello",
+                "tool_context":[]
+            }
+        }"#;
+        let output = handle_json_line(input);
+        let payload: Value = serde_json::from_str(&output).expect("valid json");
+        assert_eq!(payload["error"]["code"], -32602);
+        assert_eq!(payload["error"]["message"], "invalid_tool_context");
+        assert_eq!(
+            payload["error"]["data"]["diagnostic_kind"].as_str(),
+            Some("invalid_tool_context_shape")
+        );
+        assert_eq!(
+            payload["error"]["data"]["field"].as_str(),
+            Some("tool_context")
+        );
+        assert!(payload["error"]["data"]["raw_value"].is_array());
+    }
+
+    #[test]
+    fn turn_execute_rejects_null_prompt_cache_options() {
+        let input = r#"{
+            "jsonrpc":"2.0",
+            "id":"prompt-cache-null",
+            "method":"runtime.turn.execute",
+            "params":{
+                "request_id":"req_1",
+                "session_key":"feishu:tenant:dm:user",
+                "user_message":"hello",
+                "model_config":{
+                    "provider_options":{
+                        "kimi":{
+                            "prompt_cache":null
+                        }
+                    }
+                }
+            }
+        }"#;
+        let output = handle_json_line(input);
+        let payload: Value = serde_json::from_str(&output).expect("valid json");
+        assert_eq!(payload["error"]["code"], -32602);
+        assert_eq!(payload["error"]["message"], "invalid_prompt_cache");
+        assert_eq!(
+            payload["error"]["data"]["diagnostic_kind"].as_str(),
+            Some("invalid_model_config_provider_options_kimi_prompt_cache_shape")
+        );
+        assert_eq!(
+            payload["error"]["data"]["field"].as_str(),
+            Some("model_config.provider_options.kimi.prompt_cache")
+        );
+        assert!(payload["error"]["data"]["raw_value"].is_null());
+    }
+
+    #[test]
+    fn turn_execute_rejects_nested_non_object_model_option_shapes() {
+        let cases = [
+            (
+                "provider-options-null",
+                r#""provider_options":null"#,
+                "invalid_provider_options",
+                "invalid_model_config_provider_options_shape",
+                "model_config.provider_options",
+            ),
+            (
+                "kimi-options-array",
+                r#""provider_options":{"kimi":[]}"#,
+                "invalid_provider_options_kimi",
+                "invalid_model_config_provider_options_kimi_shape",
+                "model_config.provider_options.kimi",
+            ),
+        ];
+
+        for (case_id, options_payload, message, diagnostic_kind, field) in cases {
+            let input = format!(
+                r#"{{
+                    "jsonrpc":"2.0",
+                    "id":"{case_id}",
+                    "method":"runtime.turn.execute",
+                    "params":{{
+                        "request_id":"req_1",
+                        "session_key":"feishu:tenant:dm:user",
+                        "user_message":"hello",
+                        "model_config":{{{options_payload}}}
+                    }}
+                }}"#
+            );
+            let output = handle_json_line(input.as_str());
+            let payload: Value = serde_json::from_str(&output).expect("valid json");
+            assert_eq!(payload["error"]["code"], -32602, "{case_id}");
+            assert_eq!(payload["error"]["message"], message, "{case_id}");
+            assert_eq!(
+                payload["error"]["data"]["diagnostic_kind"].as_str(),
+                Some(diagnostic_kind),
+                "{case_id}"
+            );
+            assert_eq!(
+                payload["error"]["data"]["field"].as_str(),
+                Some(field),
+                "{case_id}"
+            );
+        }
+    }
+
+    #[test]
     fn turn_execute_rejects_invalid_event_stream() {
         let input = r#"{
             "jsonrpc":"2.0",

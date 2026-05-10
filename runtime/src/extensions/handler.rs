@@ -40,6 +40,115 @@ fn parse_event_stream_mode(value: Option<&Value>) -> Result<bool, Value> {
     Err(invalid_event_stream_value(json!(raw_value)))
 }
 
+fn invalid_turn_execute_shape(
+    diagnostic_kind: &str,
+    field: &str,
+    raw_value: &Value,
+    recovery_hint: &str,
+) -> Value {
+    json!({
+        "diagnostic_kind": diagnostic_kind,
+        "field": field,
+        "source": format!("runtime.turn.execute.params.{field}"),
+        "raw_value": raw_value,
+        "recovery_hint": recovery_hint,
+    })
+}
+
+fn validate_optional_object_shape(
+    parent: &serde_json::Map<String, Value>,
+    key: &str,
+    field: &str,
+    diagnostic_kind: &str,
+    recovery_hint: &str,
+) -> Result<(), Value> {
+    if let Some(value) = parent.get(key) {
+        if !value.is_object() {
+            return Err(invalid_turn_execute_shape(
+                diagnostic_kind,
+                field,
+                value,
+                recovery_hint,
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_turn_execute_param_shapes(params: &Value) -> Result<(), Value> {
+    let Some(params_object) = params.as_object() else {
+        return Err(invalid_turn_execute_shape(
+            "invalid_turn_execute_params",
+            "params",
+            params,
+            "pass runtime.turn.execute params as an object with the required turn fields",
+        ));
+    };
+
+    validate_optional_object_shape(
+        params_object,
+        "model_config",
+        "model_config",
+        "invalid_model_config_shape",
+        "omit model_config to use runtime env/config fallback, or pass a model_config object",
+    )?;
+    validate_optional_object_shape(
+        params_object,
+        "tool_context",
+        "tool_context",
+        "invalid_tool_context_shape",
+        "omit tool_context only for turns that do not execute local tools, or pass a tool_context object",
+    )?;
+
+    if let Some(model_config) = params_object.get("model_config").and_then(Value::as_object) {
+        validate_optional_object_shape(
+            model_config,
+            "provider_options",
+            "model_config.provider_options",
+            "invalid_model_config_provider_options_shape",
+            "omit model_config.provider_options to use provider defaults, or pass a provider_options object",
+        )?;
+        if let Some(provider_options) = model_config
+            .get("provider_options")
+            .and_then(Value::as_object)
+        {
+            validate_optional_object_shape(
+                provider_options,
+                "kimi",
+                "model_config.provider_options.kimi",
+                "invalid_model_config_provider_options_kimi_shape",
+                "omit model_config.provider_options.kimi to use Kimi defaults, or pass a kimi options object",
+            )?;
+            if let Some(kimi_options) = provider_options.get("kimi").and_then(Value::as_object) {
+                validate_optional_object_shape(
+                    kimi_options,
+                    "prompt_cache",
+                    "model_config.provider_options.kimi.prompt_cache",
+                    "invalid_model_config_provider_options_kimi_prompt_cache_shape",
+                    "omit model_config.provider_options.kimi.prompt_cache to use prompt-cache defaults, or pass a prompt_cache object",
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn invalid_turn_execute_params_message(data: &Value) -> &'static str {
+    match data
+        .get("diagnostic_kind")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+    {
+        "invalid_model_config_shape" => "invalid_model_config",
+        "invalid_model_config_provider_options_shape" => "invalid_provider_options",
+        "invalid_model_config_provider_options_kimi_shape" => "invalid_provider_options_kimi",
+        "invalid_model_config_provider_options_kimi_prompt_cache_shape" => "invalid_prompt_cache",
+        "invalid_tool_context_shape" => "invalid_tool_context",
+        "invalid_turn_execute_params" => "invalid params",
+        _ => "invalid params",
+    }
+}
+
 fn invalid_runtime_health_field(field: &str, raw_value: Value, recovery_hint: &str) -> Value {
     json!({
         "diagnostic_kind": format!("invalid_{field}"),
@@ -172,6 +281,14 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
             ))
         }
         "runtime.turn.execute" => {
+            validate_turn_execute_param_shapes(&request.params).map_err(|data| {
+                error_with_data(
+                    request.id.clone(),
+                    -32602,
+                    invalid_turn_execute_params_message(&data),
+                    data,
+                )
+            })?;
             let use_stderr_event_stream = parse_event_stream_mode(request.params.get("event_stream"))
                 .map_err(|data| {
                     error_with_data(request.id.clone(), -32602, "invalid event_stream", data)
