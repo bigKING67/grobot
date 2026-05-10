@@ -268,7 +268,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     direct inputs follow the same fail-closed boundary: omitted values may use
     `coding`, but explicit empty, whitespace-only, or unsupported profiles must
     return structured `tool_context_invalid` errors instead of silently falling
-    back to `coding`.
+    back to `coding`. Explicit runtime `tool_context.enabled_tools` and
+    `tool_context.model_visible_tools` lists may be empty to hide/disable all
+    tools, but their entries must be known, non-empty, and unique after
+    normalization; malformed entries must return structured
+    `tool_context_invalid` errors before dispatch.
 35. Runtime binary path controls must fail closed on explicit empty values.
     `GROBOT_RUNTIME_BIN`, direct stdio runtime binary overrides, and
     `GROBOT_TS_DEV_REPO_ROOT` may use the derived repository runtime path only

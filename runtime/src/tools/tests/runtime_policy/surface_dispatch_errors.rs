@@ -123,6 +123,87 @@
     }
 
     #[test]
+    fn dispatcher_rejects_invalid_tool_surface_tool_lists() {
+        let workspace = make_temp_workspace("tool-surface-tool-list-invalid");
+        fs::write(workspace.join("notes.txt"), "secret").expect("write notes");
+        let executor = LocalToolExecutor;
+
+        let mut empty_tool_input = make_read_only_input(&workspace);
+        if let Some(context) = empty_tool_input.tool_context.as_mut() {
+            context.enabled_tools = Some(vec![TOOL_READ.to_string(), "   ".to_string()]);
+        }
+        let empty_tool_error = execute_tool_payload(
+            &executor,
+            &empty_tool_input,
+            TOOL_READ,
+            json!({
+                "path": "notes.txt"
+            }),
+        )
+        .expect_err("empty enabled tool names must fail closed");
+        assert_eq!(empty_tool_error.error_class, "tool_context_invalid");
+        let empty_tool_data = empty_tool_error
+            .data
+            .as_ref()
+            .expect("empty tool error should include structured data");
+        assert_eq!(
+            empty_tool_data["field"].as_str(),
+            Some("tool_context.enabled_tools[1]")
+        );
+        assert_eq!(empty_tool_data["raw_value"].as_str(), Some("   "));
+
+        let mut unknown_tool_input = make_read_only_input(&workspace);
+        if let Some(context) = unknown_tool_input.tool_context.as_mut() {
+            context.model_visible_tools = Some(vec!["read".to_string(), "ghost_tool".to_string()]);
+        }
+        let unknown_tool_error = execute_tool_payload(
+            &executor,
+            &unknown_tool_input,
+            TOOL_READ,
+            json!({
+                "path": "notes.txt"
+            }),
+        )
+        .expect_err("unknown visible tool names must fail closed");
+        assert_eq!(unknown_tool_error.error_class, "tool_context_invalid");
+        let unknown_tool_data = unknown_tool_error
+            .data
+            .as_ref()
+            .expect("unknown tool error should include structured data");
+        assert_eq!(
+            unknown_tool_data["field"].as_str(),
+            Some("tool_context.model_visible_tools[1]")
+        );
+        assert_eq!(unknown_tool_data["raw_value"].as_str(), Some("ghost_tool"));
+
+        let mut duplicate_tool_input = make_read_only_input(&workspace);
+        if let Some(context) = duplicate_tool_input.tool_context.as_mut() {
+            context.enabled_tools = Some(vec!["read".to_string(), "READ".to_string()]);
+        }
+        let duplicate_tool_error = execute_tool_payload(
+            &executor,
+            &duplicate_tool_input,
+            TOOL_READ,
+            json!({
+                "path": "notes.txt"
+            }),
+        )
+        .expect_err("duplicate enabled tool names must fail closed");
+        assert_eq!(duplicate_tool_error.error_class, "tool_context_invalid");
+        let duplicate_tool_data = duplicate_tool_error
+            .data
+            .as_ref()
+            .expect("duplicate tool error should include structured data");
+        assert_eq!(
+            duplicate_tool_data["field"].as_str(),
+            Some("tool_context.enabled_tools[1]")
+        );
+        assert_eq!(duplicate_tool_data["raw_value"].as_str(), Some("READ"));
+
+        fs::remove_dir_all(&workspace).expect("cleanup temp workspace");
+    }
+
+    #[test]
     fn read_slim_surface_rejects_hidden_range_and_media_args() {
         let workspace = make_temp_workspace("read-slim-hidden-args");
         fs::write(workspace.join("notes.txt"), "line 1\nline 2\n").expect("write notes");

@@ -44,10 +44,10 @@ fn parse_tool_context(input: &TurnExecuteInput) -> Result<ToolContextResolved, T
             Some(raw_work_dir),
         ));
     }
-    let enabled_tools =
-        normalize_tool_name_set(tool_context.enabled_tools.as_ref()).unwrap_or_else(default_enabled_tools);
+    let enabled_tools = normalize_tool_name_set(tool_context.enabled_tools.as_ref(), "enabled_tools")?
+        .unwrap_or_else(default_enabled_tools);
     let profile = resolve_tool_context_surface_profile(tool_context.tool_surface_profile.as_deref())?;
-    let model_visible_tools = normalize_tool_name_set(tool_context.model_visible_tools.as_ref())
+    let model_visible_tools = normalize_tool_name_set(tool_context.model_visible_tools.as_ref(), "model_visible_tools")?
         .unwrap_or_else(|| enabled_tools.clone());
     let advanced_tool_schema = tool_context.advanced_tool_schema.unwrap_or(false);
     let bash_allowlist = tool_context
@@ -113,18 +113,49 @@ fn resolve_tool_context_surface_profile(raw: Option<&str>) -> Result<String, Too
     Ok(profile.to_string())
 }
 
-fn normalize_tool_name_set(values: Option<&Vec<String>>) -> Option<HashSet<String>> {
+fn invalid_tool_context_entry_error(field: &str, raw_value: &str, detail: impl Into<String>) -> ToolExecutionError {
+    ToolExecutionError::new("tool_context_invalid", detail.into()).with_data(json!({
+        "diagnostic_kind": "tool_context_invalid",
+        "field": field,
+        "source": field,
+        "raw_value": raw_value,
+        "recovery_hint": "fix the runtime tool context tool list, or omit it to use the derived surface defaults"
+    }))
+}
+
+fn normalize_tool_name_set(
+    values: Option<&Vec<String>>,
+    field: &str,
+) -> Result<Option<HashSet<String>>, ToolExecutionError> {
     values.map(|rows| {
         let mut set = HashSet::new();
-        for item in rows {
+        for (index, item) in rows.iter().enumerate() {
             let normalized = normalize_tool_name(item);
             if normalized.is_empty() {
-                continue;
+                return Err(invalid_tool_context_entry_error(
+                    &format!("tool_context.{field}[{index}]"),
+                    item,
+                    format!("tool_context.{field}[{index}] must be a non-empty tool name"),
+                ));
             }
-            set.insert(normalized);
+            if !is_local_tool_dispatch_supported(&normalized) {
+                return Err(invalid_tool_context_entry_error(
+                    &format!("tool_context.{field}[{index}]"),
+                    item,
+                    format!("tool_context.{field}[{index}] is not a supported runtime tool"),
+                ));
+            }
+            if !set.insert(normalized.clone()) {
+                return Err(invalid_tool_context_entry_error(
+                    &format!("tool_context.{field}[{index}]"),
+                    item,
+                    format!("tool_context.{field} must not contain duplicate tools"),
+                ));
+            }
         }
-        set
+        Ok(set)
     })
+    .transpose()
 }
 
 fn value_object<'a>(
