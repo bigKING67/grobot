@@ -1,6 +1,7 @@
 import {
   hasFlag,
   OptionValue,
+  readEnvOptionalNonEmptyString,
   readExplicitOptionalNonEmptyString,
   readOptionString,
 } from "../cli-args";
@@ -74,13 +75,41 @@ export interface RunServeRouteDecisionInput {
   };
 }
 
-function resolveHasDirectRuntimeOverride(options: Record<string, OptionValue>): boolean {
-  return Boolean(readExplicitOptionalNonEmptyString(options, "base-url"))
-    || Boolean(process.env.GROBOT_BASE_URL)
-    || Boolean(readExplicitOptionalNonEmptyString(options, "api-key"))
-    || Boolean(process.env.GROBOT_API_KEY)
-    || Boolean(readExplicitOptionalNonEmptyString(options, "model"))
-    || Boolean(process.env.GROBOT_MODEL);
+interface RunServeRuntimeEnvOverrides {
+  baseUrlFromEnv?: string;
+  apiKeyFromEnv?: string;
+  modelFromEnv?: string;
+  providerOverrideFromEnv?: string;
+  managementTokenFromEnv?: string;
+}
+
+function resolveRunServeRuntimeEnvOverrides(
+  env: Record<string, string | undefined> = process.env,
+): RunServeRuntimeEnvOverrides {
+  return {
+    baseUrlFromEnv: readEnvOptionalNonEmptyString(env, "GROBOT_BASE_URL", "base-url"),
+    apiKeyFromEnv: readEnvOptionalNonEmptyString(env, "GROBOT_API_KEY", "api-key"),
+    modelFromEnv: readEnvOptionalNonEmptyString(env, "GROBOT_MODEL", "model"),
+    providerOverrideFromEnv: readEnvOptionalNonEmptyString(env, "GROBOT_PROVIDER", "provider"),
+    managementTokenFromEnv: readEnvOptionalNonEmptyString(env, "GROBOT_MANAGEMENT_TOKEN", "management-token"),
+  };
+}
+
+function resolveHasDirectRuntimeOverride(
+  options: Record<string, OptionValue>,
+  envOverrides: RunServeRuntimeEnvOverrides,
+): boolean {
+  const baseUrlFromCli = readExplicitOptionalNonEmptyString(options, "base-url");
+  const apiKeyFromCli = readExplicitOptionalNonEmptyString(options, "api-key");
+  const modelFromCli = readExplicitOptionalNonEmptyString(options, "model");
+  return Boolean(
+    baseUrlFromCli
+    || envOverrides.baseUrlFromEnv
+    || apiKeyFromCli
+    || envOverrides.apiKeyFromEnv
+    || modelFromCli
+    || envOverrides.modelFromEnv,
+  );
 }
 
 function hasOption(options: Record<string, OptionValue>, key: string): boolean {
@@ -163,10 +192,11 @@ export function resolveRunServeContext(options: Record<string, OptionValue>): Ru
     projectName,
     defaultSubject: process.env.USER ?? "user",
   });
+  const runtimeEnvOverrides = resolveRunServeRuntimeEnvOverrides();
   const providerOverrideFromCli = readExplicitOptionalNonEmptyString(options, "provider");
   const managementToken =
     readExplicitOptionalNonEmptyString(options, "management-token") ??
-    process.env.GROBOT_MANAGEMENT_TOKEN ??
+    runtimeEnvOverrides.managementTokenFromEnv ??
     readManagementTokenFromToml(configTomlPath);
   const executionPlaneInput: ExecutionPlaneConfigInput = {
     gatewayImplArg: readOptionString(options, "gateway-impl"),
@@ -182,8 +212,8 @@ export function resolveRunServeContext(options: Record<string, OptionValue>): Ru
     workDir,
     configTomlPath,
     providerOverrideFromCli,
-    providerOverrideFromEnv: process.env.GROBOT_PROVIDER,
-    hasDirectRuntimeOverride: resolveHasDirectRuntimeOverride(options),
+    providerOverrideFromEnv: runtimeEnvOverrides.providerOverrideFromEnv,
+    hasDirectRuntimeOverride: resolveHasDirectRuntimeOverride(options, runtimeEnvOverrides),
     circuitFailures: parseExplicitRequiredPositiveIntOption({
       options,
       key: "circuit-failures",

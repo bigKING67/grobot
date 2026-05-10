@@ -601,6 +601,14 @@ export function runStatusInvalidRuntimeControlsRejectFlow(context) {
     },
   );
   const invalidRecoveryRoundsJsonPayload = parseJsonObjectSafe(invalidRecoveryRoundsJsonResult.stdout);
+  const emptyProviderEnvJsonResult = runCommand(
+    repoRoot,
+    [...commonArgs, "--json"],
+    {
+      GROBOT_PROVIDER: "",
+    },
+  );
+  const emptyProviderEnvJsonPayload = parseJsonObjectSafe(emptyProviderEnvJsonResult.stdout);
   const combinedOutput = [
     invalidCircuitJsonResult.stdout,
     invalidCircuitJsonResult.stderr,
@@ -614,6 +622,8 @@ export function runStatusInvalidRuntimeControlsRejectFlow(context) {
     invalidFallbackModeTextResult.stderr,
     invalidRecoveryRoundsJsonResult.stdout,
     invalidRecoveryRoundsJsonResult.stderr,
+    emptyProviderEnvJsonResult.stdout,
+    emptyProviderEnvJsonResult.stderr,
   ].join("\n");
   return {
     invalid_circuit_json_exit_code: invalidCircuitJsonResult.exit_code,
@@ -651,6 +661,13 @@ export function runStatusInvalidRuntimeControlsRejectFlow(context) {
     invalid_recovery_rounds_json_detail:
       typeof invalidRecoveryRoundsJsonPayload?.detail === "string"
         ? invalidRecoveryRoundsJsonPayload.detail
+        : null,
+    empty_provider_env_json_exit_code: emptyProviderEnvJsonResult.exit_code,
+    empty_provider_env_json_error: emptyProviderEnvJsonPayload?.error ?? null,
+    empty_provider_env_json_field: emptyProviderEnvJsonPayload?.field ?? null,
+    empty_provider_env_json_detail:
+      typeof emptyProviderEnvJsonPayload?.detail === "string"
+        ? emptyProviderEnvJsonPayload.detail
         : null,
     hides_top_level_fatal: !combinedOutput.includes("fatal error"),
   };

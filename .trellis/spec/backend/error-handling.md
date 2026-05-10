@@ -208,6 +208,12 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     explicit values must exit `2` with stable `invalid_<field>` errors before
     plan artifact event rotation, stale apply recovery, or runtime turn
     execution starts.
+28. Runtime/provider string env controls must fail closed on explicit empty
+    values. `GROBOT_MODEL`, `GROBOT_BASE_URL`, `GROBOT_API_KEY`,
+    `GROBOT_PROVIDER`, and `GROBOT_MANAGEMENT_TOKEN` may use lower-priority
+    config/defaults only when omitted; if present but empty they must exit `2`
+    with stable `invalid_<field>` errors instead of silently falling through to
+    config TOML or unauthenticated management defaults.
 
 ---
 

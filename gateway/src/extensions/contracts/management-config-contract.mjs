@@ -152,6 +152,20 @@ async function runConfigControlsRejectFlow(options) {
       GROBOT_CONFIG_READ_POLICY: "open",
     },
   );
+  const emptyEnvManagementToken = await runRepoCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_MANAGEMENT_TOKEN: "",
+    },
+  );
+  const emptyEnvModelWithCliBaseUrl = await runRepoCommand(
+    repoRoot,
+    [...commonArgs, "--base-url", "https://example.invalid"],
+    {
+      GROBOT_MODEL: "",
+    },
+  );
   const invalidConfigPolicyTrailing = await makeConfigTomlCase(
     "config-policy-trailing",
     ['config_read_policy = "auto" trailing'],
@@ -185,6 +199,10 @@ async function runConfigControlsRejectFlow(options) {
     invalidEnvSessionStore.stderr,
     invalidEnvConfigReadPolicy.stdout,
     invalidEnvConfigReadPolicy.stderr,
+    emptyEnvManagementToken.stdout,
+    emptyEnvManagementToken.stderr,
+    emptyEnvModelWithCliBaseUrl.stdout,
+    emptyEnvModelWithCliBaseUrl.stderr,
     invalidConfigPolicyTrailing.stdout,
     invalidConfigPolicyTrailing.stderr,
     invalidExperiencePublishMode.stdout,
@@ -221,6 +239,14 @@ async function runConfigControlsRejectFlow(options) {
     invalid_env_config_policy_has_stable_error:
       invalidEnvConfigReadPolicy.stderr.includes("error: invalid_config_read_policy:")
       && invalidEnvConfigReadPolicy.stderr.includes("config-read-policy must be auto, public, auth, or disabled"),
+    empty_env_management_token_exit_code: emptyEnvManagementToken.exit_code,
+    empty_env_management_token_has_stable_error:
+      emptyEnvManagementToken.stderr.includes("error: invalid_management_token:")
+      && emptyEnvManagementToken.stderr.includes("management-token must be a non-empty string"),
+    empty_env_model_with_cli_base_url_exit_code: emptyEnvModelWithCliBaseUrl.exit_code,
+    empty_env_model_with_cli_base_url_has_stable_error:
+      emptyEnvModelWithCliBaseUrl.stderr.includes("error: invalid_model:")
+      && emptyEnvModelWithCliBaseUrl.stderr.includes("model must be a non-empty string"),
     invalid_config_policy_trailing_exit_code: invalidConfigPolicyTrailing.exit_code,
     invalid_config_policy_trailing_has_stable_error:
       invalidConfigPolicyTrailing.stderr.includes("error: invalid_config_read_policy:")

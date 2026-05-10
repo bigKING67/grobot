@@ -6,6 +6,7 @@ import {
   type RuntimePromptCacheStrategy,
 } from "../../../models/types";
 import {
+  readEnvOptionalNonEmptyString,
   readExplicitOptionalNonEmptyString,
   readOptionString,
   type OptionValue,
@@ -524,9 +525,9 @@ export function resolveRuntimeModelConfig(
   const timeoutFromCli = readOptionString(options, "runtime-http-timeout-ms");
 
   const fallback = fallbackPool?.providers[0];
-  const baseUrlFromEnv = process.env.GROBOT_BASE_URL;
-  const apiKeyFromEnv = process.env.GROBOT_API_KEY;
-  const modelFromEnv = process.env.GROBOT_MODEL;
+  const baseUrlFromEnv = readEnvOptionalNonEmptyString(process.env, "GROBOT_BASE_URL", "base-url");
+  const apiKeyFromEnv = readEnvOptionalNonEmptyString(process.env, "GROBOT_API_KEY", "api-key");
+  const modelFromEnv = readEnvOptionalNonEmptyString(process.env, "GROBOT_MODEL", "model");
   const timeoutFromEnv = process.env.GROBOT_RUNTIME_HTTP_TIMEOUT_MS;
   const providerMaxInFlightFromEnv =
     process.env.GROBOT_PROVIDER_MAX_INFLIGHT;

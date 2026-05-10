@@ -403,6 +403,7 @@ export async function runRuntimeFailoverAndToolSmoke() {
     statusInvalidRuntimeControlsPayload.invalid_recovery_rounds_json_detail,
     "max-recovery-rounds must be an integer between 0 and 8",
   );
+  assert.deepEqual([statusInvalidRuntimeControlsPayload.empty_provider_env_json_exit_code, statusInvalidRuntimeControlsPayload.empty_provider_env_json_error, statusInvalidRuntimeControlsPayload.empty_provider_env_json_field, statusInvalidRuntimeControlsPayload.empty_provider_env_json_detail], [2, "invalid_provider", "provider", "provider must be a non-empty string"]);
   assert.equal(statusInvalidRuntimeControlsPayload.hides_top_level_fatal, true);
   logStep("start-smoke-contract status-invalid-runtime-controls-reject-flow");
   assertStatusRuntimeToolControlSmoke();
@@ -621,6 +622,10 @@ export async function runRuntimeFailoverAndToolSmoke() {
   assert.equal(serveInvalidConfigPayload.invalid_env_session_store_has_stable_error, true);
   assert.equal(serveInvalidConfigPayload.invalid_env_config_policy_exit_code, 2);
   assert.equal(serveInvalidConfigPayload.invalid_env_config_policy_has_stable_error, true);
+  assert.equal(serveInvalidConfigPayload.empty_env_management_token_exit_code, 2);
+  assert.equal(serveInvalidConfigPayload.empty_env_management_token_has_stable_error, true);
+  assert.equal(serveInvalidConfigPayload.empty_env_model_with_cli_base_url_exit_code, 2);
+  assert.equal(serveInvalidConfigPayload.empty_env_model_with_cli_base_url_has_stable_error, true);
   assert.equal(serveInvalidConfigPayload.invalid_config_policy_trailing_exit_code, 2);
   assert.equal(serveInvalidConfigPayload.invalid_config_policy_trailing_has_stable_error, true);
   assert.equal(serveInvalidConfigPayload.invalid_experience_publish_mode_exit_code, 2);

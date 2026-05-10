@@ -137,6 +137,24 @@ export function readExplicitOptionalNonEmptyString(
   return value.trim();
 }
 
+export function readEnvOptionalNonEmptyString(
+  env: Record<string, string | undefined>,
+  envKey: string,
+  field: string,
+): string | undefined {
+  const value = env[envKey];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value.trim().length === 0) {
+    throw new CliStringOptionInputError(
+      field,
+      `${field} must be a non-empty string`,
+    );
+  }
+  return value.trim();
+}
+
 export function readExplicitOptionalNonEmptyStringAny(
   options: Record<string, OptionValue>,
   keys: readonly string[],

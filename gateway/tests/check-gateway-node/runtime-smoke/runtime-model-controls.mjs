@@ -63,6 +63,8 @@ export function assertRuntimeModelControlSmoke() {
   assert.equal(payload.empty_api_key_cli_has_stable_error, true);
   assert.equal(payload.missing_base_url_cli_exit_code, 2);
   assert.equal(payload.missing_base_url_cli_has_stable_error, true);
+  assert.equal(payload.empty_model_env_exit_code, 2);
+  assert.equal(payload.empty_model_env_has_stable_error, true);
   assert.equal(payload.valid_boundary_exit_code !== 2, true);
   assert.equal(payload.valid_boundary_reached_runtime, true);
   assert.equal(payload.valid_search_routing_boundary_exit_code !== 2, true);
