@@ -37,14 +37,20 @@ Quality gates must protect three dimensions simultaneously:
 
 ## Verification Requirements
 
-1. After non-doc code changes, run repository check pipeline:
+1. After non-doc code changes, run the local affected check pipeline:
    - `npm run check`
-2. For runtime-focused iteration, at minimum confirm Rust compile path:
+2. Before push or handoff, prefer the broader local profile:
+   - `npm run check:prepush`
+3. For CI-equivalent full coverage, use:
+   - `npm run check:ci -- --no-cache`
+4. For runtime-focused iteration, at minimum confirm Rust compile path:
    - `cargo check --manifest-path runtime/Cargo.toml`
-3. For gateway TypeScript compile contract:
+5. For gateway TypeScript compile contract:
    - `npm run check:gateway:ts`
-4. For workflow/task context changes:
+6. For workflow/task context changes:
    - `python3 ./.trellis/scripts/task.py validate <task-dir>`
+7. For quality gate performance diagnosis:
+   - `npm run check:quality:stats`
 
 ---
 

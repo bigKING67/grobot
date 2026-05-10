@@ -12,6 +12,7 @@ import {
   parseJsonOutput,
   repoRoot,
   runCommand,
+  runTsx,
   sleepMs,
 } from "../harness.mjs";
 
@@ -22,13 +23,7 @@ export async function runRuntimeStatusSurfaceSmoke() {
   assertSuccess("runtime build for ts-rust smoke", runtimeBuildResult);
   logStep("runtime build for ts-rust smoke");
 
-  const runtimeInterruptContractResult = runCommand("npx", [
-    "--yes",
-    "--package",
-    "tsx@4.20.6",
-    "tsx",
-    "gateway/src/extensions/contracts/runtime-interrupt-contract.ts",
-  ]);
+  const runtimeInterruptContractResult = runTsx("gateway/src/extensions/contracts/runtime-interrupt-contract.ts");
   assertSuccess("runtime-interrupt-contract", runtimeInterruptContractResult);
   const runtimeInterruptContractPayload = parseJsonOutput(
     "runtime-interrupt-contract",
@@ -45,13 +40,7 @@ export async function runRuntimeStatusSurfaceSmoke() {
     call_count: runtimeInterruptContractPayload.call_count,
   });
 
-  const runtimeStdioEventStreamContractResult = runCommand("npx", [
-    "--yes",
-    "--package",
-    "tsx@4.20.6",
-    "tsx",
-    "gateway/src/extensions/contracts/runtime-stdio-event-stream-contract.ts",
-  ]);
+  const runtimeStdioEventStreamContractResult = runTsx("gateway/src/extensions/contracts/runtime-stdio-event-stream-contract.ts");
   assertSuccess("runtime-stdio-event-stream-contract", runtimeStdioEventStreamContractResult);
   const runtimeStdioEventStreamContractPayload = parseJsonOutput(
     "runtime-stdio-event-stream-contract",

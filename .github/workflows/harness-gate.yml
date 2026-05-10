@@ -60,8 +60,11 @@ jobs:
           npm --version
           cargo --version
 
+      - name: Install dependencies
+        run: npm ci
+
       - name: Run gateway checks
-        run: npm run check
+        run: npm run check:ci -- --no-cache
 
       - name: Validate CI label policy
         run: npm run harness:ci-label-policy:check
@@ -79,6 +82,9 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Run harness CI gate
         run: npm run harness:gate:ci
@@ -138,6 +144,9 @@ jobs:
           node-version: "20"
           cache: "npm"
 
+      - name: Install dependencies
+        run: npm ci
+
       - name: Validate skill-router policy profiles
         run: npm run harness:skill-router:policy:check
 
@@ -188,6 +197,9 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Build context-memory baseline report (base commit)
         id: context_memory_baseline
@@ -273,6 +285,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Download trace artifacts
         continue-on-error: true

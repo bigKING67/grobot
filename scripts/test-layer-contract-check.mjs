@@ -52,7 +52,9 @@ function testPackageScriptsUseStrictDefault() {
   assert.equal(scripts["check:layer-contract"], "node scripts/layer-contract-check.mjs --strict");
   assert.equal(scripts["check:layer-contract:strict"], "node scripts/layer-contract-check.mjs --strict");
   assert.equal(scripts["check:layer-contract:warn"], "node scripts/layer-contract-check.mjs");
-  assert.match(scripts.check ?? "", /npm run check:layer-contract( |$|&&)/);
+  assert.equal(scripts.check, "node scripts/quality-runner.mjs run affected --compact");
+  assert.equal(scripts["check:quick"], "node scripts/quality-runner.mjs run quick");
+  assert.equal(scripts["check:ci"], "node scripts/quality-runner.mjs run ci");
   assert.doesNotMatch(scripts.check ?? "", /check:layer-contract:warn/);
 
   const layerSpec = JSON.parse(

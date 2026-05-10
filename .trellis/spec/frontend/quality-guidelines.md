@@ -38,17 +38,21 @@ Frontend quality in `grobot` means:
 
 ## Verification Requirements
 
-1. After non-doc code changes, run repository checks:
+1. After non-doc code changes, run the local affected check pipeline:
    - `npm run check`
-2. For gateway-focused type/contract iteration, confirm:
+2. Before push or handoff, prefer the broader local profile:
+   - `npm run check:prepush`
+3. For CI-equivalent full coverage, use:
+   - `npm run check:ci -- --no-cache`
+4. For gateway-focused type/contract iteration, confirm:
    - `npm run check:gateway:ts`
-3. For select-menu controller behavior, run the focused contract before the
+5. For select-menu controller behavior, run the focused contract before the
    broader gateway gate:
-   - `npx --yes --package tsx@4.20.6 tsx gateway/src/extensions/contracts/start-input-keybinding-contract.ts`
+   - `tsx gateway/src/extensions/contracts/start-input-keybinding-contract.ts`
    This must include `select-menu-runtime-contract.ts` flags when changing
    raw-mode ordering, disabled options, inline-input mode, numeric selection,
    or search cancellation.
-4. For task workflow/spec updates, validate task metadata:
+6. For task workflow/spec updates, validate task metadata:
    - `python3 ./.trellis/scripts/task.py validate <task-dir>`
 
 ---

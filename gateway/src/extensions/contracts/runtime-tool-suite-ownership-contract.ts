@@ -53,6 +53,7 @@ const startSmokeStatusTsRustRuntimeToolsStatus = readRepoFile(
 const harnessWorkflow = readRepoFile(".github/workflows/harness-gate.yml");
 const corePackagingWorkflow = readRepoFile(".github/workflows/core-packaging-check.yml");
 const coreReleaseWorkflow = readRepoFile(".github/workflows/core-release-gate.yml");
+const layerContractWorkflow = readRepoFile(".github/workflows/layer-contract-gate.yml");
 
 const runtimeToolContractPathFragment = "gateway/src/extensions/contracts/runtime-tool-";
 const runtimeToolContractFiles = readdirSync(resolve(repoRoot, "gateway/src/extensions/contracts"))
@@ -60,9 +61,7 @@ const runtimeToolContractFiles = readdirSync(resolve(repoRoot, "gateway/src/exte
 const runtimeToolSmokeInvocationCount = (
   gatewaySmoke.match(new RegExp(runtimeToolContractPathFragment, "g")) ?? []
 ).length;
-const checkSegments = checkScript.split("&&").map((segment) => segment.trim());
-const runtimeToolSuiteIndex = checkSegments.indexOf("npm run check:gateway:runtime-tools");
-const gatewaySmokeIndex = checkSegments.indexOf("npm run check:gateway");
+const checkSegments = checkScript.split("&&").map((segment) => segment.trim()).filter(Boolean);
 const layerContractScript = packageJson.scripts?.["check:layer-contract"] ?? "";
 const layerContractStrictScript = packageJson.scripts?.["check:layer-contract:strict"] ?? "";
 const layerContractWarnScript = packageJson.scripts?.["check:layer-contract:warn"] ?? "";
@@ -72,19 +71,29 @@ const qualityReportScript = packageJson.scripts?.["check:gateway:runtime-tools:q
 const qualityParityScript = packageJson.scripts?.["check:gateway:runtime-tools:quality-parity"] ?? "";
 const releaseReportScript = packageJson.scripts?.["check:gateway:runtime-tools:release-report"] ?? "";
 
-expect(runtimeToolSuiteIndex >= 0, "default check must run runtime-tool suite");
-expect(gatewaySmokeIndex >= 0, "default check must run gateway smoke");
 expect(
-  checkSegments.includes("npm run check:layer-contract"),
-  "default check must run the strict layer-contract gate",
+  checkScript === "node scripts/quality-runner.mjs run affected --compact",
+  "default check must use the affected quality runner",
+);
+expect(
+  packageJson.scripts?.["check:ci"] === "node scripts/quality-runner.mjs run ci",
+  "package.json must expose full CI quality runner entrypoint",
+);
+expect(
+  packageJson.scripts?.["check:prepush"] === "node scripts/quality-runner.mjs run prepush",
+  "package.json must expose prepush quality runner entrypoint",
+);
+expect(
+  packageJson.scripts?.["check:quick"] === "node scripts/quality-runner.mjs run quick",
+  "package.json must expose quick quality runner entrypoint",
 );
 expect(
   !checkSegments.includes("npm run check:layer-contract:warn"),
   "default check must not use warn-only layer-contract diagnostics",
 );
 expect(
-  runtimeToolSuiteIndex < gatewaySmokeIndex,
-  "runtime-tool suite must run before monolithic gateway smoke",
+  !checkSegments.includes("npm run check:gateway"),
+  "default check must not run monolithic gateway smoke directly",
 );
 expect(
   layerContractScript === "node scripts/layer-contract-check.mjs --strict"
@@ -341,6 +350,14 @@ for (const [name, workflow] of [
 ] as const) {
   expect(workflow.includes("dtolnay/rust-toolchain@stable"), `${name} must set up Rust explicitly`);
 }
+for (const [name, workflow] of [
+  ["harness-gate", harnessWorkflow],
+  ["core-packaging-check", corePackagingWorkflow],
+  ["core-release-gate", coreReleaseWorkflow],
+  ["layer-contract-gate", layerContractWorkflow],
+] as const) {
+  expect(workflow.includes("npm ci"), `${name} must install npm dependencies before package scripts`);
+}
 expect(harnessWorkflow.includes('"runtime/**"'), "harness gate must trigger on runtime changes");
 expect(
   harnessWorkflow.includes('"scripts/check-runtime-tool-contracts.mjs"'),
@@ -402,5 +419,6 @@ process.stdout.write(JSON.stringify({
   release_report_regression_workflow: true,
   core_packaging_runtime_tool_contract_paths_covered: true,
   workflows_with_rust_toolchain: 3,
+  workflows_with_npm_ci: 4,
   harness_runtime_paths_covered: true,
 }) + "\n");

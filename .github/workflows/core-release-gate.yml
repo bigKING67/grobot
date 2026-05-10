@@ -32,6 +32,9 @@ jobs:
           npm --version
           cargo --version
 
+      - name: Install dependencies
+        run: npm ci
+
       - name: Run core release gate
         run: npm run core:gate:release -- --report /tmp/core-release-gate-report.json
 

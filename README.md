@@ -86,7 +86,10 @@ npm run check:version
 - 已新增 TS 侧 Agent Loop v2 骨架：`context -> runtime -> verify -> persist`，支持 `shadow_mode` 对比位。
 - 已新增 Rust 侧 `runtime.v1` stdio JSON-RPC 骨架：`runtime.health` 与 `runtime.turn.execute`。
 - 已新增跨层契约文件：`shared/contracts/runtime-v1.json`，作为 Gateway/Runtime 的版本锚点。
-- `npm run check` 已升级为默认质量门禁：Python target-scope + repository python boundary audit + layer contract + runtime-tool contract suite + Node gateway checks + TypeScript compile + Rust check/test。
+- `npm run check` 是默认本地门禁：通过 quality-runner 按当前变更选择受影响 gate，并使用确定性缓存与 DAG 调度避免每次局部改动都跑完整 300s+ gateway smoke。
+- 全量门禁使用 `npm run check:ci`：覆盖 Python target-scope、version、tools reference、layer contract、runtime-tool contract suite、gateway suite graph、TypeScript compile 与 Rust check/test；CI 默认 `--no-cache`。
+- 提交前更稳的本地入口是 `npm run check:prepush`（quick 基线 + 当前 affected；需要分支 diff 时显式加 `--base REF`）；诊断慢项和缓存命中率使用 `npm run check:quality:stats`。
+- 机制细节见 `docs/QUALITY_GATE_RUNNER.md`：registry、affected selection、DAG scheduler、pass-only cache、events/stats 与扩展新 gate 的流程。
 
 ## 目录分层（源码 vs 配置）
 

@@ -70,8 +70,10 @@ function parseArgs(argv) {
   };
 }
 
-function npxCommand() {
-  return process.platform === "win32" ? "npx.cmd" : "npx";
+function localBin(name) {
+  const binaryName = process.platform === "win32" ? `${name}.cmd` : name;
+  const candidate = resolve(repoRoot, "node_modules", ".bin", binaryName);
+  return existsSync(candidate) ? candidate : name;
 }
 
 function forcedFailureId() {
@@ -112,14 +114,12 @@ function runtimeBinaryStatus(includeRuntimeDescribe) {
 }
 
 function contractCommand(contract) {
-  return [
-    npxCommand(),
-    "--yes",
-    "--package",
-    "tsx@4.20.6",
-    "tsx",
-    contract.path,
-  ];
+  const tsxBin = localBin("tsx");
+  if (tsxBin !== "tsx") {
+    return [tsxBin, contract.path];
+  }
+  const npx = process.platform === "win32" ? "npx.cmd" : "npx";
+  return [npx, "--yes", "--package", "tsx@4.20.6", "tsx", contract.path];
 }
 
 function suggestedCommand(contract) {

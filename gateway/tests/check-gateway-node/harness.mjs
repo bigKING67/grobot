@@ -251,8 +251,39 @@ export function writeFixtureFile(path, content) {
   writeFileSync(path, content, "utf8");
 }
 
+function resolveLocalNpxTsxInvocation(command, args = []) {
+  const commandName = String(command ?? "").split(/[\\/]/).pop();
+  if (commandName !== "npx" && commandName !== "npx.cmd") {
+    return { command, args };
+  }
+
+  const packageIndex = args.indexOf("--package");
+  if (
+    packageIndex < 0
+    || args[packageIndex + 1] !== "tsx@4.20.6"
+    || args[packageIndex + 2] !== "tsx"
+  ) {
+    return { command, args };
+  }
+
+  const prefix = args.slice(0, packageIndex);
+  if (!prefix.every((arg) => arg === "--yes" || arg === "-y")) {
+    return { command, args };
+  }
+
+  const tsxBin = localBin("tsx");
+  if (tsxBin === "tsx") {
+    return { command, args };
+  }
+  return {
+    command: tsxBin,
+    args: args.slice(packageIndex + 3),
+  };
+}
+
 export function runCommand(command, args, options = {}) {
-  const result = spawnSync(command, args, {
+  const resolved = resolveLocalNpxTsxInvocation(command, args);
+  const result = spawnSync(resolved.command, resolved.args, {
     cwd: options.cwd ?? repoRoot,
     env: options.env ?? process.env,
     encoding: "utf8",
@@ -267,9 +298,24 @@ export function runCommand(command, args, options = {}) {
   };
 }
 
+export function localBin(name) {
+  const binaryName = process.platform === "win32" ? `${name}.cmd` : name;
+  const candidate = resolve(repoRoot, "node_modules", ".bin", binaryName);
+  return existsSync(candidate) ? candidate : name;
+}
+
+export function runTsx(scriptPath, args = [], options = {}) {
+  const tsxBin = localBin("tsx");
+  if (tsxBin !== "tsx") {
+    return runCommand(tsxBin, [scriptPath, ...args], options);
+  }
+  return runCommand("npx", ["--yes", "--package", "tsx@4.20.6", "tsx", scriptPath, ...args], options);
+}
+
 export function runCommandAsync(command, args, options = {}) {
   return new Promise((resolveResult, rejectResult) => {
-    const child = spawn(command, args, {
+    const resolved = resolveLocalNpxTsxInvocation(command, args);
+    const child = spawn(resolved.command, resolved.args, {
       cwd: options.cwd ?? repoRoot,
       env: options.env ?? process.env,
       stdio: ["pipe", "pipe", "pipe"],
@@ -355,15 +401,7 @@ export function runContract(scriptName, command, args = [], options = {}) {
 
 export function runTsContract(scriptName, command, args = [], options = {}) {
   const scriptPath = resolve(contractsRoot, scriptName);
-  const result = runCommand("npx", [
-    "--yes",
-    "--package",
-    "tsx@4.20.6",
-    "tsx",
-    scriptPath,
-    command,
-    ...args,
-  ], options);
+  const result = runTsx(scriptPath, [command, ...args], options);
   assertSuccess(`${scriptName} ${command}`, result);
   return result;
 }
@@ -397,16 +435,31 @@ export function sleepMs(delayMs) {
 
 export function parseCliOptions(argv) {
   const options = {
-    mode: "full",
+    baseline_json: "",
+    fail_on_retry: false,
     json: false,
     json_output: "",
-    fail_on_retry: false,
-    baseline_json: "",
+    list_suites: false,
+    mode: "full",
+    suites: [],
   };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index] ?? "";
     if (token === "--runtime-smoke-only") {
       options.mode = "runtime-smoke-only";
+      continue;
+    }
+    if (token === "--list-suites") {
+      options.list_suites = true;
+      continue;
+    }
+    if (token === "--suite") {
+      const value = argv[index + 1] ?? "";
+      if (!value || value.startsWith("--")) {
+        throw new Error("missing value for --suite");
+      }
+      options.suites.push(value);
+      index += 1;
       continue;
     }
     if (token === "--json") {

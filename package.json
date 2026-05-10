@@ -35,7 +35,14 @@
     "core:gate:release": "bash ./scripts/core-release-gate.sh",
     "core:release:prepare": "bash ./scripts/core-release-prepare.sh",
     "core:release:bundles": "bash ./scripts/package-release-bundles.sh",
-    "check": "npm run audit:python:target && npm run check:version && npm run check:tools-all-reference && npm run check:layer-contract:test && npm run check:layer-contract && npm run check:gateway:runtime-tools && npm run check:gateway && npm run check:gateway:ts && npm run check:runtime",
+    "check": "node scripts/quality-runner.mjs run affected --compact",
+    "check:affected": "node scripts/quality-runner.mjs run affected",
+    "check:quick": "node scripts/quality-runner.mjs run quick",
+    "check:prepush": "node scripts/quality-runner.mjs run prepush",
+    "check:ci": "node scripts/quality-runner.mjs run ci",
+    "check:release": "node scripts/quality-runner.mjs run release",
+    "check:quality:stats": "node scripts/quality-runner.mjs stats",
+    "check:quality-runner": "node scripts/checks/quality-runner/behavior.mjs",
     "audit:python:target": "node scripts/python-scope-audit.mjs",
     "check:version": "node scripts/check-version-consistency.mjs",
     "sync:tools-all-reference": "node scripts/sync-tools-all-reference.mjs",
@@ -66,8 +73,10 @@
     "check:browser-structured:mcp:live": "node gateway/src/extensions/contracts/browser-structured-mcp-live-contract.mjs",
     "check:browser-structured:mcp:live:doctor": "node gateway/src/extensions/contracts/browser-structured-mcp-live-doctor.mjs",
     "check:browser-structured:mcp:live:gate": "node gateway/src/extensions/contracts/browser-structured-mcp-live-gate.mjs",
-    "check:gateway:ts": "npx --yes --package typescript@5.6.3 tsc --project gateway/tsconfig.json --noEmit",
-    "check:runtime": "cargo check --manifest-path runtime/Cargo.toml && cargo test --manifest-path runtime/Cargo.toml",
+    "check:gateway:ts": "tsc --project gateway/tsconfig.json --noEmit",
+    "check:runtime:check": "cargo check --manifest-path runtime/Cargo.toml",
+    "check:runtime:test": "cargo test --manifest-path runtime/Cargo.toml",
+    "check:runtime": "npm run check:runtime:check && npm run check:runtime:test",
     "harness:sample": "npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/runner.ts --cases gateway/evals/fixtures/cases.sample.jsonl --runs gateway/evals/fixtures/runs.sample.jsonl --gate-policy gateway/evals/gate_policy.default.json --output /tmp/grobot-harness-report.json",
     "harness:gate:sample": "npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/runner.ts --cases gateway/evals/fixtures/cases.sample.jsonl --runs gateway/evals/fixtures/runs.sample.jsonl --gate-policy gateway/evals/gate_policy.default.json --fail-on-gate",
     "harness:gate:ci": "npx --yes --package tsx@4.20.6 tsx gateway/src/governance/evals/runner.ts --cases gateway/evals/fixtures/cases.ci.jsonl --runs gateway/evals/fixtures/runs.ci.jsonl --gate-policy gateway/evals/gate_policy.ci.json --fail-on-gate",
@@ -121,5 +130,9 @@
     "react": "19.2.5",
     "toml": "^3.0.0",
     "ws": "8.18.0"
+  },
+  "devDependencies": {
+    "tsx": "4.20.6",
+    "typescript": "5.6.3"
   }
 }

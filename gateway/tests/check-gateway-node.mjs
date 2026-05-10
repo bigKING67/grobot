@@ -2,8 +2,48 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
-import { runGatewayContractSmoke } from "./check-gateway-node/gateway-contract-smoke.mjs";
-import { runTsRustExecutionSmoke } from "./check-gateway-node/runtime-smoke.mjs";
+import {
+  runCoreContracts,
+  runSemanticBenchmarkContracts,
+} from "./check-gateway-node/gateway-contract-smoke/core-contracts.mjs";
+import { runSessionContracts } from "./check-gateway-node/gateway-contract-smoke/session-contracts.mjs";
+import { runPlanCommandContracts } from "./check-gateway-node/gateway-contract-smoke/plan-command-contracts.mjs";
+import { runTuiContracts } from "./check-gateway-node/gateway-contract-smoke/tui-contracts.mjs";
+import { runMemoryContracts } from "./check-gateway-node/gateway-contract-smoke/memory-contracts.mjs";
+import { runContextHistoryContracts } from "./check-gateway-node/gateway-contract-smoke/context-history-contracts.mjs";
+import { runContextPromptQualityContracts } from "./check-gateway-node/gateway-contract-smoke/context-prompt-quality-contracts.mjs";
+import { runContextGraphContracts } from "./check-gateway-node/gateway-contract-smoke/context-graph-contracts.mjs";
+import { runAstHandoffContracts } from "./check-gateway-node/gateway-contract-smoke/ast-handoff-contracts.mjs";
+import { runRuntimeStatusSurfaceSmoke } from "./check-gateway-node/runtime-smoke/status-surface.mjs";
+import { runRuntimeRecoverySurfaceSmoke } from "./check-gateway-node/runtime-smoke/recovery-surface.mjs";
+import {
+  runRuntimeExperienceStateControlSurfaceSmoke,
+  runRuntimeFailoverCoreSmoke,
+  runRuntimeManagementGcControlSurfaceSmoke,
+  runRuntimeModelControlSurfaceSmoke,
+  runRuntimeNamespaceControlSurfaceSmoke,
+  runRuntimeProviderRoutingSmoke,
+  runRuntimeProviderStatusSmoke,
+  runRuntimeMcpCallSmoke,
+  runRuntimeMcpServerSmoke,
+  runRuntimeMcpSessionSmoke,
+  runRuntimeStartControlSmoke,
+  runRuntimeStatusControlSmoke,
+  runRuntimeToolDiagnosticSmoke,
+  runRuntimeToolContextControlSurfaceSmoke,
+  runRuntimeToolLoopSmoke,
+} from "./check-gateway-node/runtime-smoke/failover-and-tools.mjs";
+import { runRuntimeInteractivePlanFlowSmoke } from "./check-gateway-node/runtime-smoke/interactive-plan-flow.mjs";
+import { runRuntimePlanEventsPolicySmoke } from "./check-gateway-node/runtime-smoke/plan-events-policy.mjs";
+import { runRuntimeContextQualityFlowSmoke } from "./check-gateway-node/runtime-smoke/context-quality-flows.mjs";
+import { assertContextEngineControlSmoke } from "./check-gateway-node/runtime-smoke/context-engine-controls.mjs";
+import { assertExperienceSchedulerControlSmoke } from "./check-gateway-node/runtime-smoke/experience-scheduler-controls.mjs";
+import { assertExperienceRuntimeControlSmoke } from "./check-gateway-node/runtime-smoke/experience-runtime-controls.mjs";
+import { assertMcpInstructionControlSmoke } from "./check-gateway-node/runtime-smoke/mcp-instruction-controls.mjs";
+import { assertRuntimeBinControlSmoke } from "./check-gateway-node/runtime-smoke/runtime-bin-controls.mjs";
+import { assertStatusLineControlSmoke } from "./check-gateway-node/runtime-smoke/status-line-controls.mjs";
+import { assertToolSurfaceProfileControlSmoke } from "./check-gateway-node/runtime-smoke/tool-surface-profile-controls.mjs";
+import { runRuntimeDescribeFallbackSmoke } from "./check-gateway-node/runtime-smoke/runtime-describe-fallbacks.mjs";
 import {
   assertSuccess,
   contractsRoot,
@@ -18,6 +58,152 @@ import {
   setRunReporter,
   tempDirs,
 } from "./check-gateway-node/harness.mjs";
+
+export const SUITES = Object.freeze({
+  "gateway:core": {
+    description: "Core management/local-tools/runtime-path contracts.",
+    run: runCoreContracts,
+  },
+  "gateway:semantic-benchmark": {
+    description: "Semantic retrieval timing benchmark contract.",
+    run: runSemanticBenchmarkContracts,
+  },
+  "gateway:session": {
+    description: "Session lifecycle and resume/rewind contracts.",
+    run: runSessionContracts,
+  },
+  "gateway:plan": {
+    description: "Plan command, bridge, slash suggestion, and policy contracts.",
+    run: runPlanCommandContracts,
+  },
+  "gateway:tui": {
+    description: "Terminal UI, browser structured MCP, status line, and ask-user contracts.",
+    run: runTuiContracts,
+  },
+  "gateway:memory": {
+    description: "Memory, experience, scheduler, and model config contracts.",
+    run: runMemoryContracts,
+  },
+  "gateway:context": {
+    description: "Context history, prompt quality, and context graph contracts.",
+    async run() {
+      await runContextHistoryContracts();
+      await runContextPromptQualityContracts();
+      await runContextGraphContracts();
+    },
+  },
+  "gateway:ast-handoff": {
+    description: "AST extraction and handoff/session-store contracts.",
+    run: runAstHandoffContracts,
+  },
+  "runtime:status": {
+    description: "Runtime build, status, interrupt, event stream, and status surface smoke.",
+    run: runRuntimeStatusSurfaceSmoke,
+  },
+  "runtime:recovery": {
+    description: "Runtime recovery surface smoke.",
+    run: runRuntimeRecoverySurfaceSmoke,
+  },
+  "runtime:failover-core": {
+    description: "Runtime launcher, failover, and recovery-gate smoke.",
+    run: runRuntimeFailoverCoreSmoke,
+  },
+  "runtime:provider-routing": {
+    description: "Provider config passthrough and pool routing smoke.",
+    run: runRuntimeProviderRoutingSmoke,
+  },
+  "runtime:provider-status": {
+    description: "Provider failure status, clean alternate, and management API smoke.",
+    run: runRuntimeProviderStatusSmoke,
+  },
+  "runtime:namespace-controls": {
+    description: "Runtime start/serve namespace and identity rejection smoke.",
+    run: runRuntimeNamespaceControlSurfaceSmoke,
+  },
+  "runtime:start-controls": {
+    description: "Runtime start option control rejection smoke.",
+    run: runRuntimeStartControlSmoke,
+  },
+  "runtime:model-controls": {
+    description: "Runtime model config control rejection smoke.",
+    run: runRuntimeModelControlSurfaceSmoke,
+  },
+  "runtime:status-controls": {
+    description: "Runtime status option control rejection smoke.",
+    run: runRuntimeStatusControlSmoke,
+  },
+  "runtime:experience-state-controls": {
+    description: "Experience, storage, and session control rejection smoke.",
+    run: runRuntimeExperienceStateControlSurfaceSmoke,
+  },
+  "runtime:tool-context-controls": {
+    description: "Tool-loop, status tool, and context control rejection smoke.",
+    run: runRuntimeToolContextControlSurfaceSmoke,
+  },
+  "runtime:management-gc-controls": {
+    description: "Management config and GC input validation smoke.",
+    run: runRuntimeManagementGcControlSurfaceSmoke,
+  },
+  "runtime:tool-loop": {
+    description: "Runtime tool loop fail-fast and success smoke.",
+    run: runRuntimeToolLoopSmoke,
+  },
+  "runtime:mcp-call": {
+    description: "Runtime MCP call success and timeout smoke.",
+    run: runRuntimeMcpCallSmoke,
+  },
+  "runtime:mcp-session": {
+    description: "Runtime MCP session idle reap smoke.",
+    run: runRuntimeMcpSessionSmoke,
+  },
+  "runtime:mcp-server": {
+    description: "Runtime MCP server config success smoke.",
+    run: runRuntimeMcpServerSmoke,
+  },
+  "runtime:tool-diagnostics": {
+    description: "Runtime tool diagnostic event smoke.",
+    run: runRuntimeToolDiagnosticSmoke,
+  },
+  "runtime:plan": {
+    description: "Interactive plan flow and plan event policy smoke.",
+    async run() {
+      const planEventsPaths = await runRuntimeInteractivePlanFlowSmoke();
+      await runRuntimePlanEventsPolicySmoke(planEventsPaths);
+    },
+  },
+  "runtime:context": {
+    description: "Context quality runtime flows.",
+    run: runRuntimeContextQualityFlowSmoke,
+  },
+  "runtime:controls": {
+    description: "Runtime control rejection smoke for context, experience, tool surface, runtime bin, MCP, and status line controls.",
+    async run() {
+      assertContextEngineControlSmoke();
+      assertExperienceSchedulerControlSmoke();
+      assertExperienceRuntimeControlSmoke();
+      assertToolSurfaceProfileControlSmoke();
+      assertRuntimeBinControlSmoke();
+      assertMcpInstructionControlSmoke();
+      assertStatusLineControlSmoke();
+    },
+  },
+  "runtime:describe": {
+    description: "Runtime describe fallback and management validation smoke.",
+    run: runRuntimeDescribeFallbackSmoke,
+  },
+  "governance:policy": {
+    description: "Governance eval policy smoke.",
+    run: runGovernanceEvalSmoke,
+  },
+  workflow: {
+    description: "Workflow guard and legacy Python CLI guard.",
+    run: runWorkflowGuard,
+  },
+});
+
+function suiteIds() {
+  return Object.keys(SUITES);
+}
 
 function runGovernanceEvalSmoke() {
   const ciLabelPolicy = runCommand("npx", [
@@ -123,8 +309,22 @@ function ensureContractsExist() {
 
 async function main() {
   const cli = parseCliOptions(process.argv.slice(2));
+  if (cli.list_suites) {
+    const payload = suiteIds().map((id) => ({
+      description: SUITES[id].description,
+      id,
+    }));
+    if (cli.json) {
+      console.log(JSON.stringify({ suites: payload }, null, 2));
+    } else {
+      for (const suite of payload) {
+        console.log(`${suite.id}\t${suite.description}`);
+      }
+    }
+    return;
+  }
   const reporter = createRunReporter({
-    mode: cli.mode,
+    mode: cli.suites.length > 0 ? "suite" : cli.mode,
     emitText: !cli.json,
     failOnRetry: cli.fail_on_retry,
   });
@@ -137,8 +337,28 @@ async function main() {
   setRunReporter(reporter);
   try {
     ensureContractsExist();
+    if (cli.suites.length > 0) {
+      for (const suiteId of cli.suites) {
+        const suite = SUITES[suiteId];
+        if (!suite) {
+          throw new Error(`unknown suite: ${suiteId}`);
+        }
+        await suite.run();
+      }
+      enforceRetryGate(cli, reporter);
+      reporter.finish("ok");
+      if (cli.json || cli.json_output) {
+        emitJsonReport(cli, reporter, baselineReportPath, baselineReportPayload);
+      }
+      if (!cli.json) {
+        process.stdout.write(`gateway suite checks completed: ${cli.suites.join(", ")}.\n`);
+      }
+      return;
+    }
     if (cli.mode === "runtime-smoke-only") {
-      await runTsRustExecutionSmoke();
+      for (const suiteId of suiteIds().filter((id) => id.startsWith("runtime:"))) {
+        await SUITES[suiteId].run();
+      }
       enforceRetryGate(cli, reporter);
       reporter.finish("ok");
       if (cli.json || cli.json_output) {
@@ -149,10 +369,9 @@ async function main() {
       }
       return;
     }
-    await runGatewayContractSmoke();
-    await runTsRustExecutionSmoke();
-    runGovernanceEvalSmoke();
-    runWorkflowGuard();
+    for (const suiteId of suiteIds()) {
+      await SUITES[suiteId].run();
+    }
     enforceRetryGate(cli, reporter);
     reporter.finish("ok");
     if (cli.json || cli.json_output) {

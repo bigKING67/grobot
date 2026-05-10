@@ -14,7 +14,7 @@ import {
   runTsContract,
   writeFixtureFile,
 } from "../harness.mjs";
-export async function runCoreContracts() {
+export function runCoreFastContracts() {
   const credentialResult = runContract("management-policy-contract.mjs", "build-credential", [
     "--payload",
     JSON.stringify({ token: "ops-read-token", policy_template: "ops_read_only" }),
@@ -87,7 +87,9 @@ export async function runCoreContracts() {
     true,
   );
   logStep("semantic-search-regression-contract quality-regression");
+}
 
+export function runSemanticBenchmarkContracts() {
   const semanticSearchBenchmarkResult = runContract(
     "semantic-search-regression-contract.mjs",
     "benchmark",
@@ -105,6 +107,10 @@ export async function runCoreContracts() {
     rows: semanticSearchBenchmarkPayload.rows.length,
     comparisons: semanticSearchBenchmarkPayload.comparisons.length,
   });
+}
+
+export async function runCoreContracts() {
+  runCoreFastContracts();
 
   const mcpPolicyResult = runContract("local-tools-contract.mjs", "resolve-mcp-call-policy");
   const mcpPolicyPayload = parseJsonOutput("local-tools-contract resolve-mcp-call-policy", mcpPolicyResult.stdout);

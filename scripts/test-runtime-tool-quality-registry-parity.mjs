@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -28,8 +28,19 @@ function expect(condition, message, details = {}) {
   }
 }
 
-function npxCommand() {
-  return process.platform === "win32" ? "npx.cmd" : "npx";
+function localBin(name) {
+  const binaryName = process.platform === "win32" ? `${name}.cmd` : name;
+  const candidate = resolve(repoRoot, "node_modules", ".bin", binaryName);
+  return existsSync(candidate) ? candidate : name;
+}
+
+function tsxCommand(scriptPath) {
+  const tsxBin = localBin("tsx");
+  if (tsxBin !== "tsx") {
+    return [tsxBin, scriptPath];
+  }
+  const npx = process.platform === "win32" ? "npx.cmd" : "npx";
+  return [npx, "--yes", "--package", "tsx@4.20.6", "tsx", scriptPath];
 }
 
 function reasonRows() {
@@ -162,13 +173,8 @@ process.stdout.write(JSON.stringify({
 }) + "\\n");
 `, "utf8");
 
-const tsResult = spawnSync(npxCommand(), [
-  "--yes",
-  "--package",
-  "tsx@4.20.6",
-  "tsx",
-  harnessPath,
-], {
+const tsCommand = tsxCommand(harnessPath);
+const tsResult = spawnSync(tsCommand[0], tsCommand.slice(1), {
   cwd: repoRoot,
   encoding: "utf8",
   env: {
