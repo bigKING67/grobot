@@ -99,6 +99,26 @@ function hasStableJsonError(result, code, field) {
 }
 
 async function runGcInputValidation(options) {
+  const args = createGcValidationArgs(options);
+  const cliValidation = await runGcCliInputValidationFromArgs(args);
+  const envValidation = await runGcEnvInputValidationFromArgs(args);
+  const tomlValidation = await runGcTomlInputValidationFromArgs(args);
+  return {
+    ...cliValidation,
+    ...envValidation,
+    ...tomlValidation,
+    hides_top_level_fatal:
+      cliValidation.hides_top_level_fatal
+      && envValidation.hides_top_level_fatal
+      && tomlValidation.hides_top_level_fatal,
+    invalid_inputs_do_not_emit_gc_summary:
+      cliValidation.invalid_inputs_do_not_emit_gc_summary
+      && envValidation.invalid_inputs_do_not_emit_gc_summary
+      && tomlValidation.invalid_inputs_do_not_emit_gc_summary,
+  };
+}
+
+function createGcValidationArgs(options) {
   const repoRoot = requireOption(options, "repo-root");
   const homeDir = createTempDir("grobot-gc-home");
   const workDir = createTempDir("grobot-gc-work");
@@ -131,6 +151,32 @@ async function runGcInputValidation(options) {
     workDir,
   ];
   const validConfig = resolve(repoRoot, "packages/templates/config.toml.example");
+  return {
+    commonArgs,
+    repoRoot,
+    validConfig,
+  };
+}
+
+function outputText(...results) {
+  return results.flatMap((result) => [result.stdout, result.stderr]).join("\n");
+}
+
+function gcPayloadFooter(combinedOutput, invalidResults) {
+  return {
+    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
+    invalid_inputs_do_not_emit_gc_summary: invalidResults.every(
+      (result) => !result.stdout.includes("[gc] totals"),
+    ),
+  };
+}
+
+async function runGcCliInputValidation(options) {
+  return await runGcCliInputValidationFromArgs(createGcValidationArgs(options));
+}
+
+async function runGcCliInputValidationFromArgs(args) {
+  const { commonArgs, repoRoot, validConfig } = args;
   const invalidRetention = await runRepoCommand(repoRoot, [
     ...commonArgs,
     "--config",
@@ -166,68 +212,14 @@ async function runGcInputValidation(options) {
     "--scope",
     "workspace",
   ]);
-  const emptyCliCacheRoot = await runRepoCommand(
-    repoRoot,
-    [
-      ...commonArgs,
-      "--config",
-      validConfig,
-      "--scope",
-      "global",
-    ],
-    {
-      GROBOT_TS_DEV_CLI_CACHE_ROOT: "   ",
-    },
+  const combinedOutput = outputText(
+    invalidRetention,
+    zeroRetention,
+    overSessions,
+    missingPlans,
+    invalidScope,
   );
-  const emptyGroupCacheRoot = await runRepoCommand(
-    repoRoot,
-    [
-      ...commonArgs,
-      "--config",
-      validConfig,
-      "--scope",
-      "global",
-    ],
-    {
-      GROBOT_TS_DEV_CACHE_ROOT: "",
-    },
-  );
-  const invalidToml = await runRepoCommand(repoRoot, commonArgs);
-  const validDefault = await runRepoCommand(repoRoot, [
-    ...commonArgs,
-    "--config",
-    validConfig,
-    "--json",
-  ]);
-  let validPayload = {};
-  try {
-    validPayload = JSON.parse(validDefault.stdout);
-  } catch {
-    validPayload = {};
-  }
-
-  const combinedOutput = [
-    invalidRetention.stdout,
-    invalidRetention.stderr,
-    zeroRetention.stdout,
-    zeroRetention.stderr,
-    overSessions.stdout,
-    overSessions.stderr,
-    missingPlans.stdout,
-    missingPlans.stderr,
-    invalidScope.stdout,
-    invalidScope.stderr,
-    emptyCliCacheRoot.stdout,
-    emptyCliCacheRoot.stderr,
-    emptyGroupCacheRoot.stdout,
-    emptyGroupCacheRoot.stderr,
-    invalidToml.stdout,
-    invalidToml.stderr,
-    validDefault.stdout,
-    validDefault.stderr,
-  ].join("\n");
-
-  const payload = {
+  return {
     invalid_retention_exit_code: invalidRetention.exit_code,
     invalid_retention_has_stable_error: hasStableTextError(
       invalidRetention,
@@ -258,6 +250,50 @@ async function runGcInputValidation(options) {
       "invalid_scope",
       "scope must be global, project, all",
     ),
+    ...gcPayloadFooter(combinedOutput, [
+      invalidRetention,
+      zeroRetention,
+      overSessions,
+      missingPlans,
+      invalidScope,
+    ]),
+  };
+}
+
+async function runGcEnvInputValidation(options) {
+  return await runGcEnvInputValidationFromArgs(createGcValidationArgs(options));
+}
+
+async function runGcEnvInputValidationFromArgs(args) {
+  const { commonArgs, repoRoot, validConfig } = args;
+  const emptyCliCacheRoot = await runRepoCommand(
+    repoRoot,
+    [
+      ...commonArgs,
+      "--config",
+      validConfig,
+      "--scope",
+      "global",
+    ],
+    {
+      GROBOT_TS_DEV_CLI_CACHE_ROOT: "   ",
+    },
+  );
+  const emptyGroupCacheRoot = await runRepoCommand(
+    repoRoot,
+    [
+      ...commonArgs,
+      "--config",
+      validConfig,
+      "--scope",
+      "global",
+    ],
+    {
+      GROBOT_TS_DEV_CACHE_ROOT: "",
+    },
+  );
+  const combinedOutput = outputText(emptyCliCacheRoot, emptyGroupCacheRoot);
+  const payload = {
     empty_cli_cache_root_exit_code: emptyCliCacheRoot.exit_code,
     empty_cli_cache_root_has_stable_error: hasStableTextError(
       emptyCliCacheRoot,
@@ -270,24 +306,7 @@ async function runGcInputValidation(options) {
       "invalid_ts_dev_cache_root",
       "ts-dev-cache-root must be a non-empty path",
     ),
-    invalid_toml_exit_code: invalidToml.exit_code,
-    invalid_toml_has_stable_error: hasStableTextError(
-      invalidToml,
-      "invalid_retention_days",
-      "retention-days must be an integer between 1 and 3650",
-    ),
-    valid_default_exit_code: validDefault.exit_code,
-    valid_default_policy_matches_template:
-      validPayload?.policy?.retentionDays === 30
-      && validPayload?.policy?.keepRecentSessions === 40
-      && validPayload?.policy?.keepRecentPlansPerSession === 12,
-    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
-    invalid_inputs_do_not_emit_gc_summary:
-      !invalidRetention.stdout.includes("[gc] totals")
-      && !overSessions.stdout.includes("[gc] totals")
-      && !emptyCliCacheRoot.stdout.includes("[gc] totals")
-      && !emptyGroupCacheRoot.stdout.includes("[gc] totals")
-      && !invalidToml.stdout.includes("[gc] totals"),
+    ...gcPayloadFooter(combinedOutput, [emptyCliCacheRoot, emptyGroupCacheRoot]),
   };
   if (
     payload.empty_cli_cache_root_exit_code !== 2
@@ -300,11 +319,62 @@ async function runGcInputValidation(options) {
   return payload;
 }
 
+async function runGcTomlInputValidation(options) {
+  return await runGcTomlInputValidationFromArgs(createGcValidationArgs(options));
+}
+
+async function runGcTomlInputValidationFromArgs(args) {
+  const { commonArgs, repoRoot, validConfig } = args;
+  const invalidToml = await runRepoCommand(repoRoot, commonArgs);
+  const validDefault = await runRepoCommand(repoRoot, [
+    ...commonArgs,
+    "--config",
+    validConfig,
+    "--json",
+  ]);
+  let validPayload = {};
+  try {
+    validPayload = JSON.parse(validDefault.stdout);
+  } catch {
+    validPayload = {};
+  }
+
+  return {
+    invalid_toml_exit_code: invalidToml.exit_code,
+    invalid_toml_has_stable_error: hasStableTextError(
+      invalidToml,
+      "invalid_retention_days",
+      "retention-days must be an integer between 1 and 3650",
+    ),
+    valid_default_exit_code: validDefault.exit_code,
+    valid_default_policy_matches_template:
+      validPayload?.policy?.retentionDays === 30
+      && validPayload?.policy?.keepRecentSessions === 40
+      && validPayload?.policy?.keepRecentPlansPerSession === 12,
+    ...gcPayloadFooter(outputText(invalidToml, validDefault), [invalidToml]),
+  };
+}
+
 async function runCli(argv) {
   const { command, options } = parseArgs(argv);
   switch (command) {
     case "gc-input-validation": {
       const payload = await runGcInputValidation(options);
+      process.stdout.write(`${JSON.stringify(payload)}\n`);
+      return 0;
+    }
+    case "gc-cli-input-validation": {
+      const payload = await runGcCliInputValidation(options);
+      process.stdout.write(`${JSON.stringify(payload)}\n`);
+      return 0;
+    }
+    case "gc-env-input-validation": {
+      const payload = await runGcEnvInputValidation(options);
+      process.stdout.write(`${JSON.stringify(payload)}\n`);
+      return 0;
+    }
+    case "gc-toml-input-validation": {
+      const payload = await runGcTomlInputValidation(options);
       process.stdout.write(`${JSON.stringify(payload)}\n`);
       return 0;
     }

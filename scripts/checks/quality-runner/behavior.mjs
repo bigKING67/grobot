@@ -159,6 +159,16 @@ assert.equal(
   "runtime model controls internal worker suite must reserve enough gateway-smoke resources to avoid noisy overlap",
 );
 assert.equal(
+  registry.byName.get("check:gateway:suite:runtime:management-gc-controls")?.command,
+  "node gateway/tests/check-gateway-node.mjs --suite runtime:management-gc-controls --json --workers 4",
+  "runtime management/gc controls suite gate must use internal case workers",
+);
+assert.equal(
+  registry.byName.get("check:gateway:suite:runtime:management-gc-controls")?.resourceCost,
+  3,
+  "runtime management/gc controls internal worker suite must reserve enough gateway-smoke resources to avoid noisy overlap",
+);
+assert.equal(
   registry.byName.get("check:gateway:suite:runtime:provider-status")?.command,
   "node gateway/tests/check-gateway-node.mjs --suite runtime:provider-status --json --workers 3",
   "runtime provider status suite gate must use internal case workers",

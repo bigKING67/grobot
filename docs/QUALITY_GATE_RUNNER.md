@@ -274,6 +274,17 @@ for high-value composite smoke surfaces. Current split cases include:
 - `runtime:controls:status-line-cache`
 - `runtime:controls:status-line-segment-toggle`
 - `runtime:controls:status-line-valid-boundary`
+- `runtime:management-gc-controls:management-config`
+- `runtime:management-gc-controls:management-cli`
+- `runtime:management-gc-controls:management-policy`
+- `runtime:management-gc-controls:management-storage`
+- `runtime:management-gc-controls:management-env`
+- `runtime:management-gc-controls:management-token`
+- `runtime:management-gc-controls:management-experience`
+- `runtime:management-gc-controls:gc`
+- `runtime:management-gc-controls:gc-cli`
+- `runtime:management-gc-controls:gc-env`
+- `runtime:management-gc-controls:gc-toml`
 - `runtime:context:mcp-instruction`
 - `runtime:context:pre-send-head-trim`
 - `runtime:context:quality-guard`
@@ -348,10 +359,10 @@ suite implementation detail. Parent JSON reports keep the run diagnosable:
 worker executions add structured worker bucket entries and aggregate child case
 results, while parent `steps` records one `gateway-worker-N` step per worker.
 Heavy split suites (`gateway:plan`, `gateway:context`, `runtime:status`,
-`runtime:context`, `runtime:controls`, `runtime:plan`,
-`runtime:model-controls`, `runtime:provider-status`, and `runtime:describe`) are invoked with
-internal workers from the quality gate registry so full CI gets the same
-coverage with less monolithic wall time.
+`runtime:context`, `runtime:controls`, `runtime:management-gc-controls`,
+`runtime:plan`, `runtime:model-controls`, `runtime:provider-status`, and
+`runtime:describe`) are invoked with internal workers from the quality gate
+registry so full CI gets the same coverage with less monolithic wall time.
 Gateway plan cases are split by contract domain (input/keybinding, failure
 policy, plan mode, user commands, instructions, slash suggestions, bridge
 CLI/apply/error-codes, events policy, and benchmark) while preserving
@@ -381,6 +392,14 @@ env/TOML/boundary, experience runtime start/serve, and status-line
 basic/order/threshold/cache/segment/boundary. The quality registry runs this
 suite with five internal workers so CI no longer serializes the former
 large control monoliths.
+Runtime management/GC controls follow the same split-case pattern: management
+config validation is split into read-policy, storage/Redis, env, token/TOML,
+and experience controls, while the aggregate `:management-cli` case remains for
+focused reproduction. GC validation is split into CLI, env, and
+TOML/default-policy cases.
+The standard `runtime:management-gc-controls:full` suite fallback plus
+`:management-config` and `:gc` remain available as aggregate reproduction
+cases, but suite selection runs the finer shards with four internal workers.
 The runtime context memory-decay hysteresis case uses seeded prompt-quality
 evidence and an aggressive test-local EMA alpha to prove tighten, no-early-relax,
 monotonic update, and relax-window behavior in at most three relax rounds instead

@@ -124,6 +124,21 @@ assert.equal(
   true,
   "runtime provider status must expose case-level clean alternate smoke",
 );
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:management-gc-controls:management-policy"),
+  true,
+  "runtime management/gc controls must expose case-level management policy controls",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:management-gc-controls:management-storage"),
+  true,
+  "runtime management/gc controls must expose case-level management storage controls",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:management-gc-controls:gc-env"),
+  true,
+  "runtime management/gc controls must expose case-level GC environment controls",
+);
 
 const shardResult = spawnSync("node", ["gateway/tests/check-gateway-node.mjs", "--suite", "workflow", "--shard", "1/1", "--json"], {
   encoding: "utf8",

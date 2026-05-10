@@ -48,6 +48,11 @@ export interface RunServeWire {
 
 export async function createRunServeWire(input: CreateRunServeWireInput): Promise<RunServeWire> {
   const context = input.context;
+  const initialConfigReadPolicy = resolveConfigReadPolicy(
+    input.options,
+    context.bind.host,
+    context.configTomlPath,
+  );
   const initialMemoryState = await loadMemoryStoreRuntimeState({
     runtimeInput: resolveMemoryStoreRuntime(input.options, context.projectTomlPath),
     memoryStoreKey: context.memoryStoreKey,
@@ -59,7 +64,7 @@ export async function createRunServeWire(input: CreateRunServeWireInput): Promis
   const runtimeState = createRunServeRuntimeState({
     initialExecutionPlane: resolveExecutionPlaneConfig(context.executionPlaneInput),
     initialConfigTomlPath: context.configTomlPath,
-    initialConfigReadPolicy: resolveConfigReadPolicy(input.options, context.bind.host, context.configTomlPath),
+    initialConfigReadPolicy,
     initialMemoryStoreRuntime: initialMemoryState.runtime,
     reloadState: async () =>
       reloadRunServeRuntimeState({

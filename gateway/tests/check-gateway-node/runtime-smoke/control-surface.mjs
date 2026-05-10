@@ -260,11 +260,21 @@ export async function runRuntimeNamespaceServeControlSmoke() {
 }
 
 export async function runRuntimeManagementConfigControlSmoke() {
+  const payload = await runManagementConfigControlContract("config-controls-reject-flow");
+  assertManagementConfigCliControlPayload(payload);
+  assertManagementConfigEnvControlPayload(payload);
+  assertManagementConfigTokenControlPayload(payload);
+  assertManagementConfigExperienceControlPayload(payload);
+  assertManagementConfigFooter(payload);
+  logStep("management-config-contract config-controls-reject-flow");
+}
+
+async function runManagementConfigControlContract(command) {
   const serveInvalidConfigPort = await reserveFreePort();
   const serveInvalidConfigWorkDir = makeTempDir("serve-invalid-config-work");
   const result = runContract(
     "management-config-contract.mjs",
-    "config-controls-reject-flow",
+    command,
     [
       "--repo-root",
       repoRoot,
@@ -275,17 +285,36 @@ export async function runRuntimeManagementConfigControlSmoke() {
     ],
     { timeoutMs: 240_000 },
   );
-  const payload = parseJsonOutput("management-config-contract config-controls-reject-flow", result.stdout);
+  return parseJsonOutput(`management-config-contract ${command}`, result.stdout);
+}
+
+function assertManagementConfigFooter(payload) {
+  assert.equal(payload.hides_top_level_fatal, true);
+  assert.equal(payload.ready_not_reached, true);
+}
+
+function assertManagementConfigCliControlPayload(payload) {
+  assertManagementConfigPolicyControlPayload(payload);
+  assertManagementConfigStorageControlPayload(payload);
+}
+
+function assertManagementConfigPolicyControlPayload(payload) {
   assert.equal(payload.invalid_config_policy_exit_code, 2);
   assert.equal(payload.invalid_config_policy_has_stable_error, true);
   assert.equal(payload.missing_config_policy_exit_code, 2);
   assert.equal(payload.missing_config_policy_has_stable_error, true);
+}
+
+function assertManagementConfigStorageControlPayload(payload) {
   assert.equal(payload.invalid_session_store_exit_code, 2);
   assert.equal(payload.invalid_session_store_has_stable_error, true);
   assert.equal(payload.invalid_redis_fallback_exit_code, 2);
   assert.equal(payload.invalid_redis_fallback_has_stable_error, true);
   assert.equal(payload.invalid_redis_url_exit_code, 2);
   assert.equal(payload.invalid_redis_url_has_stable_error, true);
+}
+
+function assertManagementConfigEnvControlPayload(payload) {
   assert.equal(payload.invalid_env_session_store_exit_code, 2);
   assert.equal(payload.invalid_env_session_store_has_stable_error, true);
   assert.equal(payload.invalid_env_config_policy_exit_code, 2);
@@ -294,29 +323,91 @@ export async function runRuntimeManagementConfigControlSmoke() {
   assert.equal(payload.empty_env_management_token_has_stable_error, true);
   assert.equal(payload.empty_env_model_with_cli_base_url_exit_code, 2);
   assert.equal(payload.empty_env_model_with_cli_base_url_has_stable_error, true);
+}
+
+function assertManagementConfigTokenControlPayload(payload) {
   assert.equal(payload.empty_config_management_token_exit_code, 2);
   assert.equal(payload.empty_config_management_token_has_stable_error, true);
   assert.equal(payload.trailing_config_management_token_exit_code, 2);
   assert.equal(payload.trailing_config_management_token_has_stable_error, true);
   assert.equal(payload.invalid_config_policy_trailing_exit_code, 2);
   assert.equal(payload.invalid_config_policy_trailing_has_stable_error, true);
+}
+
+function assertManagementConfigExperienceControlPayload(payload) {
   assert.equal(payload.invalid_experience_publish_mode_exit_code, 2);
   assert.equal(payload.invalid_experience_publish_mode_has_stable_error, true);
   assert.equal(payload.invalid_experience_recall_limit_exit_code, 2);
   assert.equal(payload.invalid_experience_recall_limit_has_stable_error, true);
-  assert.equal(payload.hides_top_level_fatal, true);
-  assert.equal(payload.ready_not_reached, true);
-  logStep("management-config-contract config-controls-reject-flow");
+}
+
+export async function runRuntimeManagementConfigCliControlSmoke() {
+  const payload = await runManagementConfigControlContract("config-cli-controls-reject-flow");
+  assertManagementConfigCliControlPayload(payload);
+  assertManagementConfigFooter(payload);
+  logStep("management-config-contract config-cli-controls-reject-flow");
+}
+
+export async function runRuntimeManagementConfigPolicyControlSmoke() {
+  const payload = await runManagementConfigControlContract("config-policy-controls-reject-flow");
+  assertManagementConfigPolicyControlPayload(payload);
+  assertManagementConfigFooter(payload);
+  logStep("management-config-contract config-policy-controls-reject-flow");
+}
+
+export async function runRuntimeManagementConfigStorageControlSmoke() {
+  const payload = await runManagementConfigControlContract("config-storage-controls-reject-flow");
+  assertManagementConfigStorageControlPayload(payload);
+  assertManagementConfigFooter(payload);
+  logStep("management-config-contract config-storage-controls-reject-flow");
+}
+
+export async function runRuntimeManagementConfigEnvControlSmoke() {
+  const payload = await runManagementConfigControlContract("config-env-controls-reject-flow");
+  assertManagementConfigEnvControlPayload(payload);
+  assertManagementConfigFooter(payload);
+  logStep("management-config-contract config-env-controls-reject-flow");
+}
+
+export async function runRuntimeManagementConfigTokenControlSmoke() {
+  const payload = await runManagementConfigControlContract("config-token-controls-reject-flow");
+  assertManagementConfigTokenControlPayload(payload);
+  assertManagementConfigFooter(payload);
+  logStep("management-config-contract config-token-controls-reject-flow");
+}
+
+export async function runRuntimeManagementConfigExperienceControlSmoke() {
+  const payload = await runManagementConfigControlContract("config-experience-controls-reject-flow");
+  assertManagementConfigExperienceControlPayload(payload);
+  assertManagementConfigFooter(payload);
+  logStep("management-config-contract config-experience-controls-reject-flow");
 }
 
 export function runRuntimeGcControlSmoke() {
+  const payload = runGcControlContract("gc-input-validation");
+  assertGcCliPayload(payload);
+  assertGcEnvPayload(payload);
+  assertGcTomlPayload(payload);
+  assertGcFooter(payload);
+  logStep("gc-contract gc-input-validation");
+}
+
+function runGcControlContract(command) {
   const result = runContract(
     "gc-contract.mjs",
-    "gc-input-validation",
+    command,
     ["--repo-root", repoRoot],
     { timeoutMs: 240_000 },
   );
-  const payload = parseJsonOutput("gc-contract gc-input-validation", result.stdout);
+  return parseJsonOutput(`gc-contract ${command}`, result.stdout);
+}
+
+function assertGcFooter(payload) {
+  assert.equal(payload.hides_top_level_fatal, true);
+  assert.equal(payload.invalid_inputs_do_not_emit_gc_summary, true);
+}
+
+function assertGcCliPayload(payload) {
   assert.equal(payload.invalid_retention_exit_code, 2);
   assert.equal(payload.invalid_retention_has_stable_error, true);
   assert.equal(payload.zero_retention_exit_code, 2);
@@ -327,13 +418,41 @@ export function runRuntimeGcControlSmoke() {
   assert.equal(payload.missing_plans_has_stable_error, true);
   assert.equal(payload.invalid_scope_exit_code, 2);
   assert.equal(payload.invalid_scope_has_stable_error, true);
+}
+
+function assertGcEnvPayload(payload) {
+  assert.equal(payload.empty_cli_cache_root_exit_code, 2);
+  assert.equal(payload.empty_cli_cache_root_has_stable_error, true);
+  assert.equal(payload.empty_group_cache_root_exit_code, 2);
+  assert.equal(payload.empty_group_cache_root_has_stable_error, true);
+}
+
+function assertGcTomlPayload(payload) {
   assert.equal(payload.invalid_toml_exit_code, 2);
   assert.equal(payload.invalid_toml_has_stable_error, true);
   assert.equal(payload.valid_default_exit_code, 0);
   assert.equal(payload.valid_default_policy_matches_template, true);
-  assert.equal(payload.hides_top_level_fatal, true);
-  assert.equal(payload.invalid_inputs_do_not_emit_gc_summary, true);
-  logStep("gc-contract gc-input-validation");
+}
+
+export function runRuntimeGcCliControlSmoke() {
+  const payload = runGcControlContract("gc-cli-input-validation");
+  assertGcCliPayload(payload);
+  assertGcFooter(payload);
+  logStep("gc-contract gc-cli-input-validation");
+}
+
+export function runRuntimeGcEnvControlSmoke() {
+  const payload = runGcControlContract("gc-env-input-validation");
+  assertGcEnvPayload(payload);
+  assertGcFooter(payload);
+  logStep("gc-contract gc-env-input-validation");
+}
+
+export function runRuntimeGcTomlControlSmoke() {
+  const payload = runGcControlContract("gc-toml-input-validation");
+  assertGcTomlPayload(payload);
+  assertGcFooter(payload);
+  logStep("gc-contract gc-toml-input-validation");
 }
 
 export async function runRuntimeNamespaceControlSurfaceSmoke() {

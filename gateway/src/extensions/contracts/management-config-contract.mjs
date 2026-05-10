@@ -75,6 +75,30 @@ async function runRepoCommand(repoRoot, argv, env = {}, timeoutMs = 120_000) {
 }
 
 async function runConfigControlsRejectFlow(options) {
+  const args = createConfigControlArgs(options);
+  const cliControls = await runConfigCliControlsRejectFlowFromArgs(args);
+  const envControls = await runConfigEnvControlsRejectFlowFromArgs(args);
+  const tokenControls = await runConfigTokenControlsRejectFlowFromArgs(args);
+  const experienceControls = await runConfigExperienceControlsRejectFlowFromArgs(args);
+  return {
+    ...cliControls,
+    ...envControls,
+    ...tokenControls,
+    ...experienceControls,
+    hides_top_level_fatal:
+      cliControls.hides_top_level_fatal
+      && envControls.hides_top_level_fatal
+      && tokenControls.hides_top_level_fatal
+      && experienceControls.hides_top_level_fatal,
+    ready_not_reached:
+      cliControls.ready_not_reached
+      && envControls.ready_not_reached
+      && tokenControls.ready_not_reached
+      && experienceControls.ready_not_reached,
+  };
+}
+
+function createConfigControlArgs(options) {
   const repoRoot = requireOption(options, "repo-root");
   const workDir = requireOption(options, "work-dir");
   const bind = requireOption(options, "bind");
@@ -110,6 +134,51 @@ async function runConfigControlsRejectFlow(options) {
       configPath,
     ]);
   };
+  return {
+    commonArgs,
+    makeConfigTomlCase,
+    repoRoot,
+  };
+}
+
+function outputText(...results) {
+  return results.flatMap((result) => [result.stdout, result.stderr]).join("\n");
+}
+
+function managementPayloadFooter(combinedOutput) {
+  return {
+    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
+    ready_not_reached:
+      !combinedOutput.includes("Management server listening")
+      && !combinedOutput.includes("/api/v1/status"),
+  };
+}
+
+async function runConfigCliControlsRejectFlow(options) {
+  return await runConfigCliControlsRejectFlowFromArgs(createConfigControlArgs(options));
+}
+
+async function runConfigCliControlsRejectFlowFromArgs(args) {
+  const policyControls = await runConfigPolicyControlsRejectFlowFromArgs(args);
+  const storageControls = await runConfigStorageControlsRejectFlowFromArgs(args);
+  return {
+    ...policyControls,
+    ...storageControls,
+    hides_top_level_fatal:
+      policyControls.hides_top_level_fatal
+      && storageControls.hides_top_level_fatal,
+    ready_not_reached:
+      policyControls.ready_not_reached
+      && storageControls.ready_not_reached,
+  };
+}
+
+async function runConfigPolicyControlsRejectFlow(options) {
+  return await runConfigPolicyControlsRejectFlowFromArgs(createConfigControlArgs(options));
+}
+
+async function runConfigPolicyControlsRejectFlowFromArgs(args) {
+  const { commonArgs, repoRoot } = args;
   const invalidConfigReadPolicy = await runRepoCommand(repoRoot, [
     ...commonArgs,
     "--config-read-policy",
@@ -119,6 +188,26 @@ async function runConfigControlsRejectFlow(options) {
     ...commonArgs,
     "--config-read-policy",
   ]);
+  const combinedOutput = outputText(invalidConfigReadPolicy, missingConfigReadPolicy);
+  return {
+    invalid_config_policy_exit_code: invalidConfigReadPolicy.exit_code,
+    invalid_config_policy_has_stable_error:
+      invalidConfigReadPolicy.stderr.includes("error: invalid_config_read_policy:")
+      && invalidConfigReadPolicy.stderr.includes("config-read-policy must be auto, public, auth, or disabled"),
+    missing_config_policy_exit_code: missingConfigReadPolicy.exit_code,
+    missing_config_policy_has_stable_error:
+      missingConfigReadPolicy.stderr.includes("error: invalid_config_read_policy:")
+      && missingConfigReadPolicy.stderr.includes("config-read-policy must be auto, public, auth, or disabled"),
+    ...managementPayloadFooter(combinedOutput),
+  };
+}
+
+async function runConfigStorageControlsRejectFlow(options) {
+  return await runConfigStorageControlsRejectFlowFromArgs(createConfigControlArgs(options));
+}
+
+async function runConfigStorageControlsRejectFlowFromArgs(args) {
+  const { commonArgs, repoRoot } = args;
   const invalidSessionStore = await runRepoCommand(repoRoot, [
     ...commonArgs,
     "--session-store",
@@ -138,6 +227,34 @@ async function runConfigControlsRejectFlow(options) {
     "--redis-url",
     "http://127.0.0.1:6379",
   ]);
+  const combinedOutput = outputText(
+    invalidSessionStore,
+    invalidRedisFallback,
+    invalidRedisUrl,
+  );
+  return {
+    invalid_session_store_exit_code: invalidSessionStore.exit_code,
+    invalid_session_store_has_stable_error:
+      invalidSessionStore.stderr.includes("error: invalid_session_store:")
+      && invalidSessionStore.stderr.includes("session-store must be file, redis, or auto"),
+    invalid_redis_fallback_exit_code: invalidRedisFallback.exit_code,
+    invalid_redis_fallback_has_stable_error:
+      invalidRedisFallback.stderr.includes("error: invalid_allow_redis_fallback:")
+      && invalidRedisFallback.stderr.includes("allow-redis-fallback must be boolean"),
+    invalid_redis_url_exit_code: invalidRedisUrl.exit_code,
+    invalid_redis_url_has_stable_error:
+      invalidRedisUrl.stderr.includes("error: invalid_redis_url:")
+      && invalidRedisUrl.stderr.includes("redis-url must be a redis:// or rediss:// URL"),
+    ...managementPayloadFooter(combinedOutput),
+  };
+}
+
+async function runConfigEnvControlsRejectFlow(options) {
+  return await runConfigEnvControlsRejectFlowFromArgs(createConfigControlArgs(options));
+}
+
+async function runConfigEnvControlsRejectFlowFromArgs(args) {
+  const { commonArgs, repoRoot } = args;
   const invalidEnvSessionStore = await runRepoCommand(
     repoRoot,
     commonArgs,
@@ -166,83 +283,13 @@ async function runConfigControlsRejectFlow(options) {
       GROBOT_MODEL: "",
     },
   );
-  const emptyConfigManagementToken = await makeConfigTomlCase(
-    "management-token-empty",
-    ['token = ""'],
+  const combinedOutput = outputText(
+    invalidEnvSessionStore,
+    invalidEnvConfigReadPolicy,
+    emptyEnvManagementToken,
+    emptyEnvModelWithCliBaseUrl,
   );
-  const trailingConfigManagementToken = await makeConfigTomlCase(
-    "management-token-trailing",
-    ['token = "secret" trailing'],
-  );
-  const invalidConfigPolicyTrailing = await makeConfigTomlCase(
-    "config-policy-trailing",
-    ['config_read_policy = "auto" trailing'],
-  );
-  const invalidExperiencePublishMode = await runRepoCommand(
-    repoRoot,
-    commonArgs,
-    {
-      GROBOT_EXPERIENCE_PUBLISH_MODE: "always",
-    },
-  );
-  const invalidExperienceRecallLimit = await runRepoCommand(
-    repoRoot,
-    commonArgs,
-    {
-      GROBOT_EXPERIENCE_RECALL_LIMIT: "7",
-    },
-  );
-  const combinedOutput = [
-    invalidConfigReadPolicy.stdout,
-    invalidConfigReadPolicy.stderr,
-    missingConfigReadPolicy.stdout,
-    missingConfigReadPolicy.stderr,
-    invalidSessionStore.stdout,
-    invalidSessionStore.stderr,
-    invalidRedisFallback.stdout,
-    invalidRedisFallback.stderr,
-    invalidRedisUrl.stdout,
-    invalidRedisUrl.stderr,
-    invalidEnvSessionStore.stdout,
-    invalidEnvSessionStore.stderr,
-    invalidEnvConfigReadPolicy.stdout,
-    invalidEnvConfigReadPolicy.stderr,
-    emptyEnvManagementToken.stdout,
-    emptyEnvManagementToken.stderr,
-    emptyEnvModelWithCliBaseUrl.stdout,
-    emptyEnvModelWithCliBaseUrl.stderr,
-    emptyConfigManagementToken.stdout,
-    emptyConfigManagementToken.stderr,
-    trailingConfigManagementToken.stdout,
-    trailingConfigManagementToken.stderr,
-    invalidConfigPolicyTrailing.stdout,
-    invalidConfigPolicyTrailing.stderr,
-    invalidExperiencePublishMode.stdout,
-    invalidExperiencePublishMode.stderr,
-    invalidExperienceRecallLimit.stdout,
-    invalidExperienceRecallLimit.stderr,
-  ].join("\n");
   return {
-    invalid_config_policy_exit_code: invalidConfigReadPolicy.exit_code,
-    invalid_config_policy_has_stable_error:
-      invalidConfigReadPolicy.stderr.includes("error: invalid_config_read_policy:")
-      && invalidConfigReadPolicy.stderr.includes("config-read-policy must be auto, public, auth, or disabled"),
-    missing_config_policy_exit_code: missingConfigReadPolicy.exit_code,
-    missing_config_policy_has_stable_error:
-      missingConfigReadPolicy.stderr.includes("error: invalid_config_read_policy:")
-      && missingConfigReadPolicy.stderr.includes("config-read-policy must be auto, public, auth, or disabled"),
-    invalid_session_store_exit_code: invalidSessionStore.exit_code,
-    invalid_session_store_has_stable_error:
-      invalidSessionStore.stderr.includes("error: invalid_session_store:")
-      && invalidSessionStore.stderr.includes("session-store must be file, redis, or auto"),
-    invalid_redis_fallback_exit_code: invalidRedisFallback.exit_code,
-    invalid_redis_fallback_has_stable_error:
-      invalidRedisFallback.stderr.includes("error: invalid_allow_redis_fallback:")
-      && invalidRedisFallback.stderr.includes("allow-redis-fallback must be boolean"),
-    invalid_redis_url_exit_code: invalidRedisUrl.exit_code,
-    invalid_redis_url_has_stable_error:
-      invalidRedisUrl.stderr.includes("error: invalid_redis_url:")
-      && invalidRedisUrl.stderr.includes("redis-url must be a redis:// or rediss:// URL"),
     invalid_env_session_store_exit_code: invalidEnvSessionStore.exit_code,
     invalid_env_session_store_has_stable_error:
       invalidEnvSessionStore.stderr.includes("error: invalid_session_store:")
@@ -259,6 +306,34 @@ async function runConfigControlsRejectFlow(options) {
     empty_env_model_with_cli_base_url_has_stable_error:
       emptyEnvModelWithCliBaseUrl.stderr.includes("error: invalid_model:")
       && emptyEnvModelWithCliBaseUrl.stderr.includes("model must be a non-empty string"),
+    ...managementPayloadFooter(combinedOutput),
+  };
+}
+
+async function runConfigTokenControlsRejectFlow(options) {
+  return await runConfigTokenControlsRejectFlowFromArgs(createConfigControlArgs(options));
+}
+
+async function runConfigTokenControlsRejectFlowFromArgs(args) {
+  const { makeConfigTomlCase } = args;
+  const emptyConfigManagementToken = await makeConfigTomlCase(
+    "management-token-empty",
+    ['token = ""'],
+  );
+  const trailingConfigManagementToken = await makeConfigTomlCase(
+    "management-token-trailing",
+    ['token = "secret" trailing'],
+  );
+  const invalidConfigPolicyTrailing = await makeConfigTomlCase(
+    "config-policy-trailing",
+    ['config_read_policy = "auto" trailing'],
+  );
+  const combinedOutput = outputText(
+    emptyConfigManagementToken,
+    trailingConfigManagementToken,
+    invalidConfigPolicyTrailing,
+  );
+  return {
     empty_config_management_token_exit_code: emptyConfigManagementToken.exit_code,
     empty_config_management_token_has_stable_error:
       emptyConfigManagementToken.stderr.includes("error: invalid_management_token:")
@@ -271,6 +346,31 @@ async function runConfigControlsRejectFlow(options) {
     invalid_config_policy_trailing_has_stable_error:
       invalidConfigPolicyTrailing.stderr.includes("error: invalid_config_read_policy:")
       && invalidConfigPolicyTrailing.stderr.includes("config-read-policy must be auto, public, auth, or disabled"),
+    ...managementPayloadFooter(combinedOutput),
+  };
+}
+
+async function runConfigExperienceControlsRejectFlow(options) {
+  return await runConfigExperienceControlsRejectFlowFromArgs(createConfigControlArgs(options));
+}
+
+async function runConfigExperienceControlsRejectFlowFromArgs(args) {
+  const { commonArgs, repoRoot } = args;
+  const invalidExperiencePublishMode = await runRepoCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_EXPERIENCE_PUBLISH_MODE: "always",
+    },
+  );
+  const invalidExperienceRecallLimit = await runRepoCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_EXPERIENCE_RECALL_LIMIT: "7",
+    },
+  );
+  return {
     invalid_experience_publish_mode_exit_code: invalidExperiencePublishMode.exit_code,
     invalid_experience_publish_mode_has_stable_error:
       invalidExperiencePublishMode.stderr.includes("error: invalid_experience_publish_mode:")
@@ -279,10 +379,7 @@ async function runConfigControlsRejectFlow(options) {
     invalid_experience_recall_limit_has_stable_error:
       invalidExperienceRecallLimit.stderr.includes("error: invalid_experience_recall_limit:")
       && invalidExperienceRecallLimit.stderr.includes("experience-recall-limit must be an integer between 1 and 6"),
-    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
-    ready_not_reached:
-      !combinedOutput.includes("Management server listening")
-      && !combinedOutput.includes("/api/v1/status"),
+    ...managementPayloadFooter(outputText(invalidExperiencePublishMode, invalidExperienceRecallLimit)),
   };
 }
 
@@ -291,6 +388,36 @@ async function runCli(argv) {
   switch (command) {
     case "config-controls-reject-flow": {
       const payload = await runConfigControlsRejectFlow(options);
+      process.stdout.write(`${JSON.stringify(payload)}\n`);
+      return 0;
+    }
+    case "config-cli-controls-reject-flow": {
+      const payload = await runConfigCliControlsRejectFlow(options);
+      process.stdout.write(`${JSON.stringify(payload)}\n`);
+      return 0;
+    }
+    case "config-policy-controls-reject-flow": {
+      const payload = await runConfigPolicyControlsRejectFlow(options);
+      process.stdout.write(`${JSON.stringify(payload)}\n`);
+      return 0;
+    }
+    case "config-storage-controls-reject-flow": {
+      const payload = await runConfigStorageControlsRejectFlow(options);
+      process.stdout.write(`${JSON.stringify(payload)}\n`);
+      return 0;
+    }
+    case "config-env-controls-reject-flow": {
+      const payload = await runConfigEnvControlsRejectFlow(options);
+      process.stdout.write(`${JSON.stringify(payload)}\n`);
+      return 0;
+    }
+    case "config-token-controls-reject-flow": {
+      const payload = await runConfigTokenControlsRejectFlow(options);
+      process.stdout.write(`${JSON.stringify(payload)}\n`);
+      return 0;
+    }
+    case "config-experience-controls-reject-flow": {
+      const payload = await runConfigExperienceControlsRejectFlow(options);
       process.stdout.write(`${JSON.stringify(payload)}\n`);
       return 0;
     }

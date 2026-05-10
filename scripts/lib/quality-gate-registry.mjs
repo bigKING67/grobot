@@ -207,6 +207,7 @@ const GATEWAY_SUITE_WORKER_COUNTS = Object.freeze({
   "runtime:context": 4,
   "runtime:controls": 5,
   "runtime:describe": 4,
+  "runtime:management-gc-controls": 4,
   "runtime:model-controls": 4,
   "runtime:plan": 4,
   "runtime:provider-status": 3,

@@ -95,6 +95,19 @@ import {
 } from "./runtime-smoke/status-line-controls.mjs";
 import { assertToolSurfaceProfileControlSmoke } from "./runtime-smoke/tool-surface-profile-controls.mjs";
 import {
+  runRuntimeGcCliControlSmoke,
+  runRuntimeGcControlSmoke,
+  runRuntimeGcEnvControlSmoke,
+  runRuntimeGcTomlControlSmoke,
+  runRuntimeManagementConfigCliControlSmoke,
+  runRuntimeManagementConfigControlSmoke,
+  runRuntimeManagementConfigEnvControlSmoke,
+  runRuntimeManagementConfigExperienceControlSmoke,
+  runRuntimeManagementConfigPolicyControlSmoke,
+  runRuntimeManagementConfigStorageControlSmoke,
+  runRuntimeManagementConfigTokenControlSmoke,
+} from "./runtime-smoke/control-surface.mjs";
+import {
   runRuntimeContextGraphAutotuneAdaptiveSequenceFlowSmoke,
   runRuntimeContextGraphAutotuneFlowSmoke,
   runRuntimeContextGraphAutotuneHysteresisFlowSmoke,
@@ -308,6 +321,61 @@ export const CASES = Object.freeze({
     suite: "runtime:controls",
     description: "Status line valid boundary reaches runtime.",
     run: assertStatusLineValidBoundarySmoke,
+  },
+  "runtime:management-gc-controls:management-config": {
+    suite: "runtime:management-gc-controls",
+    description: "Management config aggregate control rejection smoke.",
+    run: aggregateOnly(runRuntimeManagementConfigControlSmoke),
+  },
+  "runtime:management-gc-controls:management-cli": {
+    suite: "runtime:management-gc-controls",
+    description: "Management config CLI flag validation controls.",
+    run: aggregateOnly(runRuntimeManagementConfigCliControlSmoke),
+  },
+  "runtime:management-gc-controls:management-policy": {
+    suite: "runtime:management-gc-controls",
+    description: "Management config read policy validation controls.",
+    run: runRuntimeManagementConfigPolicyControlSmoke,
+  },
+  "runtime:management-gc-controls:management-storage": {
+    suite: "runtime:management-gc-controls",
+    description: "Management session store and Redis validation controls.",
+    run: runRuntimeManagementConfigStorageControlSmoke,
+  },
+  "runtime:management-gc-controls:management-env": {
+    suite: "runtime:management-gc-controls",
+    description: "Management config environment validation controls.",
+    run: runRuntimeManagementConfigEnvControlSmoke,
+  },
+  "runtime:management-gc-controls:management-token": {
+    suite: "runtime:management-gc-controls",
+    description: "Management config token and TOML validation controls.",
+    run: runRuntimeManagementConfigTokenControlSmoke,
+  },
+  "runtime:management-gc-controls:management-experience": {
+    suite: "runtime:management-gc-controls",
+    description: "Management experience control validation.",
+    run: runRuntimeManagementConfigExperienceControlSmoke,
+  },
+  "runtime:management-gc-controls:gc": {
+    suite: "runtime:management-gc-controls",
+    description: "GC aggregate input validation smoke.",
+    run: aggregateOnly(runRuntimeGcControlSmoke),
+  },
+  "runtime:management-gc-controls:gc-cli": {
+    suite: "runtime:management-gc-controls",
+    description: "GC CLI input validation smoke.",
+    run: runRuntimeGcCliControlSmoke,
+  },
+  "runtime:management-gc-controls:gc-env": {
+    suite: "runtime:management-gc-controls",
+    description: "GC environment input validation smoke.",
+    run: runRuntimeGcEnvControlSmoke,
+  },
+  "runtime:management-gc-controls:gc-toml": {
+    suite: "runtime:management-gc-controls",
+    description: "GC TOML and valid default input validation smoke.",
+    run: runRuntimeGcTomlControlSmoke,
   },
   "runtime:context:mcp-instruction": {
     suite: "runtime:context",
