@@ -365,7 +365,19 @@ mod tests {
         let output = handle_json_line(input);
         let payload: Value = serde_json::from_str(&output).expect("valid json");
         assert_eq!(payload["error"]["code"], -32602);
-        assert_eq!(payload["error"]["message"], "empty request fields");
+        assert_eq!(payload["error"]["message"], "invalid_user_message");
+        assert_eq!(
+            payload["error"]["data"]["diagnostic_kind"].as_str(),
+            Some("invalid_user_message_shape")
+        );
+        assert_eq!(
+            payload["error"]["data"]["field"].as_str(),
+            Some("user_message")
+        );
+        assert_eq!(
+            payload["error"]["data"]["raw_value"].as_str(),
+            Some("   ")
+        );
     }
 
     include!("tests/turn_params.rs");

@@ -312,7 +312,12 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     orchestration boundary so trace IDs, event IDs, and session-scoped runtime
     state use a single canonical identity.
 40. Runtime turn object controls must fail closed on malformed explicit JSON-RPC
-    shapes. `runtime.turn.execute` may omit `model_config`, `tool_context`,
+    shapes. `runtime.turn.execute` requires non-empty string `request_id`,
+    `session_key`, and `user_message`; missing, explicit `null`, wrong-type,
+    empty, or whitespace-only values must return JSON-RPC `-32602` with
+    stable `invalid_request_id_shape`, `invalid_session_key_shape`, or
+    `invalid_user_message_shape` diagnostics before serde parsing or model
+    execution. `runtime.turn.execute` may omit `model_config`, `tool_context`,
     provider option objects, and prompt-cache objects to use the documented
     runtime defaults/fallbacks, but explicit `null` or non-object values for
     those object controls must return JSON-RPC `-32602` with structured

@@ -27,6 +27,96 @@ fn turn_execute_rejects_null_model_config() {
 }
 
 #[test]
+fn turn_execute_rejects_required_field_shapes() {
+    let cases = [
+        (
+            "missing-request-id",
+            r#""session_key":"feishu:tenant:dm:user","user_message":"hello""#,
+            "invalid_request_id",
+            "invalid_request_id_shape",
+            "request_id",
+            true,
+        ),
+        (
+            "null-request-id",
+            r#""request_id":null,"session_key":"feishu:tenant:dm:user","user_message":"hello""#,
+            "invalid_request_id",
+            "invalid_request_id_shape",
+            "request_id",
+            true,
+        ),
+        (
+            "number-session-key",
+            r#""request_id":"req_1","session_key":42,"user_message":"hello""#,
+            "invalid_session_key",
+            "invalid_session_key_shape",
+            "session_key",
+            false,
+        ),
+        (
+            "empty-session-key",
+            r#""request_id":"req_1","session_key":"   ","user_message":"hello""#,
+            "invalid_session_key",
+            "invalid_session_key_shape",
+            "session_key",
+            false,
+        ),
+        (
+            "missing-user-message",
+            r#""request_id":"req_1","session_key":"feishu:tenant:dm:user""#,
+            "invalid_user_message",
+            "invalid_user_message_shape",
+            "user_message",
+            true,
+        ),
+        (
+            "array-user-message",
+            r#""request_id":"req_1","session_key":"feishu:tenant:dm:user","user_message":["hello"]"#,
+            "invalid_user_message",
+            "invalid_user_message_shape",
+            "user_message",
+            false,
+        ),
+    ];
+
+    for (case_id, params_payload, message, diagnostic_kind, field, raw_is_null) in cases {
+        let input = format!(
+            r#"{{
+                "jsonrpc":"2.0",
+                "id":"{case_id}",
+                "method":"runtime.turn.execute",
+                "params":{{{params_payload}}}
+            }}"#
+        );
+        let output = handle_json_line(input.as_str());
+        let payload: Value = serde_json::from_str(&output).expect("valid json");
+        assert_eq!(payload["error"]["code"], -32602, "{case_id}");
+        assert_eq!(payload["error"]["message"], message, "{case_id}");
+        assert_eq!(
+            payload["error"]["data"]["diagnostic_kind"].as_str(),
+            Some(diagnostic_kind),
+            "{case_id}"
+        );
+        assert_eq!(
+            payload["error"]["data"]["field"].as_str(),
+            Some(field),
+            "{case_id}"
+        );
+        assert_eq!(
+            payload["error"]["data"]["source"].as_str(),
+            Some(format!("runtime.turn.execute.params.{field}").as_str()),
+            "{case_id}"
+        );
+        if raw_is_null {
+            assert!(
+                payload["error"]["data"]["raw_value"].is_null(),
+                "{case_id}"
+            );
+        }
+    }
+}
+
+#[test]
 fn turn_execute_rejects_malformed_top_level_optional_shapes() {
     let cases = [
         (

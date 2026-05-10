@@ -80,6 +80,40 @@ fn validate_optional_string_shape(
     Ok(())
 }
 
+fn validate_required_string_shape(
+    parent: &serde_json::Map<String, Value>,
+    key: &str,
+    diagnostic_kind: &str,
+    missing_hint: &str,
+    empty_hint: &str,
+) -> Result<(), Value> {
+    let Some(value) = parent.get(key) else {
+        return Err(invalid_turn_execute_shape(
+            diagnostic_kind,
+            key,
+            &Value::Null,
+            missing_hint,
+        ));
+    };
+    let Some(raw_value) = value.as_str() else {
+        return Err(invalid_turn_execute_shape(
+            diagnostic_kind,
+            key,
+            value,
+            missing_hint,
+        ));
+    };
+    if raw_value.trim().is_empty() {
+        return Err(invalid_turn_execute_shape(
+            diagnostic_kind,
+            key,
+            value,
+            empty_hint,
+        ));
+    }
+    Ok(())
+}
+
 fn validate_optional_bool_shape(
     parent: &serde_json::Map<String, Value>,
     key: &str,
@@ -552,6 +586,27 @@ fn validate_turn_execute_param_shapes(params: &Value) -> Result<(), Value> {
         ));
     };
 
+    validate_required_string_shape(
+        params_object,
+        "request_id",
+        "invalid_request_id_shape",
+        "pass request_id as a non-empty string",
+        "request_id must not be empty or whitespace-only",
+    )?;
+    validate_required_string_shape(
+        params_object,
+        "session_key",
+        "invalid_session_key_shape",
+        "pass session_key as a non-empty string",
+        "session_key must not be empty or whitespace-only",
+    )?;
+    validate_required_string_shape(
+        params_object,
+        "user_message",
+        "invalid_user_message_shape",
+        "pass user_message as a non-empty string",
+        "user_message must not be empty or whitespace-only",
+    )?;
     validate_optional_string_shape(
         params_object,
         "system_prompt",
@@ -598,6 +653,9 @@ fn invalid_turn_execute_params_message(data: &Value) -> &'static str {
         .and_then(Value::as_str)
         .unwrap_or_default()
     {
+        "invalid_request_id_shape" => "invalid_request_id",
+        "invalid_session_key_shape" => "invalid_session_key",
+        "invalid_user_message_shape" => "invalid_user_message",
         "invalid_model_config_shape" => "invalid_model_config",
         "invalid_model_config_provider_options_shape" => "invalid_provider_options",
         "invalid_model_config_provider_options_kimi_shape" => "invalid_provider_options_kimi",

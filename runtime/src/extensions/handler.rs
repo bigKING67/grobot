@@ -205,12 +205,6 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                 })?;
             let params: TurnExecuteParams = serde_json::from_value(params_value)
                 .map_err(|_| error(request.id.clone(), -32602, "invalid params"))?;
-            if params.request_id.trim().is_empty()
-                || params.session_key.trim().is_empty()
-                || params.user_message.trim().is_empty()
-            {
-                return Err(error(request.id, -32602, "empty request fields"));
-            }
 
             let turn_input = TurnExecuteInput {
                 request_id: params.request_id,
