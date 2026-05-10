@@ -1,12 +1,28 @@
 import type { MemoryStrategyAutotuneProfile } from "../../tools/memory";
 
+export class MemoryStrategyProfileInputError extends Error {
+  readonly code = "invalid_memory_strategy_profile";
+  readonly field = "memory-strategy-profile";
+
+  constructor() {
+    super("memory-strategy-profile must be one of: general, debug_heavy, delivery, docs");
+    this.name = "MemoryStrategyProfileInputError";
+  }
+}
+
+export function isMemoryStrategyProfileInputError(
+  error: unknown,
+): error is MemoryStrategyProfileInputError {
+  return error instanceof MemoryStrategyProfileInputError;
+}
+
 function normalizeMemoryStrategyProfile(
   raw: string | undefined,
 ): MemoryStrategyAutotuneProfile | undefined {
-  const normalized = (raw ?? "").trim().toLowerCase();
-  if (!normalized) {
+  if (raw === undefined) {
     return undefined;
   }
+  const normalized = raw.trim().toLowerCase();
   if (
     normalized === "general" ||
     normalized === "debug_heavy" ||
@@ -15,7 +31,7 @@ function normalizeMemoryStrategyProfile(
   ) {
     return normalized;
   }
-  return undefined;
+  throw new MemoryStrategyProfileInputError();
 }
 
 export function resolveMemoryStrategyProfile(input: {

@@ -1,5 +1,6 @@
 import { CliStringOptionInputError } from "../../cli-args";
 import { CliNumericOptionInputError } from "../../status/option-parsing";
+import { resolveMemoryStrategyProfile } from "../memory-strategy-profile";
 
 const MEMORY_MAINTENANCE_DEFAULT_INTERVAL_MS = 5 * 60 * 1_000;
 const MEMORY_MAINTENANCE_MIN_INTERVAL_MS = 15_000;
@@ -70,6 +71,11 @@ function parseStartEnvInt(input: {
 export function resolveStartEnvControls(
   env: EnvMap = process.env,
 ): StartEnvControls {
+  resolveMemoryStrategyProfile({
+    envProfile: env.GROBOT_MEMORY_STRATEGY_PROFILE,
+    activeSessionKey: "",
+    activeSessionPreview: undefined,
+  });
   return {
     memoryMaintenanceEnabled: parseStartEnvFlag({
       env,

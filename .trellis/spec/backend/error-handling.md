@@ -199,7 +199,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     `GROBOT_CONTEXT_GRAPH_CACHE_WINDOW_SIZE` may use defaults only when
     omitted; invalid booleans, non-integer values, or out-of-range integers
     must exit `2` with stable `invalid_<field>` errors before memory
-    maintenance or runtime turn execution starts.
+    maintenance or runtime turn execution starts. `GROBOT_MEMORY_STRATEGY_PROFILE`
+    may use session heuristics only when omitted; explicit empty,
+    whitespace-only, or unsupported profile values must exit `2` with stable
+    `invalid_memory_strategy_profile` before bootstrap memory maintenance,
+    timers, or runtime turn execution start.
 26. Ask-user pending TTL controls must fail closed on malformed explicit env
     values. `GROBOT_ASK_USER_PENDING_TTL_MINUTES` may use the default only
     when omitted or empty; malformed, zero, or out-of-range explicit values

@@ -33,6 +33,7 @@ import {
 } from "./plan-artifact/env-controls";
 import { createRunStartRewindStore } from "./rewind-store";
 import { TURN_INTERRUPTED_EXIT_CODE } from "./turn";
+import { isMemoryStrategyProfileInputError } from "./memory-strategy-profile";
 import {
   createGaMechanismRuntime,
   isGaMechanismRuntimeConfigInputError,
@@ -154,6 +155,10 @@ export async function runStart(
       return 2;
     }
     if (isStatusLineConfigInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    if (isMemoryStrategyProfileInputError(error)) {
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }
@@ -468,6 +473,10 @@ export async function runStart(
       return 2;
     }
     if (isCliNumericOptionInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    if (isMemoryStrategyProfileInputError(error)) {
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }

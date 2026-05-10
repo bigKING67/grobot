@@ -7,6 +7,7 @@ import {
   logStep,
   makeTempDir,
   parseJsonOutput,
+  repoRoot,
   runCommand,
   runCommandAsync,
   runContract,
@@ -214,6 +215,23 @@ export async function runMemoryContracts() {
   assert.equal(memoryStrategyAutotuneContractPayload.state_roundtrip_profile_kept, true);
   assert.equal(memoryStrategyAutotuneContractPayload.state_roundtrip_schema_kept, true);
   logStep("memory-strategy-autotune-contract");
+
+  const memoryStrategyProfileControlResult = runContract(
+    "start-smoke-contract.mjs",
+    "start-invalid-memory-strategy-profile-controls-reject-flow",
+    ["--repo-root", repoRoot],
+  );
+  const memoryStrategyProfileControlPayload = parseJsonOutput(
+    "start-smoke-contract start-invalid-memory-strategy-profile-controls-reject-flow",
+    memoryStrategyProfileControlResult.stdout,
+  );
+  assert.equal(memoryStrategyProfileControlPayload.invalid_profile_exit_code, 2);
+  assert.equal(memoryStrategyProfileControlPayload.invalid_profile_has_stable_error, true);
+  assert.equal(memoryStrategyProfileControlPayload.empty_profile_exit_code, 2);
+  assert.equal(memoryStrategyProfileControlPayload.empty_profile_has_stable_error, true);
+  assert.equal(memoryStrategyProfileControlPayload.hides_top_level_fatal, true);
+  assert.equal(memoryStrategyProfileControlPayload.has_start_banner, false);
+  logStep("memory-strategy-profile-control-contract");
 
   const interactiveBindingsResult = runCommand("npx", [
     "--yes",

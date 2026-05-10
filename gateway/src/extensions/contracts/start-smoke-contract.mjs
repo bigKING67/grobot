@@ -79,6 +79,9 @@ import {
   runStartInvalidRuntimeModelControlsRejectFlow,
 } from "./start-smoke-contract/runtime-model-control-flows.mjs";
 import {
+  runStartInvalidMemoryStrategyProfileControlsRejectFlow,
+} from "./start-smoke-contract/memory-strategy-profile-control-flow.mjs";
+import {
   runStartInvalidContextEngineControlsRejectFlow,
 } from "./start-smoke-contract/context-engine-control-flows.mjs";
 import {
@@ -125,6 +128,9 @@ function runCli(argv) {
       break;
     case "start-invalid-runtime-model-controls-reject-flow":
       payload = runStartInvalidRuntimeModelControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-memory-strategy-profile-controls-reject-flow":
+      payload = runStartInvalidMemoryStrategyProfileControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "start-invalid-context-engine-controls-reject-flow":
       payload = runStartInvalidContextEngineControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
