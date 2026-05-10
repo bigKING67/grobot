@@ -25,7 +25,12 @@ export {
   resolvePlanQualityBenchmarkRecommendation,
 } from "./plan-artifact/benchmark-history";
 export { resolvePlanQualityBenchmarkPreset } from "./plan-artifact/benchmark-preset";
-export { resolvePlanQualityGuardMode } from "./plan-artifact/guard";
+export {
+  isPlanQualityGuardModeInputError,
+  planQualityGuardModeInputErrorPayload,
+  PlanQualityGuardModeInputError,
+  resolvePlanQualityGuardMode,
+} from "./plan-artifact/guard";
 export { resolvePlanQualityGuardPolicy } from "./plan-artifact/policy";
 export {
   buildPlanQualityRepairActions,

@@ -9,6 +9,8 @@ import {
   appendPlanProgressNote,
   createPlanArtifact,
   loadActivePlanArtifact,
+  planQualityGuardModeInputErrorPayload,
+  resolvePlanQualityGuardMode,
 } from "../cli/start/plan-artifact";
 import { parseJsonInput, resolvePlanSessionId, resolveWorkDir, isPlanSlashCommand } from "./bridge-cli/input";
 import {
@@ -63,6 +65,7 @@ async function main(): Promise<number> {
     const input = parseJsonInput(raw);
     const workDir = resolveWorkDir(input);
     const sessionId = resolvePlanSessionId(input.session);
+    resolvePlanQualityGuardMode(process.env.GROBOT_PLAN_QUALITY_GUARD_MODE);
     const rawMessage = input.userMessage.trim();
 
     if (isPlanSlashCommand(rawMessage)) {
@@ -230,6 +233,11 @@ async function main(): Promise<number> {
     );
     return 0;
   } catch (error) {
+    const planQualityGuardModeError = planQualityGuardModeInputErrorPayload(error);
+    if (planQualityGuardModeError) {
+      process.stdout.write(`${JSON.stringify(planQualityGuardModeError)}\n`);
+      return 2;
+    }
     const detail = error instanceof Error ? error.message : String(error);
     process.stdout.write(`${JSON.stringify({ status: "error", error_code: BRIDGE_FATAL_ERROR, detail })}\n`);
     return 1;

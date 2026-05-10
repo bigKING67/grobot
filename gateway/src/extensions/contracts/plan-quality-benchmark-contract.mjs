@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
-function runBenchmark(repoRoot, args = []) {
+function runBenchmark(repoRoot, args = [], options = {}) {
   const completed = spawnSync(
     "npx",
     [
@@ -18,6 +18,7 @@ function runBenchmark(repoRoot, args = []) {
     {
       cwd: repoRoot,
       encoding: "utf8",
+      env: { ...process.env, ...(options.env ?? {}) },
       timeout: 120_000,
       maxBuffer: 16 * 1024 * 1024,
     },
@@ -136,6 +137,36 @@ function main() {
     assert.equal(assertFailPayload.status, "error");
     assert.equal(assertFailPayload.error_code, "PLAN_BENCHMARK_ASSERT_BEST_FAILED");
     assert.equal(assertFailPayload.expected_best, "weak");
+    const invalidGuardMode = runBenchmark(repoRoot, [
+      "--plan",
+      `strong=${fixture.strongPath}`,
+      "--plan",
+      `weak=${fixture.weakPath}`,
+      "--print-json",
+    ], {
+      env: { GROBOT_PLAN_QUALITY_GUARD_MODE: "banana" },
+    });
+    assert.equal(invalidGuardMode.code, 2);
+    assert.equal(invalidGuardMode.stderr.includes("invalid_plan_quality_guard_mode"), true);
+    assert.equal(
+      invalidGuardMode.stderr.includes("plan-quality-guard-mode must be one of off, warn, or strict"),
+      true,
+    );
+    const emptyGuardMode = runBenchmark(repoRoot, [
+      "--plan",
+      `strong=${fixture.strongPath}`,
+      "--plan",
+      `weak=${fixture.weakPath}`,
+      "--print-json",
+    ], {
+      env: { GROBOT_PLAN_QUALITY_GUARD_MODE: "   " },
+    });
+    assert.equal(emptyGuardMode.code, 2);
+    assert.equal(emptyGuardMode.stderr.includes("invalid_plan_quality_guard_mode"), true);
+    assert.equal(
+      emptyGuardMode.stderr.includes("plan-quality-guard-mode must be one of off, warn, or strict"),
+      true,
+    );
     process.stdout.write(
       `${JSON.stringify({
         ok: true,
@@ -143,6 +174,14 @@ function main() {
         winner_score: basePayload.winner_score,
         compared_count: basePayload.compared_count,
         assert_best_fail_code: assertFailPayload.error_code,
+        invalid_guard_mode_exit_code: invalidGuardMode.code,
+        invalid_guard_mode_has_stable_error:
+          invalidGuardMode.stderr.includes("invalid_plan_quality_guard_mode")
+          && invalidGuardMode.stderr.includes("plan-quality-guard-mode must be one of off, warn, or strict"),
+        empty_guard_mode_exit_code: emptyGuardMode.code,
+        empty_guard_mode_has_stable_error:
+          emptyGuardMode.stderr.includes("invalid_plan_quality_guard_mode")
+          && emptyGuardMode.stderr.includes("plan-quality-guard-mode must be one of off, warn, or strict"),
       })}\n`,
     );
   } finally {

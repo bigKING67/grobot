@@ -24,6 +24,10 @@ import { createRunStartRuntimeState } from "./runtime-state";
 import { createRunStartWire } from "./wire";
 import { createRunStartPlanMode } from "./plan-mode";
 import {
+  isPlanQualityGuardModeInputError,
+  resolvePlanQualityGuardMode,
+} from "./plan-artifact";
+import {
   isPlanArtifactControlInputError,
   resolvePlanArtifactEnvControls,
 } from "./plan-artifact/env-controls";
@@ -205,6 +209,17 @@ export async function runStart(
     resolvePlanArtifactEnvControls();
   } catch (error) {
     if (isPlanArtifactControlInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    throw error;
+  }
+  try {
+    resolvePlanQualityGuardMode(
+      process.env.GROBOT_PLAN_QUALITY_GUARD_MODE,
+    );
+  } catch (error) {
+    if (isPlanQualityGuardModeInputError(error)) {
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }

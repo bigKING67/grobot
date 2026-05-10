@@ -88,16 +88,20 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
       invalidPlanArtifactControlsPayload.invalid_events_max_bytes_exit_code,
       invalidPlanArtifactControlsPayload.invalid_events_rotate_keep_exit_code,
       invalidPlanArtifactControlsPayload.invalid_plan_apply_stale_exit_code,
+      invalidPlanArtifactControlsPayload.invalid_plan_quality_guard_mode_exit_code,
+      invalidPlanArtifactControlsPayload.empty_plan_quality_guard_mode_exit_code,
     ],
-    [2, 2, 2],
+    [2, 2, 2, 2, 2],
   );
   assert.deepEqual(
     [
       invalidPlanArtifactControlsPayload.invalid_events_max_bytes_has_stable_error,
       invalidPlanArtifactControlsPayload.invalid_events_rotate_keep_has_stable_error,
       invalidPlanArtifactControlsPayload.invalid_plan_apply_stale_has_stable_error,
+      invalidPlanArtifactControlsPayload.invalid_plan_quality_guard_mode_has_stable_error,
+      invalidPlanArtifactControlsPayload.empty_plan_quality_guard_mode_has_stable_error,
     ],
-    [true, true, true],
+    [true, true, true, true, true],
   );
   assert.equal(invalidPlanArtifactControlsPayload.hides_top_level_fatal, true);
   assert.equal(invalidPlanArtifactControlsPayload.has_start_banner, false);

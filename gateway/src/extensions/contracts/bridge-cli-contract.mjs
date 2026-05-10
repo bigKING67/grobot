@@ -8,7 +8,7 @@ function isObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function runBridgeTurn(repoRoot, workDir, userMessage) {
+function runBridgeTurn(repoRoot, workDir, userMessage, options = {}) {
   const input = JSON.stringify({
     userMessage,
     session: {
@@ -29,6 +29,7 @@ function runBridgeTurn(repoRoot, workDir, userMessage) {
     {
       cwd: repoRoot,
       encoding: "utf8",
+      env: { ...process.env, ...(options.env ?? {}) },
       input,
       timeout: 120_000,
       maxBuffer: 16 * 1024 * 1024,
@@ -113,6 +114,23 @@ function main() {
   const workDir = mkdtempSync(resolve(tmpdir(), "grobot-bridge-contract-"));
 
   try {
+    const invalidGuardMode = runBridgeTurn(repoRoot, workDir, "/plan open", {
+      env: { GROBOT_PLAN_QUALITY_GUARD_MODE: "banana" },
+    });
+    assert.equal(invalidGuardMode.exit_code, 2);
+    assert.equal(isObject(invalidGuardMode.payload), true);
+    assert.equal(invalidGuardMode.payload.status, "error");
+    assert.equal(invalidGuardMode.payload.error_code, "invalid_plan_quality_guard_mode");
+    assert.equal(invalidGuardMode.payload.field, "plan-quality-guard-mode");
+    const emptyGuardMode = runBridgeTurn(repoRoot, workDir, "/plan open", {
+      env: { GROBOT_PLAN_QUALITY_GUARD_MODE: "   " },
+    });
+    assert.equal(emptyGuardMode.exit_code, 2);
+    assert.equal(isObject(emptyGuardMode.payload), true);
+    assert.equal(emptyGuardMode.payload.status, "error");
+    assert.equal(emptyGuardMode.payload.error_code, "invalid_plan_quality_guard_mode");
+    assert.equal(emptyGuardMode.payload.field, "plan-quality-guard-mode");
+
     const openWithoutPlan = runBridgeTurn(repoRoot, workDir, "/plan open");
     assert.equal(openWithoutPlan.exit_code, 0);
     assert.equal(isObject(openWithoutPlan.payload), true);
@@ -214,6 +232,12 @@ function main() {
         && guardedMessage.includes("no code was executed"),
       guard_assistant_message_hides_machine_fields:
         hidesLegacyPlanSurfaceMarkers(guardedMessage),
+      invalid_guard_mode_exit_code: invalidGuardMode.exit_code,
+      invalid_guard_mode_error_code: invalidGuardMode.payload?.error_code ?? null,
+      invalid_guard_mode_field: invalidGuardMode.payload?.field ?? null,
+      empty_guard_mode_exit_code: emptyGuardMode.exit_code,
+      empty_guard_mode_error_code: emptyGuardMode.payload?.error_code ?? null,
+      empty_guard_mode_field: emptyGuardMode.payload?.field ?? null,
     };
     process.stdout.write(`${JSON.stringify(output)}\n`);
   } finally {

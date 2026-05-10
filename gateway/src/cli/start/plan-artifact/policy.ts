@@ -52,11 +52,11 @@ function parsePolicyMode(raw: unknown, fieldName: string): PlanQualityGuardMode 
   if (typeof raw !== "string") {
     throw new Error(`policy field ${fieldName} must be string`);
   }
-  const mode = resolvePlanQualityGuardMode(raw, "warn");
-  if (mode === "warn" && raw.trim().toLowerCase() !== "warn") {
+  const normalized = raw.trim().toLowerCase();
+  if (normalized !== "off" && normalized !== "warn" && normalized !== "strict") {
     throw new Error(`policy field ${fieldName} must be off|warn|strict`);
   }
-  return mode;
+  return resolvePlanQualityGuardMode(normalized, "warn");
 }
 
 function cloneDefaultPlanQualityGuardPolicy(profile: string): PlanQualityGuardPolicy {

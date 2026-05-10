@@ -587,6 +587,12 @@ export async function runPlanCommandContracts() {
   assert.equal(bridgeCliContractPayload.guard_mode_after_note, "plan_only");
   assert.equal(bridgeCliContractPayload.guard_assistant_message_human, true);
   assert.equal(bridgeCliContractPayload.guard_assistant_message_hides_machine_fields, true);
+  assert.equal(bridgeCliContractPayload.invalid_guard_mode_exit_code, 2);
+  assert.equal(bridgeCliContractPayload.invalid_guard_mode_error_code, "invalid_plan_quality_guard_mode");
+  assert.equal(bridgeCliContractPayload.invalid_guard_mode_field, "plan-quality-guard-mode");
+  assert.equal(bridgeCliContractPayload.empty_guard_mode_exit_code, 2);
+  assert.equal(bridgeCliContractPayload.empty_guard_mode_error_code, "invalid_plan_quality_guard_mode");
+  assert.equal(bridgeCliContractPayload.empty_guard_mode_field, "plan-quality-guard-mode");
   logStep("bridge-cli-contract");
 
   const bridgePlanApplyFailureContractResult = runCommand("node", [
@@ -692,5 +698,9 @@ export async function runPlanCommandContracts() {
     planQualityBenchmarkContractPayload.assert_best_fail_code,
     "PLAN_BENCHMARK_ASSERT_BEST_FAILED",
   );
+  assert.equal(planQualityBenchmarkContractPayload.invalid_guard_mode_exit_code, 2);
+  assert.equal(planQualityBenchmarkContractPayload.invalid_guard_mode_has_stable_error, true);
+  assert.equal(planQualityBenchmarkContractPayload.empty_guard_mode_exit_code, 2);
+  assert.equal(planQualityBenchmarkContractPayload.empty_guard_mode_has_stable_error, true);
   logStep("plan-quality-benchmark-contract");
 }

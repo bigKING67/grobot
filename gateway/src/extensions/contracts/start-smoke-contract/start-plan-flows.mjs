@@ -38,6 +38,12 @@ export function runStartInvalidPlanArtifactControlsRejectFlow(context) {
   const invalidPlanApplyStaleResult = runCommand(repoRoot, commonArgs, {
     GROBOT_PLAN_APPLY_STALE_MS: "999",
   });
+  const invalidQualityGuardModeResult = runCommand(repoRoot, commonArgs, {
+    GROBOT_PLAN_QUALITY_GUARD_MODE: "banana",
+  });
+  const emptyQualityGuardModeResult = runCommand(repoRoot, commonArgs, {
+    GROBOT_PLAN_QUALITY_GUARD_MODE: "   ",
+  });
   const combinedOutput = [
     invalidEventsMaxBytesResult.stdout,
     invalidEventsMaxBytesResult.stderr,
@@ -45,6 +51,10 @@ export function runStartInvalidPlanArtifactControlsRejectFlow(context) {
     invalidEventsRotateKeepResult.stderr,
     invalidPlanApplyStaleResult.stdout,
     invalidPlanApplyStaleResult.stderr,
+    invalidQualityGuardModeResult.stdout,
+    invalidQualityGuardModeResult.stderr,
+    emptyQualityGuardModeResult.stdout,
+    emptyQualityGuardModeResult.stderr,
   ].join("\n");
   return {
     invalid_events_max_bytes_exit_code: invalidEventsMaxBytesResult.exit_code,
@@ -59,6 +69,14 @@ export function runStartInvalidPlanArtifactControlsRejectFlow(context) {
     invalid_plan_apply_stale_has_stable_error:
       invalidPlanApplyStaleResult.stderr.includes("error: invalid_plan_apply_stale_ms:")
       && invalidPlanApplyStaleResult.stderr.includes("plan-apply-stale-ms must be an integer between 1000 and 86400000"),
+    invalid_plan_quality_guard_mode_exit_code: invalidQualityGuardModeResult.exit_code,
+    invalid_plan_quality_guard_mode_has_stable_error:
+      invalidQualityGuardModeResult.stderr.includes("error: invalid_plan_quality_guard_mode:")
+      && invalidQualityGuardModeResult.stderr.includes("plan-quality-guard-mode must be one of off, warn, or strict"),
+    empty_plan_quality_guard_mode_exit_code: emptyQualityGuardModeResult.exit_code,
+    empty_plan_quality_guard_mode_has_stable_error:
+      emptyQualityGuardModeResult.stderr.includes("error: invalid_plan_quality_guard_mode:")
+      && emptyQualityGuardModeResult.stderr.includes("plan-quality-guard-mode must be one of off, warn, or strict"),
     hides_top_level_fatal: !combinedOutput.includes("fatal error"),
     has_start_banner: hasStartBannerMarker(combinedOutput),
   };

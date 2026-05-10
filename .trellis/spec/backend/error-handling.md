@@ -212,7 +212,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     defaults only when omitted or empty; malformed, zero, or out-of-range
     explicit values must exit `2` with stable `invalid_<field>` errors before
     plan artifact event rotation, stale apply recovery, or runtime turn
-    execution starts.
+    execution starts. Plan quality guard mode is stricter:
+    `GROBOT_PLAN_QUALITY_GUARD_MODE` may use policy defaults only when omitted;
+    explicit empty, whitespace-only, or unsupported values must exit `2` with
+    stable `invalid_plan_quality_guard_mode` before plan status/apply,
+    benchmark, bridge, or runtime turn execution starts.
 28. Runtime/provider string env controls must fail closed on explicit empty
     values. `GROBOT_MODEL`, `GROBOT_BASE_URL`, `GROBOT_API_KEY`,
     `GROBOT_PROVIDER`, and `GROBOT_MANAGEMENT_TOKEN` may use lower-priority

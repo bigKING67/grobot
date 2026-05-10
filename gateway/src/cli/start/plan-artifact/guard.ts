@@ -13,6 +13,39 @@ import type {
 type LoadPlanArtifactIndexFn = (workDir: string, sessionId: string) => PlanArtifactIndex;
 type EvaluatePlanQualityFn = (planContent: string) => PlanQualitySummary;
 
+export class PlanQualityGuardModeInputError extends Error {
+  readonly code = "invalid_plan_quality_guard_mode";
+  readonly field = "plan-quality-guard-mode";
+
+  constructor() {
+    super("plan-quality-guard-mode must be one of off, warn, or strict");
+    this.name = "PlanQualityGuardModeInputError";
+  }
+}
+
+export function isPlanQualityGuardModeInputError(
+  error: unknown,
+): error is PlanQualityGuardModeInputError {
+  return error instanceof PlanQualityGuardModeInputError;
+}
+
+export function planQualityGuardModeInputErrorPayload(error: unknown): {
+  status: "error";
+  error_code: string;
+  field: string;
+  detail: string;
+} | undefined {
+  if (!isPlanQualityGuardModeInputError(error)) {
+    return undefined;
+  }
+  return {
+    status: "error",
+    error_code: error.code,
+    field: error.field,
+    detail: error.message,
+  };
+}
+
 export function evaluatePlanQualityTrend(args: {
   workDir: string;
   sessionId: string;
@@ -154,7 +187,10 @@ export function resolvePlanQualityGuardMode(
   raw: string | undefined,
   fallback: PlanQualityGuardMode = DEFAULT_PLAN_QUALITY_GUARD_POLICY.defaults.mode,
 ): PlanQualityGuardMode {
-  const normalized = (raw ?? "").trim().toLowerCase();
+  if (raw === undefined) {
+    return fallback;
+  }
+  const normalized = raw.trim().toLowerCase();
   if (normalized === "off" || normalized === "disabled" || normalized === "0" || normalized === "false") {
     return "off";
   }
@@ -164,5 +200,5 @@ export function resolvePlanQualityGuardMode(
   if (normalized === "warn" || normalized === "1" || normalized === "true" || normalized === "enabled") {
     return "warn";
   }
-  return fallback;
+  throw new PlanQualityGuardModeInputError();
 }

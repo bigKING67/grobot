@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 import {
   evaluatePlanQualityBenchmark,
+  planQualityGuardModeInputErrorPayload,
   resolvePlanQualityGuardMode,
   resolvePlanQualityGuardPolicy,
 } from "../../cli/start/plan-artifact";
@@ -233,7 +234,15 @@ function main(argv: string[]): number {
 try {
   process.exitCode = main(process.argv.slice(2));
 } catch (error) {
-  const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`plan-quality-benchmark failed: ${message}\n`);
-  process.exitCode = 1;
+  const planQualityGuardModeError = planQualityGuardModeInputErrorPayload(error);
+  if (planQualityGuardModeError) {
+    process.stderr.write(
+      `plan-quality-benchmark failed: ${planQualityGuardModeError.error_code}: ${planQualityGuardModeError.detail}\n`,
+    );
+    process.exitCode = 2;
+  } else {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`plan-quality-benchmark failed: ${message}\n`);
+    process.exitCode = 1;
+  }
 }
