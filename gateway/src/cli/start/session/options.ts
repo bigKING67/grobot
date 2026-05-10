@@ -115,7 +115,7 @@ export function resolveHandoffAutoOnExit(options: Record<string, OptionValue>): 
     return false;
   }
   const raw = process.env.GROBOT_HANDOFF_AUTO_ON_EXIT;
-  if (typeof raw === "string" && raw.trim().length > 0) {
+  if (typeof raw === "string") {
     return parseBoolValue(raw, "handoff-auto-on-exit") ?? true;
   }
   return true;

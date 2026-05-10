@@ -563,6 +563,13 @@ export function runStartInvalidSessionControlsRejectFlow(context) {
       GROBOT_HANDOFF_AUTO_ON_EXIT: "maybe",
     },
   );
+  const emptyEnvHandoffResult = runCommand(
+    repoRoot,
+    commonArgs,
+    {
+      GROBOT_HANDOFF_AUTO_ON_EXIT: "   ",
+    },
+  );
   const combinedOutput = [
     invalidHistoryResult.stdout,
     invalidHistoryResult.stderr,
@@ -578,6 +585,8 @@ export function runStartInvalidSessionControlsRejectFlow(context) {
     missingRewindModeResult.stderr,
     invalidEnvHandoffResult.stdout,
     invalidEnvHandoffResult.stderr,
+    emptyEnvHandoffResult.stdout,
+    emptyEnvHandoffResult.stderr,
   ].join("\n");
   return {
     invalid_history_exit_code: invalidHistoryResult.exit_code,
@@ -608,6 +617,10 @@ export function runStartInvalidSessionControlsRejectFlow(context) {
     invalid_env_handoff_has_stable_error:
       invalidEnvHandoffResult.stderr.includes("error: invalid_handoff_auto_on_exit:")
       && invalidEnvHandoffResult.stderr.includes("handoff-auto-on-exit must be boolean"),
+    empty_env_handoff_exit_code: emptyEnvHandoffResult.exit_code,
+    empty_env_handoff_has_stable_error:
+      emptyEnvHandoffResult.stderr.includes("error: invalid_handoff_auto_on_exit:")
+      && emptyEnvHandoffResult.stderr.includes("handoff-auto-on-exit must be boolean"),
     hides_top_level_fatal: !combinedOutput.includes("fatal error"),
     has_start_banner: hasStartBannerMarker(combinedOutput),
   };
