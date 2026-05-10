@@ -7,6 +7,7 @@ import {
   computeGateCacheKey,
   createQualityCacheContext,
   readGateCache,
+  summarizeQualityEvents,
   writeGateCache,
 } from "./quality-cache.mjs";
 
@@ -95,8 +96,99 @@ function sortReadyGates(ready, selectedByName) {
   });
 }
 
+function reverseGraph(dependents) {
+  const depsByName = new Map();
+  for (const [depName, dependentNames] of dependents) {
+    for (const dependentName of dependentNames) {
+      const deps = depsByName.get(dependentName) ?? [];
+      deps.push(depName);
+      depsByName.set(dependentName, deps);
+    }
+  }
+  return depsByName;
+}
+
+function historicalDurationMs(gate, historicalStats = {}) {
+  const stats = historicalStats[gate.name];
+  if (!stats) {
+    const fallback = { cheap: 750, medium: 5_000, expensive: 15_000 };
+    return fallback[gate.cost] ?? 2_000;
+  }
+  return Math.max(1, Number(stats.coldAvgMs || stats.avgMs || stats.p90Ms || 1));
+}
+
+function computeCriticalPathScores(gates, dependents, historicalStats = {}) {
+  const byName = new Map(gates.map((gate) => [gate.name, gate]));
+  const memo = new Map();
+  function score(gateName) {
+    if (memo.has(gateName)) {
+      return memo.get(gateName);
+    }
+    const gate = byName.get(gateName);
+    if (!gate) {
+      return 0;
+    }
+    const downstream = dependents.get(gateName) ?? [];
+    const value = historicalDurationMs(gate, historicalStats) + Math.max(0, ...downstream.map(score));
+    memo.set(gateName, value);
+    return value;
+  }
+  for (const gate of gates) {
+    score(gate.name);
+  }
+  return memo;
+}
+
+function orderReadyGates(ready, selectedByName, options = {}) {
+  const {
+    criticalPathScores = new Map(),
+    historicalStats = {},
+    strategy = "interactive",
+  } = options;
+  if (strategy === "throughput") {
+    return [...ready].sort((left, right) => {
+      const leftGate = selectedByName.get(left);
+      const rightGate = selectedByName.get(right);
+      return (criticalPathScores.get(right) ?? 0) - (criticalPathScores.get(left) ?? 0)
+        || historicalDurationMs(rightGate, historicalStats) - historicalDurationMs(leftGate, historicalStats)
+        || left.localeCompare(right);
+    });
+  }
+  return sortReadyGates(ready, selectedByName);
+}
+
 function hasExclusiveRunning(running, selectedByName) {
   return [...running].some((gateName) => selectedByName.get(gateName)?.parallel === false);
+}
+
+function defaultResourceLimits(parallel) {
+  return {
+    "gateway-smoke": Math.max(1, Math.min(parallel, 4)),
+    node: Math.max(1, parallel),
+    release: 1,
+    rust: 2,
+    typescript: 2,
+  };
+}
+
+function resourceUsage(running, selectedByName) {
+  const usage = {};
+  for (const gateName of running) {
+    const gate = selectedByName.get(gateName);
+    if (!gate) {
+      continue;
+    }
+    const resourceClass = gate.resourceClass ?? "node";
+    usage[resourceClass] = (usage[resourceClass] ?? 0) + (gate.resourceCost ?? 1);
+  }
+  return usage;
+}
+
+function canRunWithResources(gate, running, selectedByName, resourceLimits) {
+  const resourceClass = gate.resourceClass ?? "node";
+  const limit = resourceLimits[resourceClass] ?? resourceLimits.node ?? Number.POSITIVE_INFINITY;
+  const usage = resourceUsage(running, selectedByName);
+  return (usage[resourceClass] ?? 0) + (gate.resourceCost ?? 1) <= limit;
 }
 
 function blockedByFailedDependency(gateName, context) {
@@ -149,11 +241,15 @@ export async function runQualityGates(gates, options = {}) {
     failFast = true,
     logger = null,
     parallel = defaultParallelism(),
+    resourceLimits = defaultResourceLimits(parallel),
     repoRoot = process.cwd(),
+    strategy = "interactive",
     verbose = false,
   } = options;
   const startedAt = performance.now();
   const { dependents, pendingDeps, selectedByName } = buildExecutionGraph(gates);
+  const historicalStats = summarizeQualityEvents(repoRoot, { limit: 200, slowLimit: 50 }).gateStats ?? {};
+  const criticalPathScores = computeCriticalPathScores(gates, dependents, historicalStats);
   const cacheContext = cache ? createQualityCacheContext(repoRoot) : null;
   const completed = new Set();
   const failed = new Set();
@@ -259,7 +355,11 @@ export async function runQualityGates(gates, options = {}) {
         }
       }
 
-      for (const gateName of sortReadyGates(ready, selectedByName)) {
+      for (const gateName of orderReadyGates(ready, selectedByName, {
+        criticalPathScores,
+        historicalStats,
+        strategy,
+      })) {
         if (running.size >= parallel) {
           break;
         }
@@ -271,6 +371,9 @@ export async function runQualityGates(gates, options = {}) {
           break;
         }
         if (gate.parallel === false && running.size > 0) {
+          continue;
+        }
+        if (!canRunWithResources(gate, running, selectedByName, resourceLimits)) {
           continue;
         }
         running.add(gateName);
@@ -301,6 +404,57 @@ export async function runQualityGates(gates, options = {}) {
 
     schedule();
   });
+}
+
+export function planQualityGates(gates, options = {}) {
+  const {
+    parallel = defaultParallelism(),
+    repoRoot = process.cwd(),
+    strategy = "interactive",
+  } = options;
+  const { dependents, pendingDeps, selectedByName } = buildExecutionGraph(gates);
+  const depsByName = reverseGraph(dependents);
+  const historicalStats = summarizeQualityEvents(repoRoot, { limit: 200, slowLimit: 50 }).gateStats ?? {};
+  const criticalPathScores = computeCriticalPathScores(gates, dependents, historicalStats);
+  const levels = new Map();
+  function level(gateName) {
+    if (levels.has(gateName)) {
+      return levels.get(gateName);
+    }
+    const deps = depsByName.get(gateName) ?? [];
+    const value = deps.length === 0 ? 0 : Math.max(...deps.map(level)) + 1;
+    levels.set(gateName, value);
+    return value;
+  }
+  for (const gate of gates) {
+    level(gate.name);
+  }
+  const planned = gates.map((gate) => ({
+    name: gate.name,
+    command: gate.command,
+    group: gate.group,
+    deps: [...(pendingDeps.get(gate.name) ?? [])],
+    level: levels.get(gate.name) ?? 0,
+    cost: gate.cost,
+    estimatedMs: historicalDurationMs(gate, historicalStats),
+    criticalPathMs: Math.round(criticalPathScores.get(gate.name) ?? 0),
+    resourceClass: gate.resourceClass ?? "node",
+    resourceCost: gate.resourceCost ?? 1,
+    cacheable: gate.cacheable === true,
+    parallel: gate.parallel !== false,
+  })).sort((left, right) => (
+    left.level - right.level
+  ) || (
+    strategy === "throughput"
+      ? right.criticalPathMs - left.criticalPathMs
+      : left.estimatedMs - right.estimatedMs
+  ) || left.name.localeCompare(right.name));
+  return {
+    parallel,
+    strategy,
+    resourceLimits: defaultResourceLimits(parallel),
+    gates: planned,
+  };
 }
 
 export function summarizeResults(results) {

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { performance } from "node:perf_hooks";
 import {
   runCoreContracts,
   runSemanticBenchmarkContracts,
@@ -55,6 +56,7 @@ import {
   parseCliOptions,
   repoRoot,
   runCommand,
+  runNodeScriptAsync,
   setRunReporter,
   tempDirs,
 } from "./check-gateway-node/harness.mjs";
@@ -205,6 +207,130 @@ function suiteIds() {
   return Object.keys(SUITES);
 }
 
+function caseIdForSuite(suiteId) {
+  return `${suiteId}:full`;
+}
+
+const TIMINGS_PATH = resolve(repoRoot, ".cache/grobot-quality/gateway-timings.json");
+
+function loadTimings() {
+  if (!existsSync(TIMINGS_PATH)) {
+    return {};
+  }
+  try {
+    return JSON.parse(readFileSync(TIMINGS_PATH, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function writeTiming(caseId, durationMs, status) {
+  const timings = loadTimings();
+  const current = timings[caseId] ?? {
+    count: 0,
+    failures: 0,
+    avgMs: 0,
+    maxMs: 0,
+  };
+  const count = Number(current.count ?? 0) + 1;
+  const previousAvg = Number(current.avgMs ?? 0);
+  timings[caseId] = {
+    count,
+    failures: Number(current.failures ?? 0) + (status === "ok" ? 0 : 1),
+    avgMs: Math.round(((previousAvg * (count - 1)) + durationMs) / count),
+    maxMs: Math.max(Number(current.maxMs ?? 0), durationMs),
+    lastMs: durationMs,
+    lastStatus: status,
+    updatedAt: new Date().toISOString(),
+  };
+  mkdirSync(resolve(repoRoot, ".cache/grobot-quality"), { recursive: true });
+  writeFileSync(TIMINGS_PATH, `${JSON.stringify(timings, null, 2)}\n`, "utf8");
+}
+
+function listCases() {
+  const timings = loadTimings();
+  return suiteIds().map((suiteId) => ({
+    id: caseIdForSuite(suiteId),
+    suite: suiteId,
+    description: SUITES[suiteId].description,
+    estimatedMs: Number(timings[caseIdForSuite(suiteId)]?.avgMs ?? 0),
+    isolation: "process",
+  }));
+}
+
+function parseShard(value) {
+  const match = String(value ?? "").match(/^(\d+)\/(\d+)$/);
+  if (!match) {
+    throw new Error("--shard must use N/TOTAL format, for example 1/4");
+  }
+  const index = Number.parseInt(match[1], 10);
+  const total = Number.parseInt(match[2], 10);
+  if (!Number.isInteger(index) || !Number.isInteger(total) || index <= 0 || total <= 0 || index > total) {
+    throw new Error("--shard must use 1-based N/TOTAL values");
+  }
+  return { index, total };
+}
+
+function shardSuites(suites, shardValue) {
+  if (!shardValue) {
+    return suites;
+  }
+  const { index, total } = parseShard(shardValue);
+  const cases = listCases()
+    .filter((testCase) => suites.includes(testCase.suite))
+    .sort((left, right) => (right.estimatedMs - left.estimatedMs) || left.id.localeCompare(right.id));
+  const buckets = Array.from({ length: total }, () => ({ totalMs: 0, suites: [] }));
+  for (const testCase of cases) {
+    const bucket = buckets.sort((left, right) => left.totalMs - right.totalMs)[0];
+    bucket.suites.push(testCase.suite);
+    bucket.totalMs += Math.max(1, testCase.estimatedMs || 1);
+  }
+  return buckets[index - 1]?.suites ?? [];
+}
+
+function suiteIdForCase(caseId) {
+  const found = listCases().find((entry) => entry.id === caseId);
+  return found?.suite ?? "";
+}
+
+async function runSuitesInWorkers(suiteIdsToRun, workers) {
+  if (workers <= 1 || suiteIdsToRun.length <= 1) {
+    return false;
+  }
+  const buckets = Array.from({ length: Math.min(workers, suiteIdsToRun.length) }, (_, index) => ({
+    index,
+    suites: [],
+    totalMs: 0,
+  }));
+  const casesBySuite = new Map(listCases().map((testCase) => [testCase.suite, testCase]));
+  const ordered = [...suiteIdsToRun].sort((left, right) => {
+    const leftMs = casesBySuite.get(left)?.estimatedMs ?? 1;
+    const rightMs = casesBySuite.get(right)?.estimatedMs ?? 1;
+    return rightMs - leftMs || left.localeCompare(right);
+  });
+  for (const suiteId of ordered) {
+    const bucket = buckets.sort((left, right) => left.totalMs - right.totalMs)[0];
+    bucket.suites.push(suiteId);
+    bucket.totalMs += Math.max(1, casesBySuite.get(suiteId)?.estimatedMs ?? 1);
+  }
+  const results = await Promise.all(buckets
+    .filter((bucket) => bucket.suites.length > 0)
+    .map((bucket) => runNodeScriptAsync("gateway/tests/check-gateway-node.mjs", [
+      ...bucket.suites.flatMap((suiteId) => ["--suite", suiteId]),
+      "--json",
+    ])));
+  const failures = results.filter((result) => result.code !== 0);
+  if (failures.length > 0) {
+    const details = failures.map((failure, index) => [
+      `[worker ${index + 1}] exit=${failure.code}`,
+      failure.stdout ? `stdout:\n${failure.stdout}` : "",
+      failure.stderr ? `stderr:\n${failure.stderr}` : "",
+    ].filter(Boolean).join("\n")).join("\n\n");
+    throw new Error(`gateway worker run failed\n${details}`);
+  }
+  return true;
+}
+
 function runGovernanceEvalSmoke() {
   const ciLabelPolicy = runCommand("npx", [
     "--yes",
@@ -323,8 +449,26 @@ async function main() {
     }
     return;
   }
+  if (cli.list_cases) {
+    const payload = listCases();
+    if (cli.json) {
+      console.log(JSON.stringify({ cases: payload }, null, 2));
+    } else {
+      for (const testCase of payload) {
+        console.log(`${testCase.id}\t${testCase.description}`);
+      }
+    }
+    return;
+  }
+  if (cli.case_id) {
+    const suiteId = suiteIdForCase(cli.case_id);
+    if (!suiteId) {
+      throw new Error(`unknown case: ${cli.case_id}`);
+    }
+    cli.suites = [suiteId];
+  }
   const reporter = createRunReporter({
-    mode: cli.suites.length > 0 ? "suite" : cli.mode,
+    mode: cli.case_id ? "case" : cli.suites.length > 0 ? "suite" : cli.mode,
     emitText: !cli.json,
     failOnRetry: cli.fail_on_retry,
   });
@@ -337,13 +481,28 @@ async function main() {
   setRunReporter(reporter);
   try {
     ensureContractsExist();
-    if (cli.suites.length > 0) {
-      for (const suiteId of cli.suites) {
-        const suite = SUITES[suiteId];
-        if (!suite) {
-          throw new Error(`unknown suite: ${suiteId}`);
-        }
+    async function runSuite(suiteId) {
+      const suite = SUITES[suiteId];
+      if (!suite) {
+        throw new Error(`unknown suite: ${suiteId}`);
+      }
+      const startedAt = performance.now();
+      try {
         await suite.run();
+        writeTiming(caseIdForSuite(suiteId), Math.round(performance.now() - startedAt), "ok");
+      } catch (error) {
+        writeTiming(caseIdForSuite(suiteId), Math.round(performance.now() - startedAt), "failed");
+        throw error;
+      }
+    }
+
+    if (cli.suites.length > 0) {
+      const selectedSuites = shardSuites(cli.suites, cli.shard);
+      const workerRan = await runSuitesInWorkers(selectedSuites, cli.workers);
+      if (!workerRan) {
+        for (const suiteId of selectedSuites) {
+          await runSuite(suiteId);
+        }
       }
       enforceRetryGate(cli, reporter);
       reporter.finish("ok");
@@ -351,13 +510,17 @@ async function main() {
         emitJsonReport(cli, reporter, baselineReportPath, baselineReportPayload);
       }
       if (!cli.json) {
-        process.stdout.write(`gateway suite checks completed: ${cli.suites.join(", ")}.\n`);
+        process.stdout.write(`gateway suite checks completed: ${selectedSuites.join(", ")}.\n`);
       }
       return;
     }
     if (cli.mode === "runtime-smoke-only") {
-      for (const suiteId of suiteIds().filter((id) => id.startsWith("runtime:"))) {
-        await SUITES[suiteId].run();
+      const selectedSuites = shardSuites(suiteIds().filter((id) => id.startsWith("runtime:")), cli.shard);
+      const workerRan = await runSuitesInWorkers(selectedSuites, cli.workers);
+      if (!workerRan) {
+        for (const suiteId of selectedSuites) {
+          await runSuite(suiteId);
+        }
       }
       enforceRetryGate(cli, reporter);
       reporter.finish("ok");
@@ -369,8 +532,12 @@ async function main() {
       }
       return;
     }
-    for (const suiteId of suiteIds()) {
-      await SUITES[suiteId].run();
+    const selectedSuites = shardSuites(suiteIds(), cli.shard);
+    const workerRan = await runSuitesInWorkers(selectedSuites, cli.workers);
+    if (!workerRan) {
+      for (const suiteId of selectedSuites) {
+        await runSuite(suiteId);
+      }
     }
     enforceRetryGate(cli, reporter);
     reporter.finish("ok");

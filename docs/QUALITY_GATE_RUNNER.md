@@ -37,8 +37,11 @@ node scripts/quality-runner.mjs run affected --list --compact
 node scripts/quality-runner.mjs run affected --changed-files runtime/src/extensions/handler.rs
 node scripts/quality-runner.mjs run quick --json --no-cache
 node scripts/quality-runner.mjs run ci --parallel 4
+node scripts/quality-runner.mjs plan affected --strategy throughput
 node scripts/quality-runner.mjs explain affected --summary
+node scripts/quality-runner.mjs explain cache check:quality-runner
 node scripts/quality-runner.mjs stats --slow 20
+node scripts/quality-runner.mjs cache gc --max-age-days 30
 ```
 
 ## Execution model
@@ -57,6 +60,10 @@ normalized to:
 - `cacheable`: whether a successful result may be reused.
 - `parallel`: whether it may run concurrently with other gates.
 - `cost`: scheduler hint (`cheap`, `medium`, `expensive`).
+- `resourceClass` and `resourceCost`: resource-token scheduling hints such as
+  `node`, `typescript`, `rust`, `gateway-smoke`, or `release`.
+- `cachePolicy`: cache semantics (`pass-only` or `never` by default).
+- `env`: declared environment variables that participate in the action hash.
 - `modes`: profiles such as `quick`, `ci`, or `release`.
 
 Gateway smoke is split into suite gates by behavior surface. The suite ids are
@@ -85,7 +92,12 @@ divergence rather than the user's current work. A caller can explicitly request
 a branch-diff run with `--base REF` or bypass git detection with
 `--changed-files a,b`.
 
-High-value mappings:
+The v2 affected selector is surface-graph based: changed files map to named
+surfaces, surfaces expand to gates, and selected gates then include hard DAG
+dependencies from the registry. The current graph is intentionally conservative
+and keeps unknown files on a safe fallback path.
+
+High-value surfaces:
 
 - `runtime/src/extensions/**`: Rust check/test, runtime-tool schema/report/parity,
   and `runtime:status`. It intentionally does not run broad runtime controls by
@@ -119,7 +131,8 @@ High-value mappings:
 
 Unknown files fall back to `SAFE_FALLBACK_GATES`, which is intentionally
 conservative and includes layer, TypeScript, runtime, and runtime-tool baseline
-checks.
+checks. Use `node scripts/quality-runner.mjs explain affected` to see the file
+to surface to gate chain.
 
 ### 3. DAG scheduler
 
@@ -129,6 +142,12 @@ The scheduler lives in `scripts/lib/quality-scheduler.mjs`.
 - Selected gates automatically include their hard dependencies.
 - Dependency failure marks downstream gates as skipped failures so a run cannot
   turn green by omission.
+- Scheduler strategy can be `interactive` or `throughput`. Interactive mode
+  prioritizes cheap feedback first. Throughput mode uses local historical timing
+  and critical-path scores so long DAG paths start earlier.
+- Resource tokens prevent oversubscription. Rust and TypeScript compiler gates
+  use dedicated resource classes; gateway smoke suites share a separate
+  `gateway-smoke` pool instead of consuming all generic Node capacity.
 - `parallel: false` gates run in an exclusive window. This is used for shared
   compiler/build-resource gates such as `tsc`, `cargo`, and release scripts.
   Most gateway smoke suites run as isolated child processes with temp workdirs
@@ -136,25 +155,59 @@ The scheduler lives in `scripts/lib/quality-scheduler.mjs`.
   Timing benchmarks such as `gateway:semantic-benchmark` stay exclusive and use
   broad ceiling assertions plus structured warning output for trend jitter,
   rather than brittle wall-clock ordering comparisons.
-- Ready gates are ordered by `cost`, so cheap feedback arrives earlier.
+- `node scripts/quality-runner.mjs plan <mode>` prints the executable plan with
+  dependency level, estimated duration, critical-path score, resource class, and
+  cacheability before running anything.
 
-### 4. Pass-only cache
+### 4. Pass-only action cache
 
 Cache files are stored under `.cache/grobot-quality/` and are git-ignored.
 
 Rules:
 
 - Only successful results are cached; failures are never cached.
-- Cache keys include schema version, gate name, command, Node/npm versions,
-  input file contents, and for Rust gates `rustc`/`cargo` versions.
+- Cache keys are action hashes. They include schema version, gate name, command,
+  platform, declared env, Node/npm versions, input file contents, and for Rust
+  gates `rustc`/`cargo` versions.
+- v2 writes an action-cache entry under `ac/<gate>/<hash>.json` and stores
+  stdout/stderr payloads in a local content-addressable store under `cas/`.
+  The legacy `results/` pass cache is still written for backward compatibility.
 - A single runner process reuses git file lists, glob expansion, file digests,
   and tool version probes to reduce repeated scanning.
 - Runtime smoke, gateway smoke, release gates, and `cargo test` are not cached
   by default because they are stateful or expensive enough to deserve fresh
   execution when selected.
 - `--no-cache` disables the outer runner cache.
+- `node scripts/quality-runner.mjs explain cache <gate>` reports the current
+  action hash, cache status, input count, latest cached action, and miss reason.
+- `node scripts/quality-runner.mjs cache gc --max-age-days N` performs
+  best-effort local cache garbage collection.
 
-### 5. Events and stats
+### 5. Gateway smoke case/shard registry
+
+The gateway smoke harness supports suite and case discovery:
+
+```bash
+node gateway/tests/check-gateway-node.mjs --list-suites --json
+npm run check:gateway:list-cases -- --json
+node gateway/tests/check-gateway-node.mjs --case runtime:status:full --json
+node gateway/tests/check-gateway-node.mjs --suite runtime:status --shard 1/1 --json
+node gateway/tests/check-gateway-node.mjs --runtime-smoke-only --workers 4 --json
+```
+
+Case ids currently map one-to-one with suite ids (`<suite>:full`). This keeps
+the external contract stable while allowing future suite internals to split into
+smaller timed cases without changing the quality-runner registry shape. Shards
+are deterministic and 1-based (`N/TOTAL`). When timing data exists, the shard
+partitioner uses greedy longest-processing-time bin packing from
+`.cache/grobot-quality/gateway-timings.json`; without timing data it falls back
+to stable deterministic distribution. Each suite/case run updates the timing
+file so later shards become better balanced. `--workers N` runs selected suites
+through isolated child-process workers using the same timing-aware bin packing,
+so large gateway smoke profiles can parallelize internally without forcing the
+outer quality-runner to know every suite implementation detail.
+
+### 6. Events and stats
 
 Every real run appends one line to `.cache/grobot-quality/events.jsonl`.
 
@@ -171,6 +224,10 @@ optimization should be affected mapping, input narrowing, batching, fixture
 reuse, or cache policy. It is safe to delete `.cache/grobot-quality/` and start
 over.
 
+Stats now include p50/p90/p95, failure rate, cold durations, and recommendation
+hints. Slow uncached smoke gates are intentionally reported as candidates for
+case splitting or timing-based sharding, not for blind caching.
+
 ## Adding or changing a gate
 
 1. Add or update the gate in `scripts/lib/quality-gate-registry.mjs`.
@@ -185,6 +242,7 @@ over.
 ```bash
 npm run check:quality-runner
 node scripts/checks/quality-runner/gateway-suite-registry.mjs
+node scripts/quality-runner.mjs plan affected --json
 npm run check
 ```
 

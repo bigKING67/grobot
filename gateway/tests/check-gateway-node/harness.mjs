@@ -378,6 +378,10 @@ export function runCommandAsync(command, args, options = {}) {
   });
 }
 
+export function runNodeScriptAsync(scriptPath, args = [], options = {}) {
+  return runCommandAsync(process.execPath, [scriptPath, ...args], options);
+}
+
 export function parseJsonOutput(name, stdout) {
   try {
     return JSON.parse(stdout);
@@ -436,12 +440,16 @@ export function sleepMs(delayMs) {
 export function parseCliOptions(argv) {
   const options = {
     baseline_json: "",
+    case_id: "",
     fail_on_retry: false,
     json: false,
     json_output: "",
+    list_cases: false,
     list_suites: false,
     mode: "full",
+    shard: "",
     suites: [],
+    workers: 1,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index] ?? "";
@@ -453,12 +461,43 @@ export function parseCliOptions(argv) {
       options.list_suites = true;
       continue;
     }
+    if (token === "--list-cases") {
+      options.list_cases = true;
+      continue;
+    }
     if (token === "--suite") {
       const value = argv[index + 1] ?? "";
       if (!value || value.startsWith("--")) {
         throw new Error("missing value for --suite");
       }
       options.suites.push(value);
+      index += 1;
+      continue;
+    }
+    if (token === "--case") {
+      const value = argv[index + 1] ?? "";
+      if (!value || value.startsWith("--")) {
+        throw new Error("missing value for --case");
+      }
+      options.case_id = value;
+      index += 1;
+      continue;
+    }
+    if (token === "--shard") {
+      const value = argv[index + 1] ?? "";
+      if (!value || value.startsWith("--")) {
+        throw new Error("missing value for --shard");
+      }
+      options.shard = value;
+      index += 1;
+      continue;
+    }
+    if (token === "--workers") {
+      const value = Number.parseInt(argv[index + 1] ?? "", 10);
+      if (!Number.isInteger(value) || value <= 0) {
+        throw new Error("--workers must be a positive integer");
+      }
+      options.workers = value;
       index += 1;
       continue;
     }

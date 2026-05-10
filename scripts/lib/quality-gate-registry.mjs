@@ -51,6 +51,7 @@ export const QUALITY_ENTRYPOINT_SCRIPTS = Object.freeze({
   "check:prepush": QUALITY_RUNNER_COMMANDS.prepush,
   "check:quick": QUALITY_RUNNER_COMMANDS.quick,
   "check:release": QUALITY_RUNNER_COMMANDS.release,
+  "check:quality:plan": "node scripts/quality-runner.mjs plan affected",
   "check:quality:stats": QUALITY_RUNNER_COMMANDS.stats,
 });
 
@@ -256,18 +257,72 @@ function inferParallel(gate) {
   return true;
 }
 
+function inferResourceClass(gate) {
+  if (gate.resourceClass) {
+    return gate.resourceClass;
+  }
+  if (gate.command.includes("cargo ")) {
+    return "rust";
+  }
+  if (gate.command.includes("check-gateway-node.mjs")) {
+    return "gateway-smoke";
+  }
+  if (gate.command.includes("tsc ")) {
+    return "typescript";
+  }
+  if (gate.group === "release") {
+    return "release";
+  }
+  return "node";
+}
+
+function inferResourceCost(gate) {
+  if (Number.isFinite(gate.resourceCost) && gate.resourceCost > 0) {
+    return gate.resourceCost;
+  }
+  if (gate.command.includes("cargo ") || gate.command.includes("tsc ")) {
+    return 2;
+  }
+  if (gate.command.includes("check-gateway-node.mjs")) {
+    return gate.command.includes("semantic-benchmark") ? 2 : 1;
+  }
+  return 1;
+}
+
+function inferCachePolicy(gate) {
+  if (gate.cachePolicy) {
+    return gate.cachePolicy;
+  }
+  return inferCacheable(gate) ? "pass-only" : "never";
+}
+
+function inferExclusiveGroup(gate) {
+  if (gate.exclusiveGroup) {
+    return gate.exclusiveGroup;
+  }
+  if (gate.parallel === false || inferParallel(gate) === false) {
+    return inferResourceClass(gate);
+  }
+  return "";
+}
+
 function makeGate(definition) {
   return Object.freeze({
     cacheable: inferCacheable(definition),
+    cachePolicy: inferCachePolicy(definition),
     command: definition.command,
     cost: inferCost(definition),
     deps: Object.freeze(definition.deps ?? []),
+    env: Object.freeze(definition.env ?? []),
+    exclusiveGroup: inferExclusiveGroup(definition),
     group: definition.group,
     inputs: Object.freeze(definition.inputs ?? ["package.json", "package-lock.json"]),
     label: definition.label ?? `[quality] ${definition.name}`,
     modes: Object.freeze(definition.modes ?? []),
     name: definition.name,
     parallel: inferParallel(definition),
+    resourceClass: inferResourceClass(definition),
+    resourceCost: inferResourceCost(definition),
   });
 }
 

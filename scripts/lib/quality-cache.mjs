@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-const CACHE_SCHEMA_VERSION = 1;
+const CACHE_SCHEMA_VERSION = 2;
 const CACHE_ROOT = ".cache/grobot-quality";
+const ACTION_CACHE_DIR = "ac";
+const CAS_DIR = "cas";
 const RESULT_CACHE_DIR = "results";
 const EVENTS_FILE = "events.jsonl";
 
@@ -154,6 +156,8 @@ export function getQualityCacheRoot(repoRoot) {
 
 export function ensureQualityCacheDirs(repoRoot) {
   const root = getQualityCacheRoot(repoRoot);
+  mkdirSync(path.join(root, ACTION_CACHE_DIR), { recursive: true });
+  mkdirSync(path.join(root, CAS_DIR), { recursive: true });
   mkdirSync(path.join(root, RESULT_CACHE_DIR), { recursive: true });
   return root;
 }
@@ -164,8 +168,13 @@ export function computeGateCacheKey(repoRoot, gate, context = null) {
   hash.update(`schema=${CACHE_SCHEMA_VERSION}\n`);
   hash.update(`gate=${gate.name}\n`);
   hash.update(`command=${gate.command}\n`);
+  hash.update(`platform=${process.platform}-${process.arch}\n`);
   hash.update(`node=${process.version}\n`);
   hash.update(`npm=${toolVersion(repoRoot, "npm", ["--version"], context)}\n`);
+  hash.update(`cachePolicy=${gate.cachePolicy ?? ""}\n`);
+  for (const envName of gate.env ?? []) {
+    hash.update(`env=${envName}=${process.env[envName] ?? ""}\n`);
+  }
   if (gate.group === "runtime" || gate.command.includes("cargo ")) {
     hash.update(`rustc=${toolVersion(repoRoot, "rustc", ["--version"], context)}\n`);
     hash.update(`cargo=${toolVersion(repoRoot, "cargo", ["--version"], context)}\n`);
@@ -181,6 +190,76 @@ export function computeGateCacheKey(repoRoot, gate, context = null) {
   };
 }
 
+function safeGateName(gateName) {
+  return gateName.replace(/[^A-Za-z0-9_.-]/g, "_");
+}
+
+function legacyCacheFilePath(repoRoot, gateName, cacheKey) {
+  return path.join(getQualityCacheRoot(repoRoot), RESULT_CACHE_DIR, safeGateName(gateName), `${cacheKey}.json`);
+}
+
+function actionCacheFilePath(repoRoot, gateName, cacheKey) {
+  return path.join(getQualityCacheRoot(repoRoot), ACTION_CACHE_DIR, safeGateName(gateName), `${cacheKey}.json`);
+}
+
+function casFilePath(repoRoot, digest) {
+  return path.join(getQualityCacheRoot(repoRoot), CAS_DIR, digest.slice(0, 2), digest);
+}
+
+function writeCasText(repoRoot, value) {
+  const text = String(value ?? "");
+  const digest = hashString(text);
+  const filePath = casFilePath(repoRoot, digest);
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  if (!existsSync(filePath)) {
+    writeFileSync(filePath, text, "utf8");
+  }
+  return {
+    digest,
+    sizeBytes: Buffer.byteLength(text),
+  };
+}
+
+function readJsonFile(filePath) {
+  try {
+    return JSON.parse(readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function readMostRecentActionCacheEntry(repoRoot, gateName) {
+  const dir = path.join(getQualityCacheRoot(repoRoot), ACTION_CACHE_DIR, safeGateName(gateName));
+  if (!existsSync(dir)) {
+    return null;
+  }
+  const entries = readdirSync(dir)
+    .filter((entry) => entry.endsWith(".json"))
+    .map((entry) => {
+      const filePath = path.join(dir, entry);
+      try {
+        return {
+          filePath,
+          mtimeMs: statSync(filePath).mtimeMs,
+          payload: readJsonFile(filePath),
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .sort((left, right) => right.mtimeMs - left.mtimeMs);
+  return entries[0] ?? null;
+}
+
+function countActionCacheEntries(repoRoot, gateName) {
+  const dir = path.join(getQualityCacheRoot(repoRoot), ACTION_CACHE_DIR, safeGateName(gateName));
+  if (!existsSync(dir)) {
+    return 0;
+  }
+  return readdirSync(dir).filter((entry) => entry.endsWith(".json")).length;
+}
+
 function cacheFilePath(repoRoot, gateName, cacheKey) {
   const safeGateName = gateName.replace(/[^A-Za-z0-9_.-]/g, "_");
   return path.join(getQualityCacheRoot(repoRoot), RESULT_CACHE_DIR, safeGateName, `${cacheKey}.json`);
@@ -190,23 +269,47 @@ export function readGateCache(repoRoot, gate, cacheKey) {
   if (!gate.cacheable) {
     return null;
   }
-  const filePath = cacheFilePath(repoRoot, gate.name, cacheKey);
-  if (!existsSync(filePath)) {
-    return null;
-  }
-  try {
-    const cached = JSON.parse(readFileSync(filePath, "utf8"));
+  const actionPath = actionCacheFilePath(repoRoot, gate.name, cacheKey);
+  if (existsSync(actionPath)) {
+    const cached = readJsonFile(actionPath);
     return cached?.status === "pass" ? cached : null;
-  } catch {
-    return null;
   }
+
+  const legacyPath = legacyCacheFilePath(repoRoot, gate.name, cacheKey);
+  if (existsSync(legacyPath)) {
+    const cached = readJsonFile(legacyPath);
+    return cached?.status === "pass" ? cached : null;
+  }
+  return null;
 }
 
 export function writeGateCache(repoRoot, gate, cacheKey, result) {
   if (!gate.cacheable || result.status !== "pass") {
     return;
   }
-  const filePath = cacheFilePath(repoRoot, gate.name, cacheKey);
+  const stdout = writeCasText(repoRoot, result.stdout ?? "");
+  const stderr = writeCasText(repoRoot, result.stderr ?? "");
+  const actionPath = actionCacheFilePath(repoRoot, gate.name, cacheKey);
+  mkdirSync(path.dirname(actionPath), { recursive: true });
+  writeFileSync(
+    actionPath,
+    `${JSON.stringify({
+      schema: CACHE_SCHEMA_VERSION,
+      gate: gate.name,
+      cacheKey,
+      actionHash: cacheKey,
+      status: "pass",
+      durationMs: result.durationMs,
+      stdoutDigest: stdout.digest,
+      stdoutSizeBytes: stdout.sizeBytes,
+      stderrDigest: stderr.digest,
+      stderrSizeBytes: stderr.sizeBytes,
+      timestamp: new Date().toISOString(),
+    }, null, 2)}\n`,
+    "utf8",
+  );
+
+  const filePath = legacyCacheFilePath(repoRoot, gate.name, cacheKey);
   mkdirSync(path.dirname(filePath), { recursive: true });
   writeFileSync(
     filePath,
@@ -222,12 +325,76 @@ export function writeGateCache(repoRoot, gate, cacheKey, result) {
   );
 }
 
+export function explainGateCache(repoRoot, gate, context = null) {
+  const cacheInfo = computeGateCacheKey(repoRoot, gate, context);
+  const actionPath = actionCacheFilePath(repoRoot, gate.name, cacheInfo.cacheKey);
+  const legacyPath = legacyCacheFilePath(repoRoot, gate.name, cacheInfo.cacheKey);
+  const cached = readGateCache(repoRoot, gate, cacheInfo.cacheKey);
+  const latest = readMostRecentActionCacheEntry(repoRoot, gate.name);
+  return {
+    gate: gate.name,
+    cacheable: gate.cacheable === true,
+    status: cached ? "hit" : "miss",
+    cacheKey: cacheInfo.cacheKey,
+    actionCachePath: actionPath,
+    legacyCachePath: legacyPath,
+    actionCacheEntries: countActionCacheEntries(repoRoot, gate.name),
+    inputCount: cacheInfo.files.length,
+    sampleInputs: cacheInfo.files.slice(0, 20),
+    latestEntry: latest?.payload
+      ? {
+        cacheKey: latest.payload.cacheKey ?? "",
+        status: latest.payload.status ?? "",
+        timestamp: latest.payload.timestamp ?? "",
+        durationMs: latest.payload.durationMs ?? 0,
+      }
+      : null,
+    missReason: cached
+      ? ""
+      : gate.cacheable === false
+        ? "gate is not cacheable"
+        : latest?.payload?.cacheKey
+          ? "current action hash differs from latest cached action"
+          : "no cached pass result for this gate/action hash",
+  };
+}
+
 export function appendQualityEvent(repoRoot, event) {
   const root = ensureQualityCacheDirs(repoRoot);
   writeFileSync(path.join(root, EVENTS_FILE), `${JSON.stringify(event)}\n`, {
     encoding: "utf8",
     flag: "a",
   });
+}
+
+function percentile(values, p) {
+  if (values.length === 0) {
+    return 0;
+  }
+  const sorted = [...values].sort((left, right) => left - right);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  return sorted[index];
+}
+
+function recommendationsForSummaries(summaries) {
+  const recommendations = [];
+  const coldSlow = summaries
+    .filter((item) => item.coldCount > 0)
+    .sort((left, right) => right.coldTotalMs - left.coldTotalMs)
+    .slice(0, 5);
+  for (const gate of coldSlow) {
+    if (gate.cacheHitRate === 0 && gate.coldAvgMs >= 10_000) {
+      recommendations.push({
+        gate: gate.name,
+        reason: "slow cold gate with no cache hits",
+        action: gate.name.includes("suite:")
+          ? "split into smaller gateway smoke cases or enable timing-based sharding"
+          : "narrow inputs, add hermetic cache policy, or move repeated work into a shared helper",
+        coldAvgMs: gate.coldAvgMs,
+      });
+    }
+  }
+  return recommendations;
 }
 
 export function summarizeQualityEvents(repoRoot, options = {}) {
@@ -269,36 +436,103 @@ export function summarizeQualityEvents(repoRoot, options = {}) {
         count: 0,
         maxMs: 0,
         totalMs: 0,
+        failures: 0,
+        durations: [],
+        coldDurations: [],
       };
       const durationMs = Number(result.durationMs ?? 0);
       current.count += 1;
       current.totalMs += durationMs;
       current.maxMs = Math.max(current.maxMs, durationMs);
+      current.durations.push(durationMs);
+      if (result.status !== "pass") {
+        current.failures += 1;
+      }
       if (result.cacheHit) {
         current.cachedCount += 1;
       } else {
         current.coldCount += 1;
         current.coldTotalMs += durationMs;
         current.coldMaxMs = Math.max(current.coldMaxMs, durationMs);
+        current.coldDurations.push(durationMs);
       }
       gates.set(result.name, current);
     }
   }
 
   const summaries = [...gates.values()].map((item) => ({
-    ...item,
+    name: item.name,
+    cachedCount: item.cachedCount,
+    coldCount: item.coldCount,
+    coldMaxMs: item.coldMaxMs,
+    coldTotalMs: item.coldTotalMs,
+    count: item.count,
+    failures: item.failures,
+    maxMs: item.maxMs,
+    totalMs: item.totalMs,
     avgMs: Math.round(item.totalMs / item.count),
     cacheHitRate: item.count === 0 ? 0 : item.cachedCount / item.count,
     coldAvgMs: item.coldCount === 0 ? 0 : Math.round(item.coldTotalMs / item.coldCount),
+    failureRate: item.count === 0 ? 0 : item.failures / item.count,
+    p50Ms: percentile(item.durations, 50),
+    p90Ms: percentile(item.durations, 90),
+    p95Ms: percentile(item.durations, 95),
+    coldP90Ms: percentile(item.coldDurations, 90),
   }));
+  const byGate = Object.fromEntries(summaries.map((item) => [item.name, item]));
 
   return {
     cacheHits,
     cacheHitRate: totalGateResults === 0 ? 0 : cacheHits / totalGateResults,
+    gateStats: byGate,
     modes,
+    recommendations: recommendationsForSummaries(summaries),
     slowest: [...summaries].sort((a, b) => b.maxMs - a.maxMs).slice(0, slowLimit),
     slowestCold: [...summaries].filter((item) => item.coldCount > 0).sort((a, b) => b.coldMaxMs - a.coldMaxMs).slice(0, slowLimit),
     totalGateResults,
     totalRuns: events.length,
   };
+}
+
+export function gcQualityCache(repoRoot, options = {}) {
+  const { maxAgeDays = 30 } = options;
+  const root = getQualityCacheRoot(repoRoot);
+  if (!existsSync(root)) {
+    return { deleted: 0, root };
+  }
+  const cutoffMs = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+  let deleted = 0;
+  function walk(dir) {
+    if (!existsSync(dir)) {
+      return;
+    }
+    for (const entry of readdirSync(dir)) {
+      const filePath = path.join(dir, entry);
+      let stat = null;
+      try {
+        stat = statSync(filePath);
+      } catch {
+        continue;
+      }
+      if (stat.isDirectory()) {
+        walk(filePath);
+        try {
+          if (readdirSync(filePath).length === 0) {
+            rmSync(filePath, { recursive: true, force: true });
+          }
+        } catch {
+          // Best-effort cleanup only.
+        }
+        continue;
+      }
+      if (stat.mtimeMs < cutoffMs) {
+        rmSync(filePath, { force: true });
+        deleted += 1;
+      }
+    }
+  }
+  walk(path.join(root, ACTION_CACHE_DIR));
+  walk(path.join(root, CAS_DIR));
+  walk(path.join(root, RESULT_CACHE_DIR));
+  return { deleted, maxAgeDays, root };
 }

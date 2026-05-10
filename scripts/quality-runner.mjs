@@ -3,7 +3,14 @@
 import { existsSync } from "node:fs";
 import process from "node:process";
 
-import { appendQualityEvent, ensureQualityCacheDirs, summarizeQualityEvents } from "./lib/quality-cache.mjs";
+import {
+  appendQualityEvent,
+  createQualityCacheContext,
+  ensureQualityCacheDirs,
+  explainGateCache,
+  gcQualityCache,
+  summarizeQualityEvents,
+} from "./lib/quality-cache.mjs";
 import {
   changedFilesEnvValue,
   explainAffectedSelection,
@@ -19,6 +26,7 @@ import {
 import {
   defaultParallelism,
   formatFailure,
+  planQualityGates,
   runQualityGates,
   summarizeResults,
 } from "./lib/quality-scheduler.mjs";
@@ -30,8 +38,11 @@ function printUsage() {
     "Usage:",
     "  node scripts/quality-runner.mjs run <affected|quick|prepush|ci|release> [--list] [--compact] [--json] [--verbose] [--no-cache] [--parallel N] [--base REF] [--changed-files a,b]",
     "  node scripts/quality-runner.mjs list [mode] [--compact] [--json]",
+    "  node scripts/quality-runner.mjs plan <affected|quick|prepush|ci|release> [--json] [--strategy auto|interactive|throughput]",
     "  node scripts/quality-runner.mjs explain affected [--summary] [--base REF] [--changed-files a,b]",
+    "  node scripts/quality-runner.mjs explain cache <gate> [--json]",
     "  node scripts/quality-runner.mjs stats [--json] [--slow N] [--limit N]",
+    "  node scripts/quality-runner.mjs cache gc [--max-age-days N] [--json]",
   ].join("\n"));
 }
 
@@ -46,8 +57,10 @@ function parseArgs(argv) {
     limit: 200,
     parallel: defaultParallelism(),
     slowLimit: 10,
+    strategy: "auto",
     summary: false,
     verbose: false,
+    maxAgeDays: 30,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -76,6 +89,11 @@ function parseArgs(argv) {
       }
     } else if (arg === "--changed-files") {
       options.changedFiles = argv[++index]?.split(",").map((item) => item.trim()).filter(Boolean) ?? [];
+    } else if (arg === "--strategy") {
+      options.strategy = argv[++index];
+      if (!["auto", "interactive", "throughput"].includes(options.strategy)) {
+        throw new Error("--strategy must be auto, interactive, or throughput");
+      }
     } else if (arg === "--slow") {
       options.slowLimit = Number.parseInt(argv[++index], 10);
       if (!Number.isInteger(options.slowLimit) || options.slowLimit <= 0) {
@@ -85,6 +103,11 @@ function parseArgs(argv) {
       options.limit = Number.parseInt(argv[++index], 10);
       if (!Number.isInteger(options.limit) || options.limit <= 0) {
         throw new Error("--limit must be a positive integer");
+      }
+    } else if (arg === "--max-age-days") {
+      options.maxAgeDays = Number.parseInt(argv[++index], 10);
+      if (!Number.isInteger(options.maxAgeDays) || options.maxAgeDays <= 0) {
+        throw new Error("--max-age-days must be a positive integer");
       }
     } else {
       positionals.push(arg);
@@ -135,6 +158,13 @@ function modeGateNames(mode, registry, repoRoot, options) {
     names: gateNamesForMode(registry, mode),
     reasons: {},
   };
+}
+
+function strategyForMode(mode, options) {
+  if (options.strategy !== "auto") {
+    return options.strategy;
+  }
+  return mode === "affected" || mode === "quick" ? "interactive" : "throughput";
 }
 
 function createLogger(options = {}) {
@@ -225,6 +255,7 @@ async function runMode(mode, options) {
     logger: createLogger(options),
     parallel: options.parallel,
     repoRoot,
+    strategy: strategyForMode(mode, options),
     verbose: options.verbose,
   });
   const summary = summarizeResults(run.results);
@@ -240,6 +271,7 @@ async function runMode(mode, options) {
       status: result.status,
     })),
     mode,
+    strategy: strategyForMode(mode, options),
     summary,
   };
   appendQualityEvent(repoRoot, event);
@@ -271,6 +303,36 @@ function listMode(mode, options) {
   printGateList(mode, gates, {}, options.compact);
 }
 
+function planMode(mode, options) {
+  if (!KNOWN_RUN_MODES.has(mode)) {
+    throw new Error(`unknown plan mode: ${mode}`);
+  }
+  const repoRoot = getRepoRoot();
+  const registry = buildQualityGateRegistry({ repoRoot });
+  const context = modeGateNames(mode, registry, repoRoot, options);
+  const { gates, missing } = selectGatesByNames(registry, context.names);
+  if (missing.length > 0) {
+    throw new Error(`missing gates: ${missing.join(", ")}`);
+  }
+  const plan = {
+    mode,
+    changedFiles: context.changedFiles,
+    ...planQualityGates(gates, {
+      parallel: options.parallel,
+      repoRoot,
+      strategy: strategyForMode(mode, options),
+    }),
+  };
+  if (options.json) {
+    console.log(JSON.stringify(plan, null, 2));
+    return;
+  }
+  console.log(`[quality] plan mode=${mode} strategy=${plan.strategy} gates=${plan.gates.length} parallel=${plan.parallel}`);
+  for (const gate of plan.gates) {
+    console.log(`- L${gate.level} ${gate.name} est=${gate.estimatedMs}ms cp=${gate.criticalPathMs}ms resource=${gate.resourceClass}:${gate.resourceCost}`);
+  }
+}
+
 function explainAffected(options) {
   const repoRoot = getRepoRoot();
   const registry = buildQualityGateRegistry({ repoRoot });
@@ -285,12 +347,43 @@ function explainAffected(options) {
   }
   console.log(`[quality] changed=${changedFiles.length} selected=${explanation.gates.length}`);
   if (!options.summary) {
+    if (explanation.surfaces?.length) {
+      console.log("[quality] affected surfaces:");
+      for (const surface of explanation.surfaces) {
+        console.log(`- ${surface.file}: ${surface.ignored ? "ignored" : surface.surfaces.join(",") || "fallback"}`);
+      }
+    }
     for (const gate of explanation.gates) {
       console.log(`- ${gate.name}`);
       for (const reason of gate.reasons) {
         console.log(`  - ${reason}`);
       }
     }
+  }
+}
+
+function explainCache(gateName, options) {
+  if (!gateName) {
+    throw new Error("explain cache requires a gate name");
+  }
+  const repoRoot = getRepoRoot();
+  const registry = buildQualityGateRegistry({ repoRoot });
+  const gate = registry.byName.get(gateName);
+  if (!gate) {
+    throw new Error(`unknown gate: ${gateName}`);
+  }
+  const explanation = explainGateCache(repoRoot, gate, createQualityCacheContext(repoRoot));
+  if (options.json) {
+    console.log(JSON.stringify(explanation, null, 2));
+    return;
+  }
+  console.log(`[quality] cache ${gateName}: ${explanation.status}`);
+  console.log(`- cacheable: ${explanation.cacheable ? "yes" : "no"}`);
+  console.log(`- actionHash: ${explanation.cacheKey}`);
+  console.log(`- inputs: ${explanation.inputCount}`);
+  console.log(`- entries: ${explanation.actionCacheEntries}`);
+  if (explanation.missReason) {
+    console.log(`- miss: ${explanation.missReason}`);
   }
 }
 
@@ -307,8 +400,28 @@ function printStats(options) {
   console.log(`[quality] runs=${stats.totalRuns} gates=${stats.totalGateResults} cacheHitRate=${(stats.cacheHitRate * 100).toFixed(1)}%`);
   console.log("[quality] slowest cold gates:");
   for (const gate of stats.slowestCold) {
-    console.log(`- ${gate.name}: max=${gate.coldMaxMs}ms avg=${gate.coldAvgMs}ms count=${gate.coldCount}`);
+    console.log(`- ${gate.name}: max=${gate.coldMaxMs}ms avg=${gate.coldAvgMs}ms p90=${gate.coldP90Ms}ms count=${gate.coldCount}`);
   }
+  if (stats.recommendations?.length) {
+    console.log("[quality] recommendations:");
+    for (const item of stats.recommendations) {
+      console.log(`- ${item.gate}: ${item.action} (${item.reason}, coldAvg=${item.coldAvgMs}ms)`);
+    }
+  }
+}
+
+function cacheCommand(positionals, options) {
+  const subcommand = positionals[1] ?? "";
+  if (subcommand !== "gc") {
+    throw new Error("only `cache gc` is supported");
+  }
+  const repoRoot = getRepoRoot();
+  const result = gcQualityCache(repoRoot, { maxAgeDays: options.maxAgeDays });
+  if (options.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  console.log(`[quality] cache gc deleted=${result.deleted} maxAgeDays=${result.maxAgeDays}`);
 }
 
 async function main() {
@@ -326,15 +439,27 @@ async function main() {
     listMode(positionals[1] ?? "quick", options);
     return;
   }
-  if (command === "explain") {
-    if ((positionals[1] ?? "") !== "affected") {
-      throw new Error("only `explain affected` is supported");
-    }
-    explainAffected(options);
+  if (command === "plan") {
+    planMode(positionals[1] ?? "affected", options);
     return;
+  }
+  if (command === "explain") {
+    if ((positionals[1] ?? "") === "affected") {
+      explainAffected(options);
+      return;
+    }
+    if ((positionals[1] ?? "") === "cache") {
+      explainCache(positionals[2], options);
+      return;
+    }
+    throw new Error("only `explain affected` and `explain cache <gate>` are supported");
   }
   if (command === "stats") {
     printStats(options);
+    return;
+  }
+  if (command === "cache") {
+    cacheCommand(positionals, options);
     return;
   }
   printUsage();

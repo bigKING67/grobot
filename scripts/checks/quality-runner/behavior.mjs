@@ -6,8 +6,9 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildQualityGateRegistry, QUALITY_ENTRYPOINT_SCRIPTS, validateQualityGateRegistry } from "../../lib/quality-gate-registry.mjs";
-import { listChangedFiles, selectAffectedGates } from "../../lib/quality-affected.mjs";
-import { runQualityGates } from "../../lib/quality-scheduler.mjs";
+import { explainAffectedSelection, listChangedFiles, selectAffectedGates } from "../../lib/quality-affected.mjs";
+import { explainGateCache } from "../../lib/quality-cache.mjs";
+import { planQualityGates, runQualityGates } from "../../lib/quality-scheduler.mjs";
 
 function packageJson() {
   return JSON.parse(readFileSync("package.json", "utf8"));
@@ -38,6 +39,13 @@ assertIncludes(runtimeExtension, "check:gateway:runtime-tools:schema", "runtime 
 assertIncludes(runtimeExtension, "check:gateway:suite:runtime:status", "runtime extension affected gates");
 assertExcludes(runtimeExtension, "check:gateway:suite:runtime:controls", "runtime extension affected gates");
 assertExcludes(runtimeExtension, "check:gateway:suite:gateway:tui", "runtime extension affected gates");
+
+const runtimeExplanation = explainAffectedSelection(registry, ["runtime/src/extensions/handler.rs"]);
+assert.equal(
+  runtimeExplanation.surfaces.some((surface) => surface.surfaces.includes("runtime.extensions")),
+  true,
+  "affected explanation must include surface graph hits",
+);
 
 const tui = selectAffectedGates(registry, ["gateway/src/cli/tui/components/prompt-input/controller.ts"]).names;
 assertIncludes(tui, "check:gateway:ts", "tui affected gates");
@@ -105,7 +113,10 @@ assertExcludes(runtimeControlSurfaceHarness, "check:gateway:suite:runtime:provid
 const gatewayRuntimeSuiteGate = registry.byName.get("check:gateway:suite:runtime:model-controls");
 assert.equal(gatewayRuntimeSuiteGate?.parallel, true, "gateway suite gates must be process-isolated and scheduler-parallel");
 assertIncludes(gatewayRuntimeSuiteGate?.deps ?? [], "check:runtime:check", "runtime suite gate dependencies");
+assert.equal(gatewayRuntimeSuiteGate?.resourceClass, "gateway-smoke", "gateway suite gates must advertise gateway-smoke resources");
+assert.equal(gatewayRuntimeSuiteGate?.cachePolicy, "never", "stateful smoke gates must remain uncached until hermetic");
 assert.equal(registry.byName.get("check:runtime:check")?.parallel, false, "cargo check must remain exclusive");
+assert.equal(registry.byName.get("check:runtime:check")?.resourceClass, "rust", "cargo gates must advertise rust resources");
 assert.equal(
   registry.byName.get("check:gateway:suite:gateway:semantic-benchmark")?.parallel,
   false,
@@ -173,6 +184,51 @@ try {
     },
   ], { cache: false, repoRoot: tmp });
   assert.equal(passRun.status, "pass", "dependent pass graph must pass");
+
+  const plan = planQualityGates([
+    {
+      cacheable: false,
+      command: "node pass-a.mjs",
+      cost: "expensive",
+      deps: [],
+      group: "test",
+      inputs: ["pass-a.mjs"],
+      name: "a",
+      parallel: true,
+      resourceClass: "node",
+      resourceCost: 1,
+    },
+    {
+      cacheable: false,
+      command: "node pass-b.mjs",
+      cost: "cheap",
+      deps: ["a"],
+      group: "test",
+      inputs: ["pass-b.mjs"],
+      name: "b",
+      parallel: true,
+      resourceClass: "node",
+      resourceCost: 1,
+    },
+  ], { repoRoot: tmp, strategy: "throughput" });
+  assert.equal(plan.gates.length, 2, "plan must include all selected gates");
+  assert.equal(plan.gates[0].name, "a", "plan must respect dependency levels");
+
+  const cacheExplanation = explainGateCache(tmp, {
+    cacheable: true,
+    command: "node pass-a.mjs",
+    cost: "cheap",
+    deps: [],
+    env: [],
+    group: "test",
+    inputs: ["pass-a.mjs"],
+    name: "cache-test",
+    parallel: true,
+    resourceClass: "node",
+    resourceCost: 1,
+  });
+  assert.equal(cacheExplanation.status, "miss", "uncached gate explanation must report miss");
+  assert.equal(cacheExplanation.cacheable, true, "cache explanation must expose cacheability");
 
   const failRun = await runQualityGates([
     {

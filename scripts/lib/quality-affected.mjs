@@ -110,6 +110,83 @@ const IGNORED_AFFECTED_FILE_PATTERNS = Object.freeze([
   /^dist\//,
 ]);
 
+const SURFACE_GRAPH = Object.freeze([
+  {
+    id: "quality.runner",
+    patterns: [
+      /^scripts\/quality-runner\.mjs$/,
+      /^scripts\/lib\/quality-/,
+      /^scripts\/checks\/quality-runner\//,
+    ],
+    gates: QUALITY_RUNNER_GATES,
+    reason: "quality runtime core change",
+  },
+  {
+    id: "runtime.extensions",
+    patterns: [/^runtime\/src\/extensions\//],
+    gates: RUNTIME_EXTENSION_GATES,
+    reason: "runtime extension protocol/handler change",
+  },
+  {
+    id: "runtime.source",
+    patterns: [/^runtime\//],
+    gates: ["check:runtime:check", "check:runtime:test", "check:gateway:suite:runtime:status"],
+    reason: "runtime source/config change",
+  },
+  {
+    id: "gateway.tui",
+    patterns: [/^gateway\/src\/cli\/tui\//, /^gateway\/src\/tools\/ask-user\//],
+    gates: GATEWAY_TUI_GATES,
+    reason: "terminal UI surface change",
+  },
+  {
+    id: "gateway.plan",
+    patterns: [/^gateway\/src\/cli\/start\//, /plan/],
+    gates: GATEWAY_PLAN_GATES,
+    reason: "start/plan flow change",
+  },
+  {
+    id: "gateway.context",
+    patterns: [/context/, /history/],
+    gates: GATEWAY_CONTEXT_GATES,
+    reason: "context/history flow change",
+  },
+  {
+    id: "gateway.memory",
+    patterns: [/memory/, /experience/],
+    gates: GATEWAY_MEMORY_GATES,
+    reason: "memory/experience flow change",
+  },
+  {
+    id: "runtime.tool-contracts",
+    patterns: [/^gateway\/src\/extensions\/contracts\/runtime-tool-/, /^shared\/contracts\/runtime-tool-quality-v1\.json$/],
+    gates: [
+      "check:gateway:runtime-tools:schema",
+      "check:gateway:runtime-tools:quality-report",
+      "check:gateway:runtime-tools:quality-parity",
+    ],
+    reason: "runtime tool contract surface",
+  },
+  {
+    id: "gateway.semantic-benchmark",
+    patterns: [/^gateway\/src\/extensions\/contracts\/semantic-search-regression-contract\.mjs$/],
+    gates: GATEWAY_SEMANTIC_BENCHMARK_GATES,
+    reason: "semantic retrieval benchmark contract",
+  },
+  {
+    id: "gateway.source",
+    patterns: [/^gateway\/src\//],
+    gates: GATEWAY_CORE_GATES,
+    reason: "gateway source change",
+  },
+  {
+    id: "docs.spec",
+    patterns: [/^\.trellis\/spec\//, /^README\.md$/, /^HANDOFF\.md$/, /^docs\//],
+    gates: ["check:version", "check:layer-contract"],
+    reason: "docs/spec change with command/architecture drift risk",
+  },
+]);
+
 function runGit(repoRoot, args) {
   return execFileSync("git", args, {
     cwd: repoRoot,
@@ -207,6 +284,25 @@ function gateNamesByCommandTarget(registry, file) {
     .filter((gate) => commandTargetFiles(gate.command).includes(file))
     .filter((gate) => !isReleaseOnlyGate(gate))
     .map((gate) => gate.name);
+}
+
+function surfaceMatchesFile(surface, file) {
+  return surface.patterns.some((pattern) => pattern.test(file));
+}
+
+function matchingSurfaces(file) {
+  const matches = SURFACE_GRAPH.filter((surface) => surfaceMatchesFile(surface, file));
+  const hasSpecificGatewaySurface = matches.some((surface) => surface.id.startsWith("gateway.") && surface.id !== "gateway.source");
+  const hasSpecificRuntimeSurface = matches.some((surface) => surface.id.startsWith("runtime.") && surface.id !== "runtime.source");
+  return matches.filter((surface) => {
+    if (surface.id === "gateway.source" && hasSpecificGatewaySurface) {
+      return false;
+    }
+    if (surface.id === "runtime.source" && hasSpecificRuntimeSurface) {
+      return false;
+    }
+    return true;
+  });
 }
 
 function isReleaseOnlyGate(gate) {
@@ -370,58 +466,16 @@ export function selectAffectedGates(registry, changedFiles) {
       continue;
     }
 
-    if (file.startsWith("runtime/src/extensions/")) {
-      addNames(selected, RUNTIME_EXTENSION_GATES, `${file}: runtime extension protocol/handler change`);
-      continue;
-    }
-
-    if (file.startsWith("runtime/")) {
-      addNames(selected, ["check:runtime:check", "check:runtime:test", "check:gateway:suite:runtime:status"], `${file}: runtime source/config change`);
-      continue;
-    }
-
     if (file.startsWith("gateway/tests/check-gateway-node")) {
       addNames(selected, gatewaySmokeHarnessGates(file), `${file}: gateway smoke harness change`);
       continue;
     }
 
-    if (file.startsWith("gateway/src/cli/tui/") || file.startsWith("gateway/src/tools/ask-user/")) {
-      addNames(selected, GATEWAY_TUI_GATES, `${file}: terminal UI surface change`);
-      continue;
-    }
-
-    if (file.startsWith("gateway/src/cli/start/") || file.includes("plan")) {
-      addNames(selected, GATEWAY_PLAN_GATES, `${file}: start/plan flow change`);
-      continue;
-    }
-
-    if (file.includes("context") || file.includes("history")) {
-      addNames(selected, GATEWAY_CONTEXT_GATES, `${file}: context/history flow change`);
-      continue;
-    }
-
-    if (file.includes("memory") || file.includes("experience")) {
-      addNames(selected, GATEWAY_MEMORY_GATES, `${file}: memory/experience flow change`);
-      continue;
-    }
-
-    if (file.startsWith("gateway/src/extensions/contracts/runtime-tool-") || file === "shared/contracts/runtime-tool-quality-v1.json") {
-      addNames(selected, ["check:gateway:runtime-tools:schema", "check:gateway:runtime-tools:quality-report", "check:gateway:runtime-tools:quality-parity"], `${file}: runtime tool contract surface`);
-      continue;
-    }
-
-    if (file === "gateway/src/extensions/contracts/semantic-search-regression-contract.mjs") {
-      addNames(selected, GATEWAY_SEMANTIC_BENCHMARK_GATES, `${file}: semantic retrieval benchmark contract`);
-      continue;
-    }
-
-    if (file.startsWith("gateway/src/")) {
-      addNames(selected, GATEWAY_CORE_GATES, `${file}: gateway source change`);
-      continue;
-    }
-
-    if (file.startsWith(".trellis/spec/") || file === "README.md" || file === "HANDOFF.md" || file.startsWith("docs/")) {
-      addNames(selected, ["check:version", "check:layer-contract"], `${file}: docs/spec change with command/architecture drift risk`);
+    const surfaces = matchingSurfaces(file);
+    if (surfaces.length > 0) {
+      for (const surface of surfaces) {
+        addNames(selected, surface.gates, `${file}: surface ${surface.id} -> ${surface.reason}`);
+      }
       continue;
     }
 
@@ -438,8 +492,15 @@ export function selectAffectedGates(registry, changedFiles) {
 
 export function explainAffectedSelection(registry, changedFiles) {
   const selection = selectAffectedGates(registry, changedFiles);
+  const entries = dedupeEntries(changedFiles.map(parseChangedFileEntry));
   return {
     changedFiles,
+    surfaces: entries.map(({ file, status }) => ({
+      file,
+      status,
+      ignored: isIgnoredAffectedFile(file),
+      surfaces: matchingSurfaces(file).map((surface) => surface.id),
+    })),
     gates: selection.names.map((name) => ({
       name,
       reasons: selection.reasons[name] ?? [],
