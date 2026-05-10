@@ -326,6 +326,11 @@ export function runRuntimeContextMemoryDecayAutotuneHysteresisFlowSmoke() {
     Number(memoryDecayAutotuneHysteresisFlowPayload.low_rounds_executed) >= 1,
     true,
   );
+  assert.equal(
+    Number(memoryDecayAutotuneHysteresisFlowPayload.low_rounds_executed)
+      <= Number(memoryDecayAutotuneHysteresisFlowPayload.max_relax_rounds),
+    true,
+  );
   assert.equal(memoryDecayAutotuneHysteresisFlowPayload.no_early_relax, true);
   assert.equal(memoryDecayAutotuneHysteresisFlowPayload.updates_monotonic, true);
   const hysteresisRelaxSeen = Boolean(memoryDecayAutotuneHysteresisFlowPayload.relax_seen);

@@ -335,6 +335,10 @@ aggregate reproduction path. Runtime provider-status cases are split by
 route-diagnostic surface (upstream failure text/redaction, persisted status and
 registry data, clean alternate selection, and management API status) while
 preserving `runtime:provider-status:full` as the aggregate reproduction path.
+The runtime context memory-decay hysteresis case uses seeded prompt-quality
+evidence and an aggressive test-local EMA alpha to prove tighten, no-early-relax,
+monotonic update, and relax-window behavior in at most three relax rounds instead
+of waiting through the production-length convergence window.
 
 ### 6. Events and stats
 

@@ -27,16 +27,16 @@ export function runStartContextMemoryDecayAutotuneHysteresisFlow(context) {
     minConfidenceVerified: 0.20,
     minConfidenceUnverified: 0.45,
     unverifiedMaxAgeHours: 72,
-    adaptiveLearnAlpha: 0.2,
+    adaptiveLearnAlpha: 0.5,
     adaptiveUpdates: 5,
     dropRatioEma: 0.01,
     capacityTrimRatioEma: 0.01,
     lowConfidenceRatioEma: 0.02,
     ageDropRatioEma: 0.03,
-    qualityLowRateEma: 0.72,
-    qualityPressureEma: 0.74,
-    hardBudgetFollowupDeltaEma: -0.12,
-    qualityFirstFollowupDeltaEma: -0.02,
+    qualityLowRateEma: 0.30,
+    qualityPressureEma: 0.40,
+    hardBudgetFollowupDeltaEma: -0.02,
+    qualityFirstFollowupDeltaEma: 0.02,
     lastReason: "seed_hysteresis",
     updatedAt: "2026-04-19T11:00:00.000Z",
   };
@@ -74,9 +74,10 @@ export function runStartContextMemoryDecayAutotuneHysteresisFlow(context) {
         },
       }));
     }
-    return [0, 1, 2, 3].map((index) => ({
-      ts: new Date(seedNowMs - (4 - index) * 1_000).toISOString(),
-      sessionKey: "seed:memory-decay-hysteresis-relax",
+    const relaxOverallScores = [0.30, 0.62, 0.68, 0.74, 0.80, 0.86, 0.92, 0.98, 0.95, 0.90];
+    return relaxOverallScores.map((overall, index) => ({
+      ts: new Date(seedNowMs - (relaxOverallScores.length - index) * 1_000).toISOString(),
+      sessionKey: `seed:memory-decay-hysteresis-relax-${String(index)}`,
       stage: "normal",
       selectionReason: "seed",
       estimatedTokens: 4200 + (index * 80),
@@ -85,7 +86,7 @@ export function runStartContextMemoryDecayAutotuneHysteresisFlow(context) {
         coverage: 0.74,
         recency: 0.72,
         size: 0.76,
-        overall: 0.72 + (index * 0.06),
+        overall,
       },
       signals: {
         recentRows: 2,
@@ -192,9 +193,10 @@ export function runStartContextMemoryDecayAutotuneHysteresisFlow(context) {
     "memory decay hysteresis pass 1 should tighten under pressure",
   );
 
+  const maxRelaxRounds = 3;
   const lowRounds = [];
   let relaxRoundIndex = null;
-  for (let index = 1; index <= 10; index += 1) {
+  for (let index = 1; index <= maxRelaxRounds; index += 1) {
     const lowRound = runRound(
       `relax-${String(index)}`,
       "relax",
@@ -270,6 +272,7 @@ export function runStartContextMemoryDecayAutotuneHysteresisFlow(context) {
     first_round_reason: firstRound.reason,
     first_round_has_quality_tighten: firstRound.has_tighten,
     low_rounds_executed: lowRounds.length,
+    max_relax_rounds: maxRelaxRounds,
     relax_seen: relaxRoundIndex != null,
     relax_round_index: relaxRoundIndex,
     no_early_relax: noEarlyRelax,
