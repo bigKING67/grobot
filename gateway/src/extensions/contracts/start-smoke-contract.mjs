@@ -39,6 +39,7 @@ import {
 import {
   runStartRuntimeDescribeFallbackDiagnostic,
   runStartRuntimeDescribeInvalidSchemaProfiles,
+  runRuntimeBinRejectFlow,
   runStatusRejectLegacyEnv,
   runStatusRejectLegacyFlag,
   runStatusRejectPythonGateway,
@@ -323,6 +324,9 @@ function runCli(argv) {
       break;
     case "start-runtime-describe-invalid-schema-profiles":
       payload = runStartRuntimeDescribeInvalidSchemaProfiles(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "runtime-bin-reject-flow":
+      payload = runRuntimeBinRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "status-reject-legacy-flag":
       payload = runStatusRejectLegacyFlag(buildStartSmokeFlowContext(repoRoot));

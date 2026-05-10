@@ -554,3 +554,87 @@ export function runStatusRejectLegacyEnv(context) {
   const { repoRoot, runCommand } = context;
   return runCommand(repoRoot, ["./grobot", "status"], { GROBOT_LEGACY_PYTHON: "1" });
 }
+
+export function runRuntimeBinRejectFlow(context) {
+  const {
+    repoRoot,
+    createTempDir,
+    buildSmokeConfig,
+    writeConfig,
+    parseJsonObjectSafe,
+    runCommand,
+    hasStartBannerMarker,
+  } = context;
+  const workDir = createTempDir("grobot-invalid-runtime-bin-work");
+  const config = writeConfig(buildSmokeConfig(workDir));
+  const startEmptyRuntimeBin = runCommand(repoRoot, [
+    "./grobot",
+    "start",
+    "--project",
+    "grobot",
+    "--work-dir",
+    workDir,
+    "--config",
+    config.configPath,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+    "--session-subject",
+    "invalid-runtime-bin-user",
+    "--message",
+    "invalid runtime bin should not reach runtime",
+  ], {
+    GROBOT_RUNTIME_BIN: "",
+  });
+  const statusJsonEmptyRuntimeBin = runCommand(repoRoot, [
+    "./grobot",
+    "status",
+    "--json",
+    "--work-dir",
+    workDir,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+  ], {
+    GROBOT_RUNTIME_BIN: "   ",
+  });
+  const statusJsonPayload = parseJsonObjectSafe(statusJsonEmptyRuntimeBin.stdout);
+  const statusTextEmptyRuntimeBin = runCommand(repoRoot, [
+    "./grobot",
+    "status",
+    "--work-dir",
+    workDir,
+    "--gateway-impl",
+    "ts",
+    "--runtime-impl",
+    "rust",
+  ], {
+    GROBOT_RUNTIME_BIN: "",
+  });
+  const combinedOutput = [
+    startEmptyRuntimeBin.stdout,
+    startEmptyRuntimeBin.stderr,
+    statusJsonEmptyRuntimeBin.stdout,
+    statusJsonEmptyRuntimeBin.stderr,
+    statusTextEmptyRuntimeBin.stdout,
+    statusTextEmptyRuntimeBin.stderr,
+  ].join("\n");
+  const hasStableError = (result) =>
+    result.stderr.includes("error: invalid_runtime_bin:")
+    && result.stderr.includes("runtime-bin must be a non-empty path");
+  return {
+    start_empty_runtime_bin_exit_code: startEmptyRuntimeBin.exit_code,
+    start_empty_runtime_bin_has_stable_error: hasStableError(startEmptyRuntimeBin),
+    status_json_empty_runtime_bin_exit_code: statusJsonEmptyRuntimeBin.exit_code,
+    status_json_empty_runtime_bin_error: statusJsonPayload?.error ?? null,
+    status_json_empty_runtime_bin_field: statusJsonPayload?.field ?? null,
+    status_json_empty_runtime_bin_detail:
+      typeof statusJsonPayload?.detail === "string" ? statusJsonPayload.detail : null,
+    status_text_empty_runtime_bin_exit_code: statusTextEmptyRuntimeBin.exit_code,
+    status_text_empty_runtime_bin_has_stable_error: hasStableError(statusTextEmptyRuntimeBin),
+    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
+    has_start_banner: hasStartBannerMarker(combinedOutput),
+  };
+}

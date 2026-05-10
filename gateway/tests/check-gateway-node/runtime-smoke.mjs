@@ -8,6 +8,7 @@ import { assertContextEngineControlSmoke } from "./runtime-smoke/context-engine-
 import { assertExperienceSchedulerControlSmoke } from "./runtime-smoke/experience-scheduler-controls.mjs";
 import { assertExperienceRuntimeControlSmoke } from "./runtime-smoke/experience-runtime-controls.mjs";
 import { assertMcpInstructionControlSmoke } from "./runtime-smoke/mcp-instruction-controls.mjs";
+import { assertRuntimeBinControlSmoke } from "./runtime-smoke/runtime-bin-controls.mjs";
 import { assertStatusLineControlSmoke } from "./runtime-smoke/status-line-controls.mjs";
 import { assertToolSurfaceProfileControlSmoke } from "./runtime-smoke/tool-surface-profile-controls.mjs";
 import { runRuntimeDescribeFallbackSmoke } from "./runtime-smoke/runtime-describe-fallbacks.mjs";
@@ -23,6 +24,7 @@ export async function runTsRustExecutionSmoke() {
   assertExperienceSchedulerControlSmoke();
   assertExperienceRuntimeControlSmoke();
   assertToolSurfaceProfileControlSmoke();
+  assertRuntimeBinControlSmoke();
   assertMcpInstructionControlSmoke();
   assertStatusLineControlSmoke();
   await runRuntimeDescribeFallbackSmoke();

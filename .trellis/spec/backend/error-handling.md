@@ -252,6 +252,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     routing only when omitted; explicit empty, whitespace-only, or unsupported
     values must exit `2` with `invalid_tool_surface_profile` before start turn
     execution or status rendering.
+35. Runtime binary path controls must fail closed on explicit empty values.
+    `GROBOT_RUNTIME_BIN` and direct stdio runtime binary overrides may use the
+    derived repository runtime path only when omitted; explicit empty or
+    whitespace-only values must exit `2` with `invalid_runtime_bin` before
+    runtime health checks, status rendering, or Rust turn execution.
 
 ---
 

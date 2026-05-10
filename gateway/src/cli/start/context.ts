@@ -55,6 +55,7 @@ import {
   readKimiSearchRoutingPolicyFromProjectToml,
   resolveRuntimeModelConfig,
 } from "./context/runtime-model-config";
+import { resolveRuntimeBinaryPath } from "../../tools/runtime/runtime-binary-path";
 import { resolveRuntimeToolContext } from "./context/runtime-tool-context";
 import { readStatusLineConfigFromProjectToml } from "./context/status-line-config";
 import { resolveCliRouteNamespace } from "../status/route-namespace-options";
@@ -132,6 +133,9 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     noShadowModeArg: hasFlag(options, "no-shadow-mode"),
     projectTomlPath,
   });
+  if (executionPlane.runtimeImpl === "rust") {
+    resolveRuntimeBinaryPath();
+  }
 
   const {
     sessionNamespace,

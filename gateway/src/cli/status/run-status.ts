@@ -10,7 +10,6 @@ import {
   readProviderSnapshotFromToml,
 } from "../provider-probe";
 import {
-  resolveRuntimeBinaryPath,
   runRuntimeHealthcheck,
 } from "../runtime-health";
 import { maskSecret } from "../services/redaction";
@@ -90,6 +89,7 @@ import { buildRuntimeToolQualitySummary } from "./runtime-tool-quality";
 import { formatRuntimeToolStatusLines } from "./runtime-tool-status-lines";
 import { writeStatusInputError } from "./input-error-output";
 import { resolveStatusPathContext } from "./path-context";
+import { resolveStatusRuntimeBinaryPath } from "./runtime-binary-path-resolution";
 import { renderInfoPanel } from "../tui/components/info-panel/render";
 import {
   displayValue,
@@ -287,7 +287,9 @@ export async function runStatus(options: Record<string, OptionValue>): Promise<n
   const runtimeToolRecoveryPolicy = runtimeToolRecoveryDecision.policy;
   const runtimeToolRecoveryReadiness = runtimeToolRecoveryDecision.readiness;
   const runtimeToolRecoveryGate = runtimeToolRecoveryDecision.gate;
-  const runtimeBinaryPath = executionPlane.runtimeImpl === "rust" ? resolveRuntimeBinaryPath() : undefined;
+  const runtimeBinaryPathResult = resolveStatusRuntimeBinaryPath(executionPlane.runtimeImpl, outputJson);
+  if (runtimeBinaryPathResult.exitCode) return runtimeBinaryPathResult.exitCode;
+  const runtimeBinaryPath = runtimeBinaryPathResult.runtimeBinaryPath;
   let runtimeToolContextPreview: ReturnType<typeof resolveRuntimeToolContextPreview>;
   try {
     runtimeToolContextPreview = resolveRuntimeToolContextPreview(

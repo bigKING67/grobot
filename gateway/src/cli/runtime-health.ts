@@ -1,4 +1,8 @@
-export { resolveRuntimeBinaryPath } from "./runtime-health/path";
+export {
+  isRuntimeBinaryPathInputError,
+  RuntimeBinaryPathInputError,
+  resolveRuntimeBinaryPath,
+} from "./runtime-health/path";
 export { runRuntimeHealthcheck } from "./runtime-health/healthcheck";
 export { runRuntimeToolsDescribe } from "./runtime-health/tools-describe";
 export {
