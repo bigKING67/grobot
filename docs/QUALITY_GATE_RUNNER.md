@@ -231,6 +231,16 @@ for high-value composite smoke surfaces. Current split cases include:
 - `runtime:context:graph-autotune`
 - `runtime:context:graph-autotune-hysteresis`
 - `runtime:context:graph-autotune-adaptive-sequence`
+- `runtime:plan:mode`
+- `runtime:plan:artifact-controls`
+- `runtime:plan:bare-interactive`
+- `runtime:plan:diagnostics-base`
+- `runtime:plan:diagnostics-command`
+- `runtime:plan:im-only`
+- `runtime:plan:session-commands`
+- `runtime:plan:session-menu`
+- `runtime:plan:concurrency`
+- `runtime:plan:events-policy`
 
 Suite selection expands to split cases when a suite has them; direct
 `<suite>:full` cases remain available for aggregate reproduction. Shards are
@@ -262,9 +272,13 @@ parallelize internally without forcing the outer quality-runner to know every
 suite implementation detail. Parent JSON reports keep the run diagnosable:
 worker executions add structured worker bucket entries and aggregate child case
 results, while parent `steps` records one `gateway-worker-N` step per worker.
-Heavy split suites (`runtime:context`, `runtime:controls`, and
+Heavy split suites (`runtime:context`, `runtime:controls`, `runtime:plan`, and
 `gateway:context`) are invoked with internal workers from the quality gate
-registry so full CI gets the same coverage with less monolithic wall time.
+registry so full CI gets the same coverage with less monolithic wall time. The
+`runtime:plan:events-policy` case intentionally creates fresh plan-mode and
+concurrency event sources before running the report/policy checks, so it stays
+replayable as an isolated worker case instead of depending on sibling case
+side-effects.
 
 ### 6. Events and stats
 

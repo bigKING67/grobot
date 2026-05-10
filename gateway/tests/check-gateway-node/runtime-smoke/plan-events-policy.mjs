@@ -1,23 +1,25 @@
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { startMockModelServer } from "../../../src/extensions/contracts/_shared/mock-model-server.mjs";
 import {
   assertSuccess,
-  contractsRoot,
   isRecord,
-  logRetry,
   logStep,
   makeTempDir,
   parseJsonOutput,
-  repoRoot,
-  reserveFreePort,
   runCommand,
-  runCommandAsync,
-  runContract,
-  runContractAsync,
-  runTsContract,
-  sleepMs,
 } from "../harness.mjs";
+import {
+  runRuntimePlanConcurrencyFlowSmoke,
+  runRuntimePlanModeFlowSmoke,
+} from "./interactive-plan-flow.mjs";
+
+export function runRuntimePlanEventSourceFlowSmoke() {
+  return {
+    planModeEventsPath: runRuntimePlanModeFlowSmoke(),
+    planConcurrencyEventsPath: runRuntimePlanConcurrencyFlowSmoke(),
+  };
+}
+
 export async function runRuntimePlanEventsPolicySmoke(planEventsPaths) {
   const planEventsReportPath = resolve(makeTempDir("plan-events-report"), "report.json");
   const planEventsReportResult = runCommand("npx", [

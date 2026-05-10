@@ -74,6 +74,16 @@ assert.equal(
   true,
   "runtime context must expose case-level graph autotune adaptive sequence flow",
 );
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:plan:diagnostics-command"),
+  true,
+  "runtime plan must expose case-level diagnostics command flow",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:plan:events-policy"),
+  true,
+  "runtime plan must expose isolated case-level events policy flow",
+);
 
 const shardResult = spawnSync("node", ["gateway/tests/check-gateway-node.mjs", "--suite", "workflow", "--shard", "1/1", "--json"], {
   encoding: "utf8",

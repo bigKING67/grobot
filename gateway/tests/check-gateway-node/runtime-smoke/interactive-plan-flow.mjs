@@ -1,24 +1,12 @@
 import assert from "node:assert/strict";
-import { resolve } from "node:path";
-import { startMockModelServer } from "../../../src/extensions/contracts/_shared/mock-model-server.mjs";
 import {
-  assertSuccess,
-  contractsRoot,
-  isRecord,
-  logRetry,
   logStep,
-  makeTempDir,
   parseJsonOutput,
   repoRoot,
-  reserveFreePort,
-  runCommand,
-  runCommandAsync,
   runContract,
-  runContractAsync,
-  runTsContract,
-  sleepMs,
 } from "../harness.mjs";
-export async function runRuntimeInteractivePlanFlowSmoke() {
+
+export function runRuntimePlanModeFlowSmoke() {
   const planModeFlowResult = runContract("start-smoke-contract.mjs", "start-plan-mode-flow", [
     "--repo-root",
     repoRoot,
@@ -73,7 +61,10 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
   logStep("start-smoke-contract start-plan-mode-flow", {
     events: planModeFlowPayload.events_count,
   });
+  return String(planModeFlowPayload.events_path);
+}
 
+export function runRuntimeInvalidPlanArtifactControlsFlowSmoke() {
   const invalidPlanArtifactControlsResult = runContract(
     "start-smoke-contract.mjs",
     "start-invalid-plan-artifact-controls-reject-flow",
@@ -106,7 +97,9 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
   assert.equal(invalidPlanArtifactControlsPayload.hides_top_level_fatal, true);
   assert.equal(invalidPlanArtifactControlsPayload.has_start_banner, false);
   logStep("start-smoke-contract start-invalid-plan-artifact-controls-reject-flow");
+}
 
+export function runRuntimeBareInteractiveSessionFlowSmoke() {
   const bareInteractiveFlowResult = runContract(
     "start-smoke-contract.mjs",
     "start-bare-interactive-session-flow",
@@ -129,7 +122,9 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
   assert.equal(bareInteractiveFlowPayload.has_no_command_hint, true);
   assert.equal(bareInteractiveFlowPayload.has_no_unsupported_command_error, true);
   logStep("start-smoke-contract start-bare-interactive-session-flow");
+}
 
+export function runRuntimeInteractiveDiagnosticsBaseFlowSmoke() {
   const interactiveDiagnosticsCompactFlowResult = runContract(
     "start-smoke-contract.mjs",
     "start-interactive-diagnostics-compact-flow",
@@ -196,7 +191,9 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
   assert.equal(interactiveDiagnosticsTraceFlowPayload.stderr_has_event_lines, true);
   assert.equal(interactiveDiagnosticsTraceFlowPayload.stderr_has_trace_lines, true);
   logStep("start-smoke-contract start-interactive-diagnostics-trace-flow");
+}
 
+export function runRuntimeInteractiveDiagnosticsCommandFlowSmoke() {
   const diagnosticsCommandFlows = [
     {
       contract: "start-interactive-diagnostics-plan-compact-flow",
@@ -281,7 +278,9 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
     }
     logStep(`start-smoke-contract ${flow.contract}`);
   }
+}
 
+export function runRuntimeImOnlyRejectFlowSmoke() {
   const startImOnlyRejectFlowResult = runContract(
     "start-smoke-contract.mjs",
     "start-im-only-reject-flow",
@@ -300,7 +299,9 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
   assert.equal(startImOnlyRejectFlowPayload.has_im_only_hint_bare, true);
   assert.equal(startImOnlyRejectFlowPayload.has_start_banner, false);
   logStep("start-smoke-contract start-im-only-reject-flow");
+}
 
+export function runRuntimeInteractiveSessionCommandsFallbackFlowSmoke() {
   const sessionCommandFallbackResult = runContract(
     "start-smoke-contract.mjs",
     "start-interactive-session-commands-fallback-flow",
@@ -334,7 +335,9 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
   assert.equal(sessionCommandFallbackPayload.has_status_tokens_current_off, true);
   assert.equal(sessionCommandFallbackPayload.status_commands_avoid_raw_labels, true);
   logStep("start-smoke-contract start-interactive-session-commands-fallback-flow");
+}
 
+export function runRuntimeSessionMenuViewModelFlowSmoke() {
   const sessionMenuViewModelResult = runContract(
     "start-smoke-contract.mjs",
     "start-session-menu-view-model-contract",
@@ -403,7 +406,9 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
   assert.equal(Number(sessionMenuViewModelPayload.resume_item_count), 2);
   assert.equal(Number(sessionMenuViewModelPayload.rewind_item_count), 2);
   logStep("start-smoke-contract start-session-menu-view-model-contract");
+}
 
+export function runRuntimePlanConcurrencyFlowSmoke() {
   const planConcurrencyFlowResult = runContract("start-smoke-contract.mjs", "start-plan-concurrency-flow", [
     "--repo-root",
     repoRoot,
@@ -423,8 +428,21 @@ export async function runRuntimeInteractivePlanFlowSmoke() {
     attempts: planConcurrencyPayload.append_attempts,
     hits: planConcurrencyPayload.append_hits,
   });
+  return String(planConcurrencyPayload.events_path);
+}
+
+export async function runRuntimeInteractivePlanFlowSmoke() {
+  const planModeEventsPath = runRuntimePlanModeFlowSmoke();
+  runRuntimeInvalidPlanArtifactControlsFlowSmoke();
+  runRuntimeBareInteractiveSessionFlowSmoke();
+  runRuntimeInteractiveDiagnosticsBaseFlowSmoke();
+  runRuntimeInteractiveDiagnosticsCommandFlowSmoke();
+  runRuntimeImOnlyRejectFlowSmoke();
+  runRuntimeInteractiveSessionCommandsFallbackFlowSmoke();
+  runRuntimeSessionMenuViewModelFlowSmoke();
+  const planConcurrencyEventsPath = runRuntimePlanConcurrencyFlowSmoke();
   return {
-    planModeEventsPath: String(planModeFlowPayload.events_path),
-    planConcurrencyEventsPath: String(planConcurrencyPayload.events_path),
+    planModeEventsPath,
+    planConcurrencyEventsPath,
   };
 }
