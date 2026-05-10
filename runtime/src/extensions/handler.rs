@@ -33,6 +33,19 @@ fn parse_event_stream_mode(value: Option<&str>) -> Result<bool, Value> {
     }))
 }
 
+fn validate_runtime_health_params(params: &RuntimeHealthParams) -> Result<(), Value> {
+    if params.cache_stats_window_ms == Some(0) {
+        return Err(json!({
+            "diagnostic_kind": "invalid_cache_stats_window_ms",
+            "field": "cache_stats_window_ms",
+            "source": "runtime.health.params.cache_stats_window_ms",
+            "raw_value": 0,
+            "recovery_hint": "omit cache_stats_window_ms to disable window rotation, or set it to a positive integer",
+        }));
+    }
+    Ok(())
+}
+
 pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErrorResponse> {
     if request.jsonrpc != JSONRPC_VERSION {
         return Err(error(request.id, -32600, "invalid jsonrpc version"));
@@ -46,6 +59,14 @@ pub fn handle_request(request: RpcRequest) -> Result<RpcSuccessResponse, RpcErro
                 serde_json::from_value(request.params.clone())
                     .map_err(|_| error(request.id.clone(), -32602, "invalid params"))?
             };
+            validate_runtime_health_params(&params).map_err(|data| {
+                error_with_data(
+                    request.id.clone(),
+                    -32602,
+                    "invalid_cache_stats_window_ms",
+                    data,
+                )
+            })?;
             Ok(success(
                 request.id,
                 json!({

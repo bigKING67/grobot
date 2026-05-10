@@ -311,6 +311,11 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     Non-empty `request_id` and `session_key` values should be trimmed at the
     orchestration boundary so trace IDs, event IDs, and session-scoped runtime
     state use a single canonical identity.
+40. Runtime health cache-window controls must fail closed on explicit invalid
+    values. `runtime.health` may omit `cache_stats_window_ms` to disable window
+    rotation, but an explicit zero must return JSON-RPC `-32602` with
+    structured `invalid_cache_stats_window_ms` data instead of silently behaving
+    like an omitted window policy.
 
 ---
 

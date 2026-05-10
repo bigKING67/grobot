@@ -55,6 +55,32 @@ mod tests {
     }
 
     #[test]
+    fn health_rejects_zero_cache_stats_window() {
+        let input = r#"{
+            "jsonrpc":"2.0",
+            "id":"health-window-invalid",
+            "method":"runtime.health",
+            "params":{"cache_stats_window_ms":0}
+        }"#;
+        let output = handle_json_line(input);
+        let payload: Value = serde_json::from_str(&output).expect("valid json");
+        assert_eq!(payload["error"]["code"], -32602);
+        assert_eq!(
+            payload["error"]["message"],
+            "invalid_cache_stats_window_ms"
+        );
+        assert_eq!(
+            payload["error"]["data"]["diagnostic_kind"].as_str(),
+            Some("invalid_cache_stats_window_ms")
+        );
+        assert_eq!(
+            payload["error"]["data"]["field"].as_str(),
+            Some("cache_stats_window_ms")
+        );
+        assert_eq!(payload["error"]["data"]["raw_value"].as_u64(), Some(0));
+    }
+
+    #[test]
     fn tools_describe_returns_default_enabled_tools() {
         let input = r#"{"jsonrpc":"2.0","id":"tools-1","method":"runtime.tools.describe","params":{}}"#;
         let output = handle_json_line(input);
