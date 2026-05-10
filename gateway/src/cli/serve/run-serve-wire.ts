@@ -11,8 +11,10 @@ import {
 import { redisGetJson, redisSetJson } from "../services/redis-client";
 import { createExperiencePoolRuntime } from "../services/experience-pool-runtime";
 import {
+  resolveExperiencePoolPathOverride,
   resolveExperiencePublishMode,
   resolveExperienceRecallLimit,
+  resolveExperienceTeam,
 } from "../services/experience-controls";
 import { type ManagementRoutesContext } from "./management-routes";
 import { type MCPRuntimeState } from "./mcp-runtime";
@@ -27,14 +29,6 @@ import { reloadRunServeRuntimeState } from "./run-serve-reload";
 import { createRunServeRuntimeState, type RunServeRuntimeState } from "./run-serve-runtime-state";
 
 const MEMORY_STORE_REDIS_TTL_SECS = 14 * 24 * 60 * 60;
-
-function resolveExperienceTeamDefault(): string {
-  const raw = process.env.GROBOT_TEAM?.trim();
-  if (typeof raw === "string" && raw.length > 0) {
-    return raw;
-  }
-  return "default";
-}
 
 interface CreateRunServeWireInput {
   options: Record<string, OptionValue>;
@@ -88,10 +82,11 @@ export async function createRunServeWire(input: CreateRunServeWireInput): Promis
   };
 
   const memoryOperations = createMemoryOperations(memoryRecordsBySession);
-  const experiencePoolPathRaw = process.env.GROBOT_EXPERIENCE_POOL_PATH?.trim();
-  const experienceTeam = resolveExperienceTeamDefault();
-    const experiencePoolPath = experiencePoolPathRaw && experiencePoolPathRaw.length > 0
-      ? experiencePoolPathRaw
+  const experiencePoolPathOverride = resolveExperiencePoolPathOverride();
+  const experienceTeam = resolveExperienceTeam();
+  const experiencePoolPath =
+    typeof experiencePoolPathOverride === "string"
+      ? experiencePoolPathOverride
       : resolveExperiencePoolPath(context.projectStateRoot, {
         tenant: context.projectName,
         team: experienceTeam,

@@ -240,6 +240,13 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     values must return structured `config_invalid` errors instead of deriving
     provider kind, choosing Kimi defaults, or reporting empty required
     connection strings as merely missing.
+33. Gateway experience runtime controls must fail closed on explicit empty
+    values across start and serve. `--team`, `GROBOT_TEAM`,
+    `GROBOT_EXPERIENCE_POOL_PATH`, `GROBOT_EXPERIENCE_PUBLISH_MODE`, and
+    `GROBOT_EXPERIENCE_RECALL_LIMIT` may use defaults or derived paths only
+    when omitted; explicit empty or whitespace-only values must exit `2` with
+    stable `invalid_<field>` errors before session bootstrap or management
+    server listen.
 
 ---
 

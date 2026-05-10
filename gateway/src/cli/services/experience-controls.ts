@@ -1,3 +1,9 @@
+import {
+  type OptionValue,
+  readEnvOptionalNonEmptyString,
+  readExplicitOptionalNonEmptyString,
+} from "../cli-args";
+
 export type ExperiencePublishMode = "auto" | "off";
 
 export class ExperienceControlInputError extends Error {
@@ -21,10 +27,16 @@ export function isExperienceControlInputError(
 export function resolveExperiencePublishMode(
   raw = process.env.GROBOT_EXPERIENCE_PUBLISH_MODE,
 ): ExperiencePublishMode {
-  if (raw === undefined || raw.trim().length === 0) {
+  if (raw === undefined) {
     return "auto";
   }
   const normalized = raw.trim().toLowerCase();
+  if (normalized.length === 0) {
+    throw new ExperienceControlInputError(
+      "experience-publish-mode",
+      "experience-publish-mode must be auto or off",
+    );
+  }
   if (normalized === "auto" || normalized === "off") {
     return normalized;
   }
@@ -37,7 +49,7 @@ export function resolveExperiencePublishMode(
 export function resolveExperienceRecallLimit(
   raw = process.env.GROBOT_EXPERIENCE_RECALL_LIMIT,
 ): number {
-  if (raw === undefined || raw.trim().length === 0) {
+  if (raw === undefined) {
     return 2;
   }
   const normalized = raw.trim();
@@ -55,4 +67,27 @@ export function resolveExperienceRecallLimit(
     );
   }
   return parsed;
+}
+
+export function resolveExperienceTeam(
+  options?: Record<string, OptionValue>,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  const fromOption = options
+    ? readExplicitOptionalNonEmptyString(options, "team")
+    : undefined;
+  if (typeof fromOption === "string") {
+    return fromOption;
+  }
+  return readEnvOptionalNonEmptyString(env, "GROBOT_TEAM", "team") ?? "default";
+}
+
+export function resolveExperiencePoolPathOverride(
+  env: Record<string, string | undefined> = process.env,
+): string | undefined {
+  return readEnvOptionalNonEmptyString(
+    env,
+    "GROBOT_EXPERIENCE_POOL_PATH",
+    "experience-pool-path",
+  );
 }

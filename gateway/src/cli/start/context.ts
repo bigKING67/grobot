@@ -46,6 +46,7 @@ import {
   resolveExperienceRecallLimit,
   resolveExperienceTeam,
 } from "./context/experience-options";
+import { resolveExperiencePoolPathOverride } from "../services/experience-controls";
 import {
   resolveExperienceSchedulerConfig,
   type ExperienceSchedulerConfig,
@@ -121,7 +122,7 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
   const rewindFiles = resolveRewindFiles(options);
   const handoffPath = buildHandoffPath(projectRoot);
   const interruptStorePath = resolveInterruptStorePath(projectStateRoot);
-  const experiencePoolPathRaw = process.env.GROBOT_EXPERIENCE_POOL_PATH?.trim();
+  const experiencePoolPathOverride = resolveExperiencePoolPathOverride();
   const experienceLegacyPoolPath = resolveLegacyExperiencePoolPath(homeDir);
   const experienceTeam = resolveExperienceTeam(options);
   const executionPlane = resolveExecutionPlaneConfig({
@@ -142,8 +143,8 @@ export function resolveRunStartContext(options: Record<string, OptionValue>) {
     defaultSubject: process.env.USER ?? "user",
   });
   const experiencePoolPath =
-    experiencePoolPathRaw && experiencePoolPathRaw.length > 0
-      ? experiencePoolPathRaw
+    typeof experiencePoolPathOverride === "string"
+      ? experiencePoolPathOverride
       : resolveExperiencePoolPath(projectStateRoot, {
           tenant: sessionNamespace.tenant,
           team: experienceTeam,
