@@ -205,6 +205,7 @@ const BASE_GATE_DEFINITIONS = Object.freeze([
 const GATEWAY_SUITE_WORKER_COUNTS = Object.freeze({
   "gateway:context": 3,
   "gateway:plan": 4,
+  "gateway:tui": 3,
   "runtime:context": 4,
   "runtime:controls": 5,
   "runtime:describe": 4,

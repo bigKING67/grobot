@@ -258,6 +258,11 @@ for high-value composite smoke surfaces. Current split cases include:
 - `gateway:semantic-benchmark:smoke`
 - `gateway:semantic-benchmark:aggregate` (aggregate-only full benchmark
   reproduction; release suite also exposes `gateway:semantic-benchmark-full`)
+- `gateway:tui:browser-health`
+- `gateway:tui:rendering`
+- `gateway:tui:activity-status`
+- `gateway:tui:bottom-ask-panel`
+- `gateway:tui:ask-skill`
 - `runtime:status:interrupt`
 - `runtime:status:stdio-event-stream`
 - `runtime:status:surface`
@@ -387,8 +392,8 @@ parallelize internally without forcing the outer quality-runner to know every
 suite implementation detail. Parent JSON reports keep the run diagnosable:
 worker executions add structured worker bucket entries and aggregate child case
 results, while parent `steps` records one `gateway-worker-N` step per worker.
-Heavy split suites (`gateway:plan`, `gateway:context`, `runtime:status`,
-`runtime:context`, `runtime:controls`, `runtime:experience-state-controls`,
+Heavy split suites (`gateway:plan`, `gateway:context`, `gateway:tui`,
+`runtime:status`, `runtime:context`, `runtime:controls`, `runtime:experience-state-controls`,
 `runtime:management-gc-controls`, `runtime:plan`, `runtime:model-controls`,
 `runtime:provider-status`, and `runtime:describe`) are invoked with internal
 workers from the quality gate registry so full CI gets the same coverage with
@@ -396,9 +401,12 @@ less monolithic wall time.
 Gateway plan cases are split by contract domain (input/keybinding, failure
 policy, plan mode, user commands, instructions, slash suggestions, bridge
 CLI/apply/error-codes, events policy, and benchmark) while preserving
-`gateway:plan:full` as the aggregate reproduction path. Runtime status cases
-are split by build/interrupt, stdio event stream, main status surface, and
-window-size surface. The shared runtime binary guard skips `cargo build` when
+`gateway:plan:full` as the aggregate reproduction path. Gateway TUI cases are
+split by browser/health, rendering, activity/status, bottom/ask panel, and
+ask/skill surfaces while preserving `gateway:tui:full` as the aggregate
+reproduction path. Runtime status cases are split by build/interrupt, stdio
+event stream, main status surface, and window-size surface. The shared runtime
+binary guard skips `cargo build` when
 the debug binary is newer than `runtime/Cargo.toml`, `runtime/Cargo.lock`, and
 `runtime/src/**`, and serializes the rare rebuild through a local lock so
 `runtime:status` does not fight `cargo test` on the common hot path. The

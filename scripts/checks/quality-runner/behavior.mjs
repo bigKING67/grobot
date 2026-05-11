@@ -228,6 +228,11 @@ assert.equal(
   "node gateway/tests/check-gateway-node.mjs --suite gateway:context --json --workers 3",
   "gateway context suite gate must use internal case workers",
 );
+assert.equal(
+  registry.byName.get("check:gateway:suite:gateway:tui")?.command,
+  "node gateway/tests/check-gateway-node.mjs --suite gateway:tui --json --workers 3",
+  "gateway TUI suite gate must use internal case workers",
+);
 assert.equal(registry.byName.get("check:runtime:check")?.parallel, false, "cargo check must remain exclusive");
 assert.equal(registry.byName.get("check:runtime:check")?.resourceClass, "rust", "cargo gates must advertise rust resources");
 assert.equal(

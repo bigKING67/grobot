@@ -6,6 +6,13 @@ import {
   runSemanticBenchmarkSmokeContracts,
 } from "./gateway-contract-smoke/core-contracts.mjs";
 import {
+  runTuiActivityStatusContracts,
+  runTuiAskSkillContracts,
+  runTuiBottomAskPanelContracts,
+  runTuiBrowserHealthContracts,
+  runTuiRenderingContracts,
+} from "./gateway-contract-smoke/tui-contracts.mjs";
+import {
   runPlanAgentsInstructionsContract,
   runPlanBridgeApplyFailureContract,
   runPlanBridgeCliContract,
@@ -154,6 +161,31 @@ export const CASES = Object.freeze({
     suite: "gateway:semantic-benchmark",
     description: "Semantic retrieval full timing benchmark aggregate reproduction.",
     run: aggregateOnly(runSemanticBenchmarkFullContracts),
+  },
+  "gateway:tui:browser-health": {
+    suite: "gateway:tui",
+    description: "Browser structured MCP, doctor schema, provider health, usage, help, and info panel contracts.",
+    run: runTuiBrowserHealthContracts,
+  },
+  "gateway:tui:rendering": {
+    suite: "gateway:tui",
+    description: "CLI renderer, turn screen, and start TUI surface contracts.",
+    run: runTuiRenderingContracts,
+  },
+  "gateway:tui:activity-status": {
+    suite: "gateway:tui",
+    description: "Activity feed/state, status line, indicator, stability, sanitizer, and interactive frame contracts.",
+    run: runTuiActivityStatusContracts,
+  },
+  "gateway:tui:bottom-ask-panel": {
+    suite: "gateway:tui",
+    description: "Bottom pane, terminal markdown, and ask-user panel contracts.",
+    run: runTuiBottomAskPanelContracts,
+  },
+  "gateway:tui:ask-skill": {
+    suite: "gateway:tui",
+    description: "Ask-user tool and GA skill prompt contracts.",
+    run: runTuiAskSkillContracts,
   },
   "gateway:context:history": {
     suite: "gateway:context",

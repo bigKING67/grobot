@@ -1,24 +1,22 @@
 import assert from "node:assert/strict";
-import { resolve } from "node:path";
 import {
   assertSuccess,
-  contractsRoot,
-  isRecord,
   logStep,
-  makeTempDir,
   parseJsonOutput,
   runCommand,
-  runCommandAsync,
-  runContract,
-  runTsContract,
-  writeFixtureFile,
 } from "../harness.mjs";
 
 function assertPayloadFlags(payload, flagNames) {
   for (const flagName of flagNames) assert.equal(payload[flagName], true);
 }
 
-export async function runTuiContracts() {
+function shouldRunTuiGroup(options, group) {
+  const groups = options?.groups;
+  return !Array.isArray(groups) || groups.includes(group);
+}
+
+export async function runTuiContracts(options = {}) {
+  if (shouldRunTuiGroup(options, "browser-health")) {
   const browserStructuredContractResult = runCommand("node", [
     "gateway/src/extensions/contracts/browser-structured-mcp-contract.mjs",
   ], {
@@ -185,7 +183,9 @@ export async function runTuiContracts() {
   assert.equal(cliInfoPanelPayload.ends_with_newline, true);
   assert.equal(cliInfoPanelPayload.render_keeps_terminal_width_explicit, true);
   logStep("cli-info-panel-contract");
+  }
 
+  if (shouldRunTuiGroup(options, "rendering")) {
   const cliUiRendererContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -333,7 +333,9 @@ export async function runTuiContracts() {
   assert.equal(startTuiSurfaceContractPayload.message_mode_compact_disables_turn_diagnostics, true);
   assert.equal(startTuiSurfaceContractPayload.message_mode_verbose_keeps_turn_diagnostics, true);
   logStep("start-tui-surface-contract");
+  }
 
+  if (shouldRunTuiGroup(options, "activity-status")) {
   const cliActivityFeedContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -547,7 +549,9 @@ export async function runTuiContracts() {
   assert.equal(cliInteractiveFramePayload.suffix_has_activity_line, true);
   assert.equal(cliInteractiveFramePayload.suffix_has_no_prompt_frame, true);
   logStep("cli-interactive-frame-contract");
+  }
 
+  if (shouldRunTuiGroup(options, "bottom-ask-panel")) {
   const cliBottomPaneContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -678,7 +682,9 @@ export async function runTuiContracts() {
   assert.equal(cliAskUserPanelPayload.panel_no_box_frame, true);
   assert.equal(cliAskUserPanelPayload.panel_narrow_keeps_progress, true);
   logStep("cli-ask-user-panel-contract");
+  }
 
+  if (shouldRunTuiGroup(options, "ask-skill")) {
   const askUserToolContractResult = runCommand("npx", [
     "--yes",
     "--package",
@@ -777,4 +783,11 @@ export async function runTuiContracts() {
   assert.equal(gaSkillPromptContractPayload.no_match_skips_ga_prompt, true);
   assert.equal(gaSkillPromptContractPayload.no_match_no_events, true);
   logStep("ga-skill-prompt-contract");
+  }
 }
+
+export const runTuiBrowserHealthContracts = () => runTuiContracts({ groups: ["browser-health"] });
+export const runTuiRenderingContracts = () => runTuiContracts({ groups: ["rendering"] });
+export const runTuiActivityStatusContracts = () => runTuiContracts({ groups: ["activity-status"] });
+export const runTuiBottomAskPanelContracts = () => runTuiContracts({ groups: ["bottom-ask-panel"] });
+export const runTuiAskSkillContracts = () => runTuiContracts({ groups: ["ask-skill"] });

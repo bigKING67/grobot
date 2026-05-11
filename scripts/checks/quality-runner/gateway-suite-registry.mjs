@@ -179,6 +179,21 @@ assert.equal(
   true,
   "semantic benchmark suite must keep an aggregate full benchmark reproduction case",
 );
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "gateway:tui:browser-health"),
+  true,
+  "gateway TUI must expose case-level browser/health contracts",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "gateway:tui:activity-status"),
+  true,
+  "gateway TUI must expose case-level activity/status contracts",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "gateway:tui:ask-skill"),
+  true,
+  "gateway TUI must expose case-level ask/skill contracts",
+);
 
 const shardResult = spawnSync("node", ["gateway/tests/check-gateway-node.mjs", "--suite", "workflow", "--shard", "1/1", "--json"], {
   encoding: "utf8",
