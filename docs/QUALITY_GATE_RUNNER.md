@@ -278,8 +278,9 @@ for high-value composite smoke surfaces. Current split cases include:
 - `runtime:controls:context-engine-status`
 - `runtime:controls:context-engine-valid-boundary`
 - `runtime:controls:experience-scheduler`
-- `runtime:controls:experience-scheduler-env`
-- `runtime:controls:experience-scheduler-toml`
+- `runtime:controls:experience-scheduler-env` (focused-only reproduction)
+- `runtime:controls:experience-scheduler-toml` (focused-only reproduction)
+- `runtime:controls:experience-scheduler-validator`
 - `runtime:controls:experience-scheduler-valid-boundary`
 - `runtime:controls:experience-runtime`
 - `runtime:controls:experience-runtime-start` (aggregate-only reproduction)
@@ -293,12 +294,13 @@ for high-value composite smoke surfaces. Current split cases include:
 - `runtime:controls:mcp-instruction-scope`
 - `runtime:controls:mcp-instruction-server`
 - `runtime:controls:mcp-instruction-valid-disabled-boundary`
-- `runtime:controls:status-line`
-- `runtime:controls:status-line-basic`
-- `runtime:controls:status-line-segment-order`
-- `runtime:controls:status-line-thresholds`
-- `runtime:controls:status-line-cache`
-- `runtime:controls:status-line-segment-toggle`
+- `runtime:controls:status-line` (aggregate-only reproduction)
+- `runtime:controls:status-line-validator`
+- `runtime:controls:status-line-basic` (focused-only reproduction)
+- `runtime:controls:status-line-segment-order` (focused-only reproduction)
+- `runtime:controls:status-line-thresholds` (focused-only reproduction)
+- `runtime:controls:status-line-cache` (focused-only reproduction)
+- `runtime:controls:status-line-segment-toggle` (focused-only reproduction)
 - `runtime:controls:status-line-valid-boundary`
 - `runtime:start-controls:runtime-options`
 - `runtime:start-controls:provider-env`
@@ -453,9 +455,17 @@ Runtime controls cases keep the original aggregate case ids available for
 focused reproduction, but suite selection runs finer case-level shards for the
 large domains: context-engine env core/adaptive, context-engine TOML
 basic/threshold/window, context-engine status/boundary, experience scheduler
-env/TOML/boundary, experience runtime start team/config and serve, MCP instruction
-basic/scope/server/disabled-boundary, and status-line basic/order/threshold/
-cache/segment/boundary. New high-value split cases carry seed timing estimates
+validator/boundary, experience runtime start team/config and serve, MCP
+instruction basic/scope/server/disabled-boundary, and status-line
+validator/boundary.
+Focused experience-scheduler env/TOML cases remain listed for targeted
+reproduction but are not selected by the default suite because the validator
+shard already batches those pure config checks through one production resolver
+process.
+Focused status-line basic/order/threshold/cache/segment cases remain listed for
+targeted reproduction but are not selected by the default suite because the
+validator shard already batches those pure TOML checks through one production
+parser process. New high-value split cases carry seed timing estimates
 in `case-definitions.mjs`, and the gateway case timing cache records EWMA,
 p90, last, and recent samples per timing context. Internal worker runs write a
 `suite-worker` timing context; suite bin packing compares that context with the
@@ -468,6 +478,17 @@ monoliths.
 Set `GROBOT_GATEWAY_TIMINGS_PATH=<path>` when benchmarking alternate timing
 snapshots without mutating the default `.cache/grobot-quality/gateway-timings.json`
 cache; set `GROBOT_GATEWAY_TIMING_CONTEXT=<name>` only for harness experiments.
+Status-line default controls use `status-line-config-validator-contract.mjs` to
+batch pure project TOML validation in one local `tsx` process through the production
+`readStatusLineConfigFromProjectToml` parser; the aggregate
+`runtime:controls:status-line` case still runs the full `./grobot start` smoke
+path for end-to-end reproduction.
+Experience-scheduler default controls use
+`experience-scheduler-config-validator-contract.mjs` to batch pure env/project
+config validation in one local `tsx` process through the production
+`resolveExperienceSchedulerConfig` resolver; the aggregate
+`runtime:controls:experience-scheduler` case still runs the full
+`./grobot start` smoke path for end-to-end reproduction.
 Runtime start controls are split by control source: CLI runtime options,
 provider env controls, memory maintenance env, context-window env, and
 ask-user TTL env controls. The aggregate `runtime:start-controls:runtime-controls`

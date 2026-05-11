@@ -21,6 +21,7 @@ import {
   assertExperienceSchedulerControlSmoke,
   assertExperienceSchedulerEnvControlSmoke,
   assertExperienceSchedulerTomlControlSmoke,
+  assertExperienceSchedulerValidatorSmoke,
   assertExperienceSchedulerValidBoundarySmoke,
 } from "./runtime-smoke/experience-scheduler-controls.mjs";
 import {
@@ -38,6 +39,7 @@ import {
   assertStatusLineSegmentOrderControlSmoke,
   assertStatusLineSegmentToggleControlSmoke,
   assertStatusLineThresholdControlSmoke,
+  assertStatusLineValidatorSmoke,
   assertStatusLineValidBoundarySmoke,
 } from "./runtime-smoke/status-line-controls.mjs";
 import { assertToolSurfaceProfileControlSmoke } from "./runtime-smoke/tool-surface-profile-controls.mjs";
@@ -110,14 +112,20 @@ export const RUNTIME_CONTROLS_CASES = Object.freeze({
   "runtime:controls:experience-scheduler-env": {
     suite: "runtime:controls",
     description: "Experience scheduler environment control rejection smoke.",
-    run: assertExperienceSchedulerEnvControlSmoke,
+    run: aggregateOnly(assertExperienceSchedulerEnvControlSmoke),
     seedMs: 1800,
   },
   "runtime:controls:experience-scheduler-toml": {
     suite: "runtime:controls",
     description: "Experience scheduler project TOML control rejection smoke.",
-    run: assertExperienceSchedulerTomlControlSmoke,
+    run: aggregateOnly(assertExperienceSchedulerTomlControlSmoke),
     seedMs: 1800,
+  },
+  "runtime:controls:experience-scheduler-validator": {
+    suite: "runtime:controls",
+    description: "Experience scheduler production config validator control rejection smoke.",
+    run: assertExperienceSchedulerValidatorSmoke,
+    seedMs: 450,
   },
   "runtime:controls:experience-scheduler-valid-boundary": {
     suite: "runtime:controls",
@@ -200,34 +208,40 @@ export const RUNTIME_CONTROLS_CASES = Object.freeze({
     description: "Status line aggregate control rejection smoke.",
     run: aggregateOnly(assertStatusLineControlSmoke),
   },
+  "runtime:controls:status-line-validator": {
+    suite: "runtime:controls",
+    description: "Status line production project TOML validator control rejection smoke.",
+    run: assertStatusLineValidatorSmoke,
+    seedMs: 400,
+  },
   "runtime:controls:status-line-basic": {
     suite: "runtime:controls",
     description: "Status line basic config control rejection smoke.",
-    run: assertStatusLineBasicControlSmoke,
+    run: aggregateOnly(assertStatusLineBasicControlSmoke),
     seedMs: 1600,
   },
   "runtime:controls:status-line-segment-order": {
     suite: "runtime:controls",
     description: "Status line segment order control rejection smoke.",
-    run: assertStatusLineSegmentOrderControlSmoke,
+    run: aggregateOnly(assertStatusLineSegmentOrderControlSmoke),
     seedMs: 1300,
   },
   "runtime:controls:status-line-thresholds": {
     suite: "runtime:controls",
     description: "Status line threshold control rejection smoke.",
-    run: assertStatusLineThresholdControlSmoke,
+    run: aggregateOnly(assertStatusLineThresholdControlSmoke),
     seedMs: 1900,
   },
   "runtime:controls:status-line-cache": {
     suite: "runtime:controls",
     description: "Status line cache and width control rejection smoke.",
-    run: assertStatusLineCacheControlSmoke,
+    run: aggregateOnly(assertStatusLineCacheControlSmoke),
     seedMs: 1100,
   },
   "runtime:controls:status-line-segment-toggle": {
     suite: "runtime:controls",
     description: "Status line segment toggle control rejection smoke.",
-    run: assertStatusLineSegmentToggleControlSmoke,
+    run: aggregateOnly(assertStatusLineSegmentToggleControlSmoke),
     seedMs: 900,
   },
   "runtime:controls:status-line-valid-boundary": {

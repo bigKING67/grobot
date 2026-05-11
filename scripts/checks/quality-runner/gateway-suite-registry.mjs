@@ -128,6 +128,72 @@ for (const contractPath of fastTsxPlanContracts) {
     `${contractPath} must not shell through npx --package on the hot path`,
   );
 }
+const statusLineValidatorContractSource = readFileSync(
+  "gateway/src/extensions/contracts/status-line-config-validator-contract.mjs",
+  "utf8",
+);
+const experienceSchedulerValidatorContractSource = readFileSync(
+  "gateway/src/extensions/contracts/experience-scheduler-config-validator-contract.mjs",
+  "utf8",
+);
+assert.equal(
+  statusLineValidatorContractSource.includes("readStatusLineConfigFromProjectToml"),
+  true,
+  "status-line fast controls must reuse the production project TOML validator",
+);
+assert.equal(
+  statusLineValidatorContractSource.includes("start-invalid-status-line"),
+  false,
+  "status-line fast controls must not shell through start smoke for each invalid fixture",
+);
+assert.equal(
+  experienceSchedulerValidatorContractSource.includes("resolveExperienceSchedulerConfig"),
+  true,
+  "experience scheduler fast controls must reuse the production config resolver",
+);
+assert.equal(
+  experienceSchedulerValidatorContractSource.includes("start-invalid-experience-scheduler"),
+  false,
+  "experience scheduler fast controls must not shell through start smoke for each invalid fixture",
+);
+const statusLineControlsSource = readFileSync(
+  "gateway/tests/check-gateway-node/runtime-smoke/status-line-controls.mjs",
+  "utf8",
+);
+const experienceSchedulerControlsSource = readFileSync(
+  "gateway/tests/check-gateway-node/runtime-smoke/experience-scheduler-controls.mjs",
+  "utf8",
+);
+assert.equal(
+  statusLineControlsSource.includes("status-line-config-validator-contract.mjs"),
+  true,
+  "status-line split controls must use the validator fast path",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:status-line-validator"),
+  true,
+  "runtime controls must expose the status-line validator batch shard",
+);
+assert.equal(
+  experienceSchedulerControlsSource.includes("experience-scheduler-config-validator-contract.mjs"),
+  true,
+  "experience scheduler split controls must use the validator fast path",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:experience-scheduler-validator"),
+  true,
+  "runtime controls must expose the experience scheduler validator batch shard",
+);
+assert.equal(
+  statusLineControlsSource.includes('runStatusLineControlContract("start-invalid-status-line-controls-reject-flow")'),
+  true,
+  "status-line aggregate reproduction must keep the full start smoke path",
+);
+assert.equal(
+  experienceSchedulerControlsSource.includes('runExperienceSchedulerControlContract("start-invalid-experience-scheduler-controls-reject-flow")'),
+  true,
+  "experience scheduler aggregate reproduction must keep the full start smoke path",
+);
 assert.equal(
   readFileSync("gateway/src/extensions/contracts/_shared/run-tsx-script.mjs", "utf8").includes("node_modules"),
   true,
@@ -252,9 +318,16 @@ try {
     "runtime:controls:context-engine",
     "runtime:controls:context-engine-env",
     "runtime:controls:context-engine-toml",
+    "runtime:controls:experience-scheduler-env",
+    "runtime:controls:experience-scheduler-toml",
     "runtime:controls:experience-runtime-start",
     "runtime:controls:mcp-instruction",
     "runtime:controls:status-line",
+    "runtime:controls:status-line-basic",
+    "runtime:controls:status-line-segment-order",
+    "runtime:controls:status-line-thresholds",
+    "runtime:controls:status-line-cache",
+    "runtime:controls:status-line-segment-toggle",
   ]) {
     assert.equal(
       runtimeControlsCases.has(aggregateCaseId),
@@ -268,14 +341,14 @@ try {
     "runtime:controls:context-engine-toml-basic",
     "runtime:controls:context-engine-toml-thresholds",
     "runtime:controls:context-engine-toml-window",
-    "runtime:controls:experience-scheduler-env",
-    "runtime:controls:experience-scheduler-toml",
+    "runtime:controls:experience-scheduler-validator",
     "runtime:controls:experience-runtime-start-team",
     "runtime:controls:experience-runtime-start-config",
     "runtime:controls:mcp-instruction-basic",
     "runtime:controls:mcp-instruction-scope",
     "runtime:controls:mcp-instruction-server",
     "runtime:controls:mcp-instruction-valid-disabled-boundary",
+    "runtime:controls:status-line-validator",
   ]) {
     assert.equal(
       runtimeControlsCases.has(splitCaseId),
@@ -290,12 +363,14 @@ try {
     "runtime:controls:context-engine-toml-basic",
     "runtime:controls:context-engine-toml-thresholds",
     "runtime:controls:context-engine-toml-window",
+    "runtime:controls:experience-scheduler-validator",
     "runtime:controls:experience-runtime-start-team",
     "runtime:controls:experience-runtime-start-config",
     "runtime:controls:mcp-instruction-basic",
     "runtime:controls:mcp-instruction-scope",
     "runtime:controls:mcp-instruction-server",
     "runtime:controls:mcp-instruction-valid-disabled-boundary",
+    "runtime:controls:status-line-validator",
   ]) {
     assert.equal(
       Number(seededCaseMetadata.get(splitCaseId)?.estimatedMs ?? 0) > 0,

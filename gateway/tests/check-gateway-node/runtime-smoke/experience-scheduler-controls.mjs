@@ -21,6 +21,16 @@ function assertNoFatalNoBanner(payload) {
   assert.equal(payload.has_start_banner, false);
 }
 
+function assertExperienceSchedulerValidatorContract() {
+  const result = runContract("experience-scheduler-config-validator-contract.mjs", "", [], { timeoutMs: 120_000 });
+  assert.equal(result.code, 0, `experience scheduler validator contract failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+  const payload = parseJsonOutput("experience-scheduler-config-validator-contract", result.stdout);
+  assert.equal(payload.status, "ok");
+  assert.equal(payload.rejected_count, 10);
+  assert.equal(Number(payload.unique_error_count) >= 6, true);
+  assert.equal(payload.valid_boundary, true);
+}
+
 export function assertExperienceSchedulerControlSmoke() {
   const payload = runExperienceSchedulerControlContract("start-invalid-experience-scheduler-controls-reject-flow");
   assertExperienceSchedulerEnvBasicPayload(payload);
@@ -66,19 +76,18 @@ function assertExperienceSchedulerTomlPathDelayPayload(payload) {
 }
 
 export function assertExperienceSchedulerEnvControlSmoke() {
-  const payload = runExperienceSchedulerControlContract("start-invalid-experience-scheduler-env-controls-reject-flow");
-  assertExperienceSchedulerEnvBasicPayload(payload);
-  assertExperienceSchedulerEnvPathDelayPayload(payload);
-  assertNoFatalNoBanner(payload);
-  logStep("start-smoke-contract start-invalid-experience-scheduler-env-controls-reject-flow");
+  assertExperienceSchedulerValidatorContract();
+  logStep("experience-scheduler-config-validator-contract env-controls");
 }
 
 export function assertExperienceSchedulerTomlControlSmoke() {
-  const payload = runExperienceSchedulerControlContract("start-invalid-experience-scheduler-toml-controls-reject-flow");
-  assertExperienceSchedulerTomlBasicPayload(payload);
-  assertExperienceSchedulerTomlPathDelayPayload(payload);
-  assertNoFatalNoBanner(payload);
-  logStep("start-smoke-contract start-invalid-experience-scheduler-toml-controls-reject-flow");
+  assertExperienceSchedulerValidatorContract();
+  logStep("experience-scheduler-config-validator-contract toml-controls");
+}
+
+export function assertExperienceSchedulerValidatorSmoke() {
+  assertExperienceSchedulerValidatorContract();
+  logStep("experience-scheduler-config-validator-contract batch-controls");
 }
 
 export function assertExperienceSchedulerValidBoundarySmoke() {
