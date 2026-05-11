@@ -247,7 +247,10 @@ variables intentionally do not affect the hash.
   reused and `explain cache` reports `cached output missing from CAS: <path>`.
   `explain cache` verifies that declared outputs are restorable without
   mutating the worktree; only an actual cache-hit run restores files. Output
-  declaration changes are part of the action contract fingerprint.
+  declarations must be normalized repo-relative paths: absolute paths, empty
+  paths, and `..` parent-directory segments are rejected before cache lookup or
+  restore. Output declaration changes are part of the action contract
+  fingerprint.
 - A single runner process reuses git file lists, glob expansion, file digests,
   and tool version probes to reduce repeated scanning.
 - v3 persists a best-effort file digest manifest under

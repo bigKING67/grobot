@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import { computeActionContractFingerprint, resolveGateActionContract } from "./quality-action-contract.mjs";
+import { computeActionContractFingerprint, resolveDeclaredOutputPath, resolveGateActionContract } from "./quality-action-contract.mjs";
 
 export const GATEWAY_SUITE_IDS = Object.freeze([
   "gateway:core",
@@ -457,6 +457,12 @@ export function validateQualityGateRegistry(registry, options = {}) {
     }
     if (gate.cacheable && gate.actionContract?.cachePolicy === "never") {
       findings.push(`${gate.name} is cacheable but its action contract cachePolicy is never`);
+    }
+    for (const outputPath of gate.actionContract?.outputs ?? []) {
+      const resolved = resolveDeclaredOutputPath(repoRoot, outputPath);
+      if (resolved.error) {
+        findings.push(`${gate.name} ${resolved.error}`);
+      }
     }
     for (const depName of gate.deps) {
       if (!registry.byName.has(depName)) {

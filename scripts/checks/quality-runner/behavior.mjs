@@ -9,7 +9,7 @@ import { buildQualityGateRegistry, gateNamesForMode, QUALITY_ENTRYPOINT_SCRIPTS,
 import { explainAffectedSelection, listChangedFiles, selectAffectedGates } from "../../lib/quality-affected.mjs";
 import { appendQualityEvent, computeGateTimingFingerprint, createQualityCacheContext, explainGateCache, summarizeQualityEvents, writeGateCache } from "../../lib/quality-cache.mjs";
 import { planQualityGates, runQualityGates } from "../../lib/quality-scheduler.mjs";
-import { computeActionContractFingerprint, resolveGateActionContract } from "../../lib/quality-action-contract.mjs";
+import { computeActionContractFingerprint, resolveDeclaredOutputPath, resolveGateActionContract } from "../../lib/quality-action-contract.mjs";
 
 function packageJson() {
   return JSON.parse(readFileSync("package.json", "utf8"));
@@ -65,6 +65,48 @@ assert.deepEqual(
   }).toolchains,
   ["cargo", "node", "npm", "rustc"],
   "runtime action contracts must declare Rust and Node toolchain dimensions",
+);
+assert.equal(
+  resolveDeclaredOutputPath(process.cwd(), "dist/report.json").path,
+  "dist/report.json",
+  "declared output paths may be repo-relative",
+);
+assert.equal(
+  resolveDeclaredOutputPath(process.cwd(), "/tmp/report.json").error?.includes("unsafe declared output path"),
+  true,
+  "declared output paths must reject absolute paths",
+);
+assert.deepEqual(
+  resolveGateActionContract({
+    cacheable: true,
+    command: "node pass-a.mjs",
+    group: "test",
+    name: "contract-output-empty",
+    outputs: [""],
+  }).outputs,
+  [""],
+  "action contracts must preserve empty output declarations so registry validation can reject them",
+);
+assert.equal(
+  resolveDeclaredOutputPath(process.cwd(), "dist/../report.json").error?.includes("unsafe declared output path"),
+  true,
+  "declared output paths must reject parent-directory segments even when normalized inside the repo",
+);
+assert.deepEqual(
+  validateQualityGateRegistry({
+    ...registry,
+    gates: [
+      {
+        ...qualityRunnerGate,
+        actionContract: {
+          ...qualityRunnerGate.actionContract,
+          outputs: ["../outside.txt"],
+        },
+      },
+    ],
+  }, { packageJson: { scripts: QUALITY_ENTRYPOINT_SCRIPTS }, repoRoot: process.cwd() }),
+  ["check:quality-runner unsafe declared output path: ../outside.txt"],
+  "registry validation must reject declared outputs that escape the repo",
 );
 
 for (const [scriptName, expected] of Object.entries(QUALITY_ENTRYPOINT_SCRIPTS)) {
@@ -688,6 +730,73 @@ try {
     outputs: ["artifact-renamed.txt"],
   }).actionContractFingerprint;
   assert.notEqual(outputContractA, outputContractB, "outputs declaration changes must change the action contract fingerprint");
+  const invalidOutputGate = {
+    ...outputGate,
+    name: "cache-invalid-output-test",
+    outputs: ["../outside.txt"],
+  };
+  const invalidOutputBaseline = explainGateCache(tmp, invalidOutputGate);
+  assert.equal(invalidOutputBaseline.status, "miss", "unsafe declared output paths must be rejected before cache lookup");
+  assert.equal(
+    invalidOutputBaseline.missReason.includes("unsafe declared output path"),
+    true,
+    "unsafe declared output paths must explain why cache lookup is denied",
+  );
+  writeGateCache(tmp, invalidOutputGate, invalidOutputBaseline.cacheKey, {
+    durationMs: 1,
+    status: "pass",
+    stderr: "",
+    stdout: "",
+  }, invalidOutputBaseline);
+  const invalidOutputExplanation = explainGateCache(tmp, invalidOutputGate);
+  assert.equal(invalidOutputExplanation.status, "miss", "unsafe declared output paths must not be written to cache");
+  writeGateCache(tmp, outputGate, outputExplanation.cacheKey, {
+    durationMs: 1,
+    status: "pass",
+    stderr: "",
+    stdout: "",
+  }, {
+    ...outputExplanation,
+    actionContract: {
+      ...outputExplanation.actionContract,
+      outputs: ["../artifact-escape.txt"],
+    },
+  });
+  assert.equal(explainGateCache(tmp, outputGate).status, "miss", "unsafe cacheInfo output paths must not be written to cache");
+  writeFileSync(join(tmp, ".cache/grobot-quality/ac/cache-output-test", `${outputExplanation.cacheKey}.json`), `${JSON.stringify({
+    schema: 2,
+    gate: outputGate.name,
+    cacheKey: outputExplanation.cacheKey,
+    actionHash: outputExplanation.cacheKey,
+    actionComponents: outputExplanation.actionComponents,
+    actionContractFingerprint: outputExplanation.actionContractFingerprint,
+    status: "pass",
+    durationMs: 1,
+    outputs: {
+      count: 1,
+      outputs: [{
+        digest: outputExplanation.outputs.outputs[0]?.digest,
+        path: "../artifact-escape.txt",
+        sizeBytes: 1,
+        type: "file",
+      }],
+      restorePolicy: "declared-outputs",
+    },
+    outputCount: 1,
+    outputRestorePolicy: "declared-outputs",
+    stdoutDigest: "sha256:empty",
+    stdoutSizeBytes: 0,
+    stderrDigest: "sha256:empty",
+    stderrSizeBytes: 0,
+    timestamp: new Date().toISOString(),
+  }, null, 2)}\n`);
+  const unsafeRestoreExplanation = explainGateCache(tmp, outputGate);
+  assert.equal(unsafeRestoreExplanation.status, "miss", "unsafe cached output paths must prevent polluted cache reuse");
+  assert.equal(
+    unsafeRestoreExplanation.missReason.includes("unsafe declared output path"),
+    true,
+    "unsafe cached output paths must be reported as the cache miss reason",
+  );
 
   const cacheSlotSeedGate = {
     cacheable: true,

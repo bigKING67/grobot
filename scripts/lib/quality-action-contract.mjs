@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import path from "node:path";
 
 export const QUALITY_ACTION_CONTRACT_SCHEMA_VERSION = 1;
 
@@ -11,6 +12,42 @@ function normalizeStringArray(values = []) {
     .map((value) => normalizeString(value))
     .filter(Boolean))]
     .sort();
+}
+
+function normalizeDeclaredOutputs(values = []) {
+  return [...new Set((Array.isArray(values) ? values : [])
+    .map((value) => normalizeString(value)))]
+    .sort();
+}
+
+function toPosixPath(filePath) {
+  return String(filePath ?? "").replaceAll("\\", "/");
+}
+
+export function resolveDeclaredOutputPath(repoRoot, outputPath) {
+  const rawPath = normalizeString(outputPath);
+  const posixPath = toPosixPath(rawPath);
+  const normalized = path.posix.normalize(posixPath).replace(/^\.\/+/, "");
+  const hasParentSegment = posixPath.split("/").includes("..");
+  const isAbsolute = path.isAbsolute(rawPath) || path.posix.isAbsolute(posixPath) || path.win32.isAbsolute(rawPath);
+  if (!rawPath || normalized === "." || isAbsolute || hasParentSegment) {
+    return {
+      error: `unsafe declared output path: ${rawPath || "<empty>"}`,
+      path: normalized,
+    };
+  }
+  const absolutePath = path.resolve(repoRoot, normalized);
+  const relativePath = toPosixPath(path.relative(repoRoot, absolutePath));
+  if (relativePath.startsWith("../") || relativePath === ".." || path.isAbsolute(relativePath)) {
+    return {
+      error: `unsafe declared output path: ${rawPath}`,
+      path: normalized,
+    };
+  }
+  return {
+    absolutePath,
+    path: normalized,
+  };
 }
 
 function normalizeBoolean(value, fallback = false) {
@@ -41,7 +78,7 @@ export function resolveGateActionContract(gate) {
     command,
     workdir: normalizeString(gate?.workdir) || ".",
     inputs: Object.freeze(normalizeStringArray(gate?.inputs ?? ["package.json", "package-lock.json"])),
-    outputs: Object.freeze(normalizeStringArray(gate?.outputs ?? [])),
+    outputs: Object.freeze(normalizeDeclaredOutputs(gate?.outputs ?? [])),
     env: Object.freeze(normalizeStringArray(gate?.env ?? [])),
     toolchains: Object.freeze(toolchainsForGate(gate)),
     deps: Object.freeze(normalizeStringArray(gate?.deps ?? [])),

@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { computeActionContractFingerprint, resolveGateActionContract, stableJson } from "./quality-action-contract.mjs";
+import { computeActionContractFingerprint, resolveDeclaredOutputPath, resolveGateActionContract, stableJson } from "./quality-action-contract.mjs";
 
 const CACHE_SCHEMA_VERSION = 2;
 export const QUALITY_TIMING_MODEL_VERSION = "quality-timing-v2";
@@ -380,11 +380,32 @@ function outputRestorePolicy(actionContract) {
   return (actionContract.outputs ?? []).length > 0 ? "declared-outputs" : "no-output";
 }
 
+function unsafeDeclaredOutputReason(repoRoot, actionContract) {
+  for (const outputPath of actionContract.outputs ?? []) {
+    const resolved = resolveDeclaredOutputPath(repoRoot, outputPath);
+    if (resolved.error) {
+      return resolved.error;
+    }
+  }
+  return "";
+}
+
 function outputManifest(repoRoot, actionContract) {
   const outputs = [];
   for (const outputPath of actionContract.outputs ?? []) {
-    const normalized = normalizePath(outputPath);
-    const absolutePath = path.join(repoRoot, normalized);
+    const resolved = resolveDeclaredOutputPath(repoRoot, outputPath);
+    if (resolved.error) {
+      outputs.push({
+        digest: "<invalid>",
+        error: resolved.error,
+        path: resolved.path,
+        sizeBytes: 0,
+        type: "invalid",
+      });
+      continue;
+    }
+    const normalized = resolved.path;
+    const absolutePath = resolved.absolutePath;
     if (!existsSync(absolutePath)) {
       outputs.push({
         digest: "<missing>",
@@ -427,8 +448,23 @@ function resolveCachedOutputs(repoRoot, cached, options = {}) {
   }
   let restoredCount = 0;
   for (const output of outputs) {
+    if (output?.type === "invalid") {
+      return {
+        error: output.error ?? `unsafe declared output path: ${output.path ?? "<unknown>"}`,
+        restoredCount,
+        restorePolicy: "declared-outputs",
+      };
+    }
     if (output?.type !== "file" || typeof output.digest !== "string" || !output.digest.startsWith("sha256:")) {
       continue;
+    }
+    const resolved = resolveDeclaredOutputPath(repoRoot, output.path);
+    if (resolved.error) {
+      return {
+        error: resolved.error,
+        restoredCount,
+        restorePolicy: "declared-outputs",
+      };
     }
     const storedPath = casStoredFilePath(repoRoot, output.digest);
     if (!existsSync(storedPath)) {
@@ -441,9 +477,8 @@ function resolveCachedOutputs(repoRoot, cached, options = {}) {
     if (!restore) {
       continue;
     }
-    const outputPath = path.join(repoRoot, normalizePath(output.path));
-    mkdirSync(path.dirname(outputPath), { recursive: true });
-    copyFileSync(storedPath, outputPath);
+    mkdirSync(path.dirname(resolved.absolutePath), { recursive: true });
+    copyFileSync(storedPath, resolved.absolutePath);
     restoredCount += 1;
   }
   return { restoredCount, restorePolicy: "declared-outputs" };
@@ -453,6 +488,10 @@ function cachedActionReadiness(repoRoot, gate, cacheKey, options = {}) {
   const { restoreOutputs = false } = options;
   if (!gate.cacheable) {
     return { cached: null, missReason: "gate is not cacheable" };
+  }
+  const outputSafetyError = unsafeDeclaredOutputReason(repoRoot, actionContractForGate(gate));
+  if (outputSafetyError) {
+    return { cached: null, missReason: outputSafetyError };
   }
   const actionPath = actionCacheFilePath(repoRoot, gate.name, cacheKey);
   if (existsSync(actionPath)) {
@@ -533,9 +572,17 @@ export function writeGateCache(repoRoot, gate, cacheKey, result, cacheInfo = nul
   if (!gate.cacheable || result.status !== "pass") {
     return;
   }
+  const outputSafetyError = unsafeDeclaredOutputReason(repoRoot, actionContractForGate(gate));
+  if (outputSafetyError) {
+    return;
+  }
   const stdout = writeCasText(repoRoot, result.stdout ?? "");
   const stderr = writeCasText(repoRoot, result.stderr ?? "");
   const resolvedCacheInfo = cacheInfo ?? computeGateCacheKey(repoRoot, gate);
+  const cacheInfoOutputSafetyError = unsafeDeclaredOutputReason(repoRoot, resolvedCacheInfo.actionContract);
+  if (cacheInfoOutputSafetyError) {
+    return;
+  }
   const actionPath = actionCacheFilePath(repoRoot, gate.name, cacheKey);
   const outputs = outputManifest(repoRoot, resolvedCacheInfo.actionContract);
   mkdirSync(path.dirname(actionPath), { recursive: true });
