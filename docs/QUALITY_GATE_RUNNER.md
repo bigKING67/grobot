@@ -489,6 +489,18 @@ internal workers so CI no longer serializes the former large control monoliths.
 Set `GROBOT_GATEWAY_TIMINGS_PATH=<path>` when benchmarking alternate timing
 snapshots without mutating the default `.cache/grobot-quality/gateway-timings.json`
 cache; set `GROBOT_GATEWAY_TIMING_CONTEXT=<name>` only for harness experiments.
+Do not merge optimization experiments that only improve focused micro-runs:
+runtime controls benchmarking on 2026-05-11 showed that grouping valid-boundary
+start cases into one parent process was slower than the existing worker plan
+because it lost parallelism (`~3.8-4.0s` sequential grouped boundary sample
+versus `~2.8s` parallel boundary sample). Worker-count sweeps also kept
+`--workers 5` as the best default range for this suite (`3/4` under-parallelize;
+`6` adds contention without stable wall-clock gains). Bypassing the Node
+contract wrapper for valid-boundary start flows did not materially improve the
+hot path either; the decisive cost is the real `./grobot start` boundary reaching
+runtime, not wrapper startup. Keep such changes out unless a fresh A/B run proves
+stable full-suite wall-clock improvement without reducing aggregate
+reproduction coverage.
 Context-engine default controls use `context-engine-config-validator-contract.mjs`
 to batch pure env/project config validation in one local `tsx` process through
 the production `resolveContextEngineConfig` resolver; the aggregate
