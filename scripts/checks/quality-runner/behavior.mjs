@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildQualityGateRegistry, QUALITY_ENTRYPOINT_SCRIPTS, validateQualityGateRegistry } from "../../lib/quality-gate-registry.mjs";
+import { buildQualityGateRegistry, gateNamesForMode, QUALITY_ENTRYPOINT_SCRIPTS, validateQualityGateRegistry } from "../../lib/quality-gate-registry.mjs";
 import { explainAffectedSelection, listChangedFiles, selectAffectedGates } from "../../lib/quality-affected.mjs";
 import { appendQualityEvent, computeGateTimingFingerprint, createQualityCacheContext, explainGateCache, summarizeQualityEvents } from "../../lib/quality-cache.mjs";
 import { planQualityGates, runQualityGates } from "../../lib/quality-scheduler.mjs";
@@ -246,9 +246,39 @@ assert.equal(
   "timing benchmark suite must remain exclusive",
 );
 assert.equal(
+  registry.byName.get("check:gateway:suite:gateway:semantic-benchmark")?.command,
+  "node gateway/tests/check-gateway-node.mjs --case gateway:semantic-benchmark:smoke --json",
+  "default semantic benchmark gate must run the quick smoke case only",
+);
+assert.equal(
   registry.byName.get("check:gateway:suite:gateway:semantic-benchmark")?.exclusiveGroup,
   "global",
   "timing benchmark suite must keep global exclusive scheduling",
+);
+assert.equal(
+  registry.byName.get("check:gateway:suite:gateway:semantic-benchmark")?.modes.includes("ci"),
+  true,
+  "quick semantic benchmark must remain in CI profile",
+);
+assert.equal(
+  registry.byName.get("check:gateway:suite:gateway:semantic-benchmark-full")?.modes.includes("release"),
+  true,
+  "full semantic benchmark must be reserved for release profile",
+);
+assert.equal(
+  registry.byName.get("check:gateway:suite:gateway:semantic-benchmark-full")?.exclusiveGroup,
+  "global",
+  "full semantic benchmark must keep global exclusive scheduling",
+);
+assert.equal(
+  gateNamesForMode(registry, "ci").includes("check:gateway:suite:gateway:semantic-benchmark-full"),
+  false,
+  "CI profile must not run the full semantic benchmark by default",
+);
+assert.equal(
+  gateNamesForMode(registry, "release").includes("check:gateway:suite:gateway:semantic-benchmark-full"),
+  true,
+  "release profile must include the full semantic benchmark",
 );
 
 const affectedRunnerSource = readFileSync("scripts/quality-runner.mjs", "utf8");

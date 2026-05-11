@@ -4,6 +4,7 @@ import path from "node:path";
 export const GATEWAY_SUITE_IDS = Object.freeze([
   "gateway:core",
   "gateway:semantic-benchmark",
+  "gateway:semantic-benchmark-full",
   "gateway:session",
   "gateway:plan",
   "gateway:tui",
@@ -218,18 +219,22 @@ const GATEWAY_SUITE_WORKER_COUNTS = Object.freeze({
 function gatewaySuiteGate(id) {
   const group = id.startsWith("runtime:") ? "gateway-runtime-smoke" : id.startsWith("governance:") ? "governance" : "gateway-smoke";
   const isBenchmark = id.includes("benchmark");
+  const isFullBenchmark = id.endsWith("-full");
   const workerCount = GATEWAY_SUITE_WORKER_COUNTS[id] ?? 1;
   const isRuntimeSuite = id.startsWith("runtime:");
   const gatewaySmokeCost = workerCount > 1
     ? isRuntimeSuite ? 3 : 2
     : 1;
+  const command = id === "gateway:semantic-benchmark"
+    ? "node gateway/tests/check-gateway-node.mjs --case gateway:semantic-benchmark:smoke --json"
+    : `node gateway/tests/check-gateway-node.mjs --suite ${id} --json${workerCount > 1 ? ` --workers ${String(workerCount)}` : ""}`;
   return {
     name: `check:gateway:suite:${id}`,
-    command: `node gateway/tests/check-gateway-node.mjs --suite ${id} --json${workerCount > 1 ? ` --workers ${String(workerCount)}` : ""}`,
+    command,
     deps: id.startsWith("runtime:") ? ["check:runtime:check"] : [],
     group,
     inputs: ["gateway/tests/check-gateway-node.mjs", "gateway/tests/check-gateway-node/**", "gateway/src/**", "runtime/src/**", "package.json", "package-lock.json"],
-    modes: ["ci"],
+    modes: isFullBenchmark ? ["release"] : ["ci"],
     cacheable: false,
     parallel: !isBenchmark,
     ...(isBenchmark ? { exclusiveGroup: "global" } : {}),

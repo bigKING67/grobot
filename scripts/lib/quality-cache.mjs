@@ -481,10 +481,13 @@ function recommendationsForSummaries(summaries) {
     .slice(0, 5);
   for (const gate of coldSlow) {
     if (gate.cacheHitRate === 0 && gate.estimatedMs >= 10_000) {
+      const isTimingBenchmark = gate.name.includes("benchmark");
       recommendations.push({
         gate: gate.name,
         reason: "slow cold gate with no cache hits",
-        action: gate.name.includes("suite:")
+        action: isTimingBenchmark
+          ? "separate quick smoke from full timing benchmark and keep benchmark globally exclusive"
+          : gate.name.includes("suite:")
           ? "split into smaller gateway smoke cases or enable timing-based sharding"
           : "narrow inputs, add hermetic cache policy, or move repeated work into a shared helper",
         coldAvgMs: gate.coldAvgMs,

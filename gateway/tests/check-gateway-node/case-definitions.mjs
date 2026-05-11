@@ -2,6 +2,10 @@ import { runContextGraphContracts } from "./gateway-contract-smoke/context-graph
 import { runContextHistoryContracts } from "./gateway-contract-smoke/context-history-contracts.mjs";
 import { runContextPromptQualityContracts } from "./gateway-contract-smoke/context-prompt-quality-contracts.mjs";
 import {
+  runSemanticBenchmarkFullContracts,
+  runSemanticBenchmarkSmokeContracts,
+} from "./gateway-contract-smoke/core-contracts.mjs";
+import {
   runPlanAgentsInstructionsContract,
   runPlanBridgeApplyFailureContract,
   runPlanBridgeCliContract,
@@ -141,6 +145,16 @@ import {
 const aggregateOnly = (run) => Object.assign(run, { aggregateOnly: true });
 
 export const CASES = Object.freeze({
+  "gateway:semantic-benchmark:smoke": {
+    suite: "gateway:semantic-benchmark",
+    description: "Semantic retrieval quick timing benchmark.",
+    run: runSemanticBenchmarkSmokeContracts,
+  },
+  "gateway:semantic-benchmark:aggregate": {
+    suite: "gateway:semantic-benchmark",
+    description: "Semantic retrieval full timing benchmark aggregate reproduction.",
+    run: aggregateOnly(runSemanticBenchmarkFullContracts),
+  },
   "gateway:context:history": {
     suite: "gateway:context",
     description: "Context history contracts.",

@@ -89,24 +89,37 @@ export function runCoreFastContracts() {
   logStep("semantic-search-regression-contract quality-regression");
 }
 
-export function runSemanticBenchmarkContracts() {
+function runSemanticBenchmarkContract(command, expectedProfile, minimumRowCount, minimumComparisonCount) {
   const semanticSearchBenchmarkResult = runContract(
     "semantic-search-regression-contract.mjs",
-    "benchmark",
+    command,
   );
   const semanticSearchBenchmarkPayload = parseJsonOutput(
-    "semantic-search-regression-contract benchmark",
+    `semantic-search-regression-contract ${command}`,
     semanticSearchBenchmarkResult.stdout,
   );
   assert.equal(semanticSearchBenchmarkPayload.passed, true);
+  assert.equal(semanticSearchBenchmarkPayload.config?.profile, expectedProfile);
   assert.equal(Array.isArray(semanticSearchBenchmarkPayload.rows), true);
   assert.equal(Array.isArray(semanticSearchBenchmarkPayload.comparisons), true);
-  assert.equal(semanticSearchBenchmarkPayload.rows.length >= 8, true);
-  assert.equal(semanticSearchBenchmarkPayload.comparisons.length >= 4, true);
-  logStep("semantic-search-regression-contract benchmark", {
+  assert.equal(semanticSearchBenchmarkPayload.rows.length >= minimumRowCount, true);
+  assert.equal(semanticSearchBenchmarkPayload.comparisons.length >= minimumComparisonCount, true);
+  logStep(`semantic-search-regression-contract ${command}`, {
     rows: semanticSearchBenchmarkPayload.rows.length,
     comparisons: semanticSearchBenchmarkPayload.comparisons.length,
   });
+}
+
+export function runSemanticBenchmarkSmokeContracts() {
+  runSemanticBenchmarkContract("benchmark-smoke", "smoke", 4, 2);
+}
+
+export function runSemanticBenchmarkFullContracts() {
+  runSemanticBenchmarkContract("benchmark", "full", 8, 4);
+}
+
+export function runSemanticBenchmarkContracts() {
+  runSemanticBenchmarkFullContracts();
 }
 
 export async function runCoreContracts() {

@@ -518,15 +518,16 @@ function runQualityRegression() {
   }
 }
 
-function runBenchmark() {
+function runBenchmark(options = {}) {
   const tempRoot = makeTempDir("semantic-benchmark");
   try {
     writeSemanticRetrievalConfig(tempRoot);
     const sourceRootsAll = writeFixtureTree(tempRoot, 8);
     const fakeBin = writeFakeContextWeaverBin(tempRoot);
-    const sourceCounts = [1, 2, 4, 8];
-    const refreshModes = ["skip", "force"];
-    const iterations = 8;
+    const sourceCounts = options.sourceCounts ?? [1, 2, 4, 8];
+    const refreshModes = options.refreshModes ?? ["skip", "force"];
+    const iterations = options.iterations ?? 8;
+    const profile = options.profile ?? "full";
     const rows = [];
     for (const refresh of refreshModes) {
       for (const sourceCount of sourceCounts) {
@@ -626,6 +627,7 @@ function runBenchmark() {
     return {
       passed: true,
       config: {
+        profile,
         iterations,
         source_counts: sourceCounts,
         refresh_modes: refreshModes,
@@ -645,6 +647,13 @@ function resolveScenario(command) {
   switch (command) {
     case "quality-regression":
       return runQualityRegression();
+    case "benchmark-smoke":
+      return runBenchmark({
+        profile: "smoke",
+        iterations: 3,
+        sourceCounts: [1, 8],
+        refreshModes: ["skip", "force"],
+      });
     case "benchmark":
       return runBenchmark();
     default:

@@ -179,6 +179,13 @@ The scheduler lives in `scripts/lib/quality-scheduler.mjs`.
   `gateway:semantic-benchmark` explicitly use `exclusiveGroup=global`, stay
   globally exclusive, and use broad ceiling assertions plus structured warning
   output for trend jitter rather than brittle wall-clock ordering comparisons.
+  The default CI/prepush semantic benchmark gate runs the quick case directly:
+  `node gateway/tests/check-gateway-node.mjs --case gateway:semantic-benchmark:smoke --json`.
+  That case uses the `benchmark-smoke` profile so daily gates keep a stable
+  signal without paying the full sample matrix. The full benchmark remains
+  available as the release-only suite `gateway:semantic-benchmark-full` and as
+  the aggregate reproduction case `gateway:semantic-benchmark:aggregate`; it
+  must stay globally exclusive rather than being sharded with other smoke work.
   Most gateway smoke suites run as isolated child processes with temp workdirs
   and are allowed to run in parallel after their hard dependencies pass.
 - `node scripts/quality-runner.mjs plan <mode>` prints the executable plan with
@@ -248,6 +255,9 @@ for high-value composite smoke surfaces. Current split cases include:
 - `gateway:plan:bridge-error-codes`
 - `gateway:plan:events-policy`
 - `gateway:plan:quality-benchmark`
+- `gateway:semantic-benchmark:smoke`
+- `gateway:semantic-benchmark:aggregate` (aggregate-only full benchmark
+  reproduction; release suite also exposes `gateway:semantic-benchmark-full`)
 - `runtime:status:interrupt`
 - `runtime:status:stdio-event-stream`
 - `runtime:status:surface`
@@ -457,7 +467,10 @@ over.
 
 Stats now include p50/p90/p95, failure rate, cold durations, and recommendation
 hints. Slow uncached smoke gates are intentionally reported as candidates for
-case splitting or timing-based sharding, not for blind caching.
+case splitting or timing-based sharding, not for blind caching. Timing-sensitive
+benchmark gates are treated differently: the preferred recommendation is profile
+separation (quick smoke vs. full benchmark) while preserving global exclusivity,
+because blind sharding can contaminate the performance signal.
 
 ## Adding or changing a gate
 

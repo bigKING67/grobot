@@ -169,6 +169,16 @@ assert.equal(
   true,
   "runtime management/gc controls must expose case-level GC environment controls",
 );
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "gateway:semantic-benchmark:smoke"),
+  true,
+  "semantic benchmark suite must expose a quick smoke benchmark case",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "gateway:semantic-benchmark:aggregate"),
+  true,
+  "semantic benchmark suite must keep an aggregate full benchmark reproduction case",
+);
 
 const shardResult = spawnSync("node", ["gateway/tests/check-gateway-node.mjs", "--suite", "workflow", "--shard", "1/1", "--json"], {
   encoding: "utf8",

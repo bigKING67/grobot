@@ -5,6 +5,7 @@ import { dirname, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import {
   runCoreContracts,
+  runSemanticBenchmarkFullContracts,
   runSemanticBenchmarkContracts,
 } from "./check-gateway-node/gateway-contract-smoke/core-contracts.mjs";
 import { CASES } from "./check-gateway-node/case-definitions.mjs";
@@ -65,6 +66,10 @@ export const SUITES = Object.freeze({
   "gateway:semantic-benchmark": {
     description: "Semantic retrieval timing benchmark contract.",
     run: runSemanticBenchmarkContracts,
+  },
+  "gateway:semantic-benchmark-full": {
+    description: "Semantic retrieval full timing benchmark contract.",
+    run: runSemanticBenchmarkFullContracts,
   },
   "gateway:session": {
     description: "Session lifecycle and resume/rewind contracts.",
