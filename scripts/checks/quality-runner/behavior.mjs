@@ -80,13 +80,17 @@ function spawnNode(args, options = {}) {
   });
 }
 
-const ALL_SECTIONS = Object.freeze(["registry", "cache", "scheduler"]);
+const ALL_SECTIONS = Object.freeze(["registry", "cache-core", "cache-output", "scheduler"]);
 const sectionArgIndex = process.argv.indexOf("--section");
 const requestedSections = sectionArgIndex === -1
   ? new Set(ALL_SECTIONS)
-  : new Set(String(process.argv[sectionArgIndex + 1] ?? "").split(",").map((item) => item.trim()).filter(Boolean));
+  : new Set(String(process.argv[sectionArgIndex + 1] ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .flatMap((section) => section === "cache" ? ["cache-core", "cache-output"] : [section]));
 if (requestedSections.size === 0) {
-  throw new Error(`--section requires one of: ${ALL_SECTIONS.join(", ")}, aggregate`);
+  throw new Error(`--section requires one of: ${ALL_SECTIONS.join(", ")}, cache, aggregate`);
 }
 for (const section of requestedSections) {
   if (!ALL_SECTIONS.includes(section) && section !== "aggregate") {
@@ -106,10 +110,10 @@ assert.equal(qualityRunnerGate?.actionContract?.name, "check:quality-runner", "r
 assert.equal(qualityRunnerGate?.actionContract?.command, qualityRunnerGate?.command, "action contract command must match executable gate command");
 assert.deepEqual(
   qualityRunnerGate?.deps,
-  ["check:quality-runner:registry", "check:quality-runner:cache", "check:quality-runner:scheduler"],
+  ["check:quality-runner:registry", "check:quality-runner:cache-core", "check:quality-runner:cache-output", "check:quality-runner:scheduler"],
   "quality-runner aggregate gate must depend on behavior shards",
 );
-for (const section of ["registry", "cache", "scheduler"]) {
+for (const section of ["registry", "cache-core", "cache-output", "scheduler"]) {
   assert.equal(
     registry.byName.get(`check:quality-runner:${section}`)?.command,
     `node scripts/checks/quality-runner/behavior.mjs --section ${section}`,
@@ -117,9 +121,9 @@ for (const section of ["registry", "cache", "scheduler"]) {
   );
 }
 assertIncludes(
-  registry.byName.get("check:quality-runner:cache")?.inputs ?? [],
+  registry.byName.get("check:quality-runner:cache-output")?.inputs ?? [],
   "scripts/lib/quality-cache-backend.mjs",
-  "quality-runner cache shard inputs",
+  "quality-runner cache output shard inputs",
 );
 assertExcludes(
   registry.byName.get("check:quality-runner:registry")?.inputs ?? [],
@@ -526,7 +530,7 @@ assertIncludes(unknown, "check:layer-contract", "unknown affected fallback");
 assertIncludes(unknown, "check:runtime:check", "unknown affected fallback");
 }
 
-if (shouldRun("cache") || shouldRun("scheduler")) {
+if (shouldRun("cache-core") || shouldRun("cache-output") || shouldRun("scheduler")) {
 const tmp = mkdtempSync(join(tmpdir(), "grobot-quality-runner-"));
 try {
   mkdirSync(join(tmp, "scripts"), { recursive: true });
@@ -649,7 +653,7 @@ try {
   assert.equal(plan.gates[0].name, "a", "plan must respect dependency levels");
   }
 
-  if (shouldRun("cache")) {
+  if (shouldRun("cache-core")) {
   const cacheExplanation = explainGateCache(tmp, {
     cacheable: true,
     command: "node pass-a.mjs",
@@ -868,7 +872,9 @@ try {
     ["tracked.txt"],
     "cache miss explanation must identify the changed input files when portable action metadata is available",
   );
+  }
 
+  if (shouldRun("cache-output")) {
   const outputGate = {
     cacheable: true,
     command: "node write-output.mjs",

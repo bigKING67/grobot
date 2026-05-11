@@ -208,8 +208,15 @@ const BASE_GATE_DEFINITIONS = Object.freeze([
     inputs: QUALITY_RUNNER_REGISTRY_INPUTS,
   },
   {
-    name: "check:quality-runner:cache",
-    command: "node scripts/checks/quality-runner/behavior.mjs --section cache",
+    name: "check:quality-runner:cache-core",
+    command: "node scripts/checks/quality-runner/behavior.mjs --section cache-core",
+    deps: ["check:gateway:suite-registry"],
+    group: "quality",
+    inputs: QUALITY_RUNNER_CACHE_INPUTS,
+  },
+  {
+    name: "check:quality-runner:cache-output",
+    command: "node scripts/checks/quality-runner/behavior.mjs --section cache-output",
     deps: ["check:gateway:suite-registry"],
     group: "quality",
     inputs: QUALITY_RUNNER_CACHE_INPUTS,
@@ -224,7 +231,7 @@ const BASE_GATE_DEFINITIONS = Object.freeze([
   {
     name: "check:quality-runner",
     command: "node scripts/checks/quality-runner/behavior.mjs --section aggregate",
-    deps: ["check:quality-runner:registry", "check:quality-runner:cache", "check:quality-runner:scheduler"],
+    deps: ["check:quality-runner:registry", "check:quality-runner:cache-core", "check:quality-runner:cache-output", "check:quality-runner:scheduler"],
     group: "quality",
     inputs: QUALITY_RUNNER_COMMON_INPUTS,
     modes: ["quick", "ci"],

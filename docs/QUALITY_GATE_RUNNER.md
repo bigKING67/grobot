@@ -83,8 +83,10 @@ aggregate `check:quality-runner` gate depends on:
 
 - `check:quality-runner:registry`:
   `node scripts/checks/quality-runner/behavior.mjs --section registry`
-- `check:quality-runner:cache`:
-  `node scripts/checks/quality-runner/behavior.mjs --section cache`
+- `check:quality-runner:cache-core`:
+  `node scripts/checks/quality-runner/behavior.mjs --section cache-core`
+- `check:quality-runner:cache-output`:
+  `node scripts/checks/quality-runner/behavior.mjs --section cache-output`
 - `check:quality-runner:scheduler`:
   `node scripts/checks/quality-runner/behavior.mjs --section scheduler`
 
@@ -94,7 +96,10 @@ so self-check surfaces can run in parallel and cache independently. Shard cache
 inputs are intentionally narrower than the old monolithic
 `scripts/lib/quality-*.mjs` glob: registry changes do not invalidate cache
 backend checks, and cache backend changes do not invalidate registry-only
-checks unless the shared behavior script itself changes.
+checks unless the shared behavior script itself changes. The cache self-check
+is split again into cache-key/explainability (`cache-core`) and declared
+output/CAS/backend behavior (`cache-output`) so the slower output path no longer
+serializes the scheduler shard.
 
 ### 2. Affected selection
 
