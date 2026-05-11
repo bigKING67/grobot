@@ -94,12 +94,12 @@ export function requireOption(options, key) {
 }
 
 export function runCommand(repoRoot, argv, envPrefix = null, stdinText = null) {
-  const commandLine = argv.map(shellEscape).join(" ");
-  const exportPrefix = buildEnvPrefix(envPrefix);
-  const shellScript = `cd ${shellEscape(repoRoot)} && ${exportPrefix}${commandLine}`;
-  const completed = spawnSync("bash", ["-lc", shellScript], {
+  const completed = spawnSync(argv[0], argv.slice(1), {
+    cwd: repoRoot,
+    env: envPrefix ? { ...process.env, ...envPrefix } : process.env,
     encoding: "utf8",
     input: typeof stdinText === "string" ? stdinText : undefined,
+    maxBuffer: 16 * 1024 * 1024,
   });
   return {
     exit_code: completed.status ?? 1,
@@ -122,17 +122,6 @@ export function runShellScript(repoRoot, shellBody) {
 
 export function shellEscape(value) {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
-}
-
-function buildEnvPrefix(envPrefix) {
-  if (!envPrefix) {
-    return "";
-  }
-  const entries = Object.entries(envPrefix);
-  if (entries.length === 0) {
-    return "";
-  }
-  return `${entries.map(([key, value]) => `${key}=${shellEscape(value)}`).join(" ")} `;
 }
 
 export function writeConfig(content) {

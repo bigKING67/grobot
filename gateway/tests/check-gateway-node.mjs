@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import {
   runCoreContracts,
@@ -219,7 +219,46 @@ function caseIds() {
   ];
 }
 
-const TIMINGS_PATH = resolve(repoRoot, ".cache/grobot-quality/gateway-timings.json");
+const TIMINGS_PATH = process.env.GROBOT_GATEWAY_TIMINGS_PATH
+  ? isAbsolute(process.env.GROBOT_GATEWAY_TIMINGS_PATH)
+    ? process.env.GROBOT_GATEWAY_TIMINGS_PATH
+    : resolve(repoRoot, process.env.GROBOT_GATEWAY_TIMINGS_PATH)
+  : resolve(repoRoot, ".cache/grobot-quality/gateway-timings.json");
+const TIMING_CONTEXT_SUITE_WORKER = "suite-worker";
+const TIMING_CONTEXT_DEFAULT = "default";
+const TIMING_RECENT_SAMPLE_LIMIT = 24;
+const TIMING_EWMA_ALPHA = 0.35;
+
+function positiveNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function percentileMs(samples, percentile) {
+  const values = samples
+    .map((value) => positiveNumber(value))
+    .filter((value) => value > 0)
+    .sort((left, right) => left - right);
+  if (values.length === 0) {
+    return 0;
+  }
+  const index = Math.min(
+    values.length - 1,
+    Math.max(0, Math.ceil(values.length * percentile) - 1),
+  );
+  return values[index];
+}
+
+function recentTimingSamples(current) {
+  return Array.isArray(current?.recentMs)
+    ? current.recentMs.map((value) => positiveNumber(value)).filter((value) => value > 0)
+    : [];
+}
+
+function currentTimingContext() {
+  const raw = String(process.env.GROBOT_GATEWAY_TIMING_CONTEXT ?? "").trim();
+  return raw.length > 0 ? raw : TIMING_CONTEXT_DEFAULT;
+}
 
 function loadTimings() {
   if (!existsSync(TIMINGS_PATH)) {
@@ -232,27 +271,89 @@ function loadTimings() {
   }
 }
 
-function writeTiming(caseId, durationMs, status) {
-  const timings = loadTimings();
-  const current = timings[caseId] ?? {
+function updateTimingStats(current, durationMs, status) {
+  const base = current ?? {
     count: 0,
     failures: 0,
     avgMs: 0,
     maxMs: 0,
   };
-  const count = Number(current.count ?? 0) + 1;
-  const previousAvg = Number(current.avgMs ?? 0);
-  timings[caseId] = {
+  const count = Number(base.count ?? 0) + 1;
+  const previousAvg = Number(base.avgMs ?? 0);
+  const recentMs = [...recentTimingSamples(base), durationMs].slice(-TIMING_RECENT_SAMPLE_LIMIT);
+  const previousEwmaMs = positiveNumber(base.ewmaMs);
+  const ewmaMs = Math.round(
+    previousEwmaMs > 0
+      ? (previousEwmaMs * (1 - TIMING_EWMA_ALPHA)) + (durationMs * TIMING_EWMA_ALPHA)
+      : durationMs,
+  );
+  return {
     count,
-    failures: Number(current.failures ?? 0) + (status === "ok" ? 0 : 1),
+    failures: Number(base.failures ?? 0) + (status === "ok" ? 0 : 1),
     avgMs: Math.round(((previousAvg * (count - 1)) + durationMs) / count),
-    maxMs: Math.max(Number(current.maxMs ?? 0), durationMs),
+    ewmaMs,
+    maxMs: Math.max(Number(base.maxMs ?? 0), durationMs),
+    p90Ms: percentileMs(recentMs, 0.9),
+    recentMs,
     lastMs: durationMs,
     lastStatus: status,
     updatedAt: new Date().toISOString(),
   };
+}
+
+function writeTiming(caseId, durationMs, status) {
+  const timings = loadTimings();
+  const current = timings[caseId] ?? {};
+  const contextKey = currentTimingContext();
+  const contexts = current.contexts && typeof current.contexts === "object" && !Array.isArray(current.contexts)
+    ? current.contexts
+    : {};
+  timings[caseId] = {
+    ...updateTimingStats(current, durationMs, status),
+    contexts: {
+      ...contexts,
+      [contextKey]: updateTimingStats(contexts[contextKey], durationMs, status),
+    },
+  };
   mkdirSync(resolve(repoRoot, ".cache/grobot-quality"), { recursive: true });
   writeFileSync(TIMINGS_PATH, `${JSON.stringify(timings, null, 2)}\n`, "utf8");
+}
+
+function estimateFromStats(stats, seedEstimateMs) {
+  const historicalEstimateMs = positiveNumber(stats?.avgMs);
+  const recentEstimateMs = Math.max(
+    positiveNumber(stats?.ewmaMs),
+    positiveNumber(stats?.p90Ms),
+    percentileMs(recentTimingSamples(stats), 0.9),
+    positiveNumber(stats?.lastMs),
+  );
+  const count = positiveNumber(stats?.count);
+  const maxEstimateMs = positiveNumber(stats?.maxMs);
+  const lowConfidenceSpikeMs = count > 0 && count < 3
+    ? Math.min(
+      maxEstimateMs,
+      Math.round(Math.max(seedEstimateMs, historicalEstimateMs, recentEstimateMs, 1) * 1.5),
+    )
+    : 0;
+  return Math.max(seedEstimateMs, historicalEstimateMs, recentEstimateMs, lowConfidenceSpikeMs);
+}
+
+function estimateCaseMs(caseId, splitCase, timings) {
+  const current = timings[caseId] ?? {};
+  const seedEstimateMs = positiveNumber(splitCase?.seedMs);
+  const contexts = current.contexts && typeof current.contexts === "object" && !Array.isArray(current.contexts)
+    ? current.contexts
+    : {};
+  const currentStatsEstimate = estimateFromStats(current, seedEstimateMs);
+  const suiteWorkerStats = contexts[TIMING_CONTEXT_SUITE_WORKER] ?? null;
+  if (suiteWorkerStats) {
+    return Math.max(currentStatsEstimate, estimateFromStats(suiteWorkerStats, seedEstimateMs));
+  }
+  const defaultStats = contexts[TIMING_CONTEXT_DEFAULT] ?? null;
+  if (defaultStats) {
+    return Math.max(currentStatsEstimate, estimateFromStats(defaultStats, seedEstimateMs));
+  }
+  return currentStatsEstimate;
 }
 
 function listCases() {
@@ -264,7 +365,7 @@ function listCases() {
       id: caseId,
       suite: suiteId,
       description: splitCase?.description ?? SUITES[suiteId]?.description ?? "",
-      estimatedMs: Number(timings[caseId]?.avgMs ?? 0),
+      estimatedMs: estimateCaseMs(caseId, splitCase, timings),
       isolation: "process",
     };
   });

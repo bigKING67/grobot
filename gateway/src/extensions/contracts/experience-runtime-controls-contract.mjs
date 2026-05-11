@@ -76,6 +76,21 @@ function createBoundaryControlArgs(options) {
 }
 
 function runStartBoundaryControlsRejectFlow(options) {
+  const teamControls = runStartTeamBoundaryControlsRejectFlow(options);
+  const configControls = runStartConfigBoundaryControlsRejectFlow(options);
+  return {
+    ...teamControls,
+    ...configControls,
+    hides_top_level_fatal:
+      teamControls.hides_top_level_fatal
+      && configControls.hides_top_level_fatal,
+    start_banner_not_reached:
+      teamControls.start_banner_not_reached
+      && configControls.start_banner_not_reached,
+  };
+}
+
+function runStartTeamBoundaryControlsRejectFlow(options) {
   const { context, repoRoot, startCommonArgs } = createBoundaryControlArgs(options);
   const startEmptyTeam = runRepoCommand(repoRoot, startCommonArgs, {
     GROBOT_TEAM: "",
@@ -89,15 +104,6 @@ function runStartBoundaryControlsRejectFlow(options) {
     "--team",
     "",
   ]);
-  const startEmptyPoolPath = runRepoCommand(repoRoot, startCommonArgs, {
-    GROBOT_EXPERIENCE_POOL_PATH: "   ",
-  });
-  const startEmptyPublishMode = runRepoCommand(repoRoot, startCommonArgs, {
-    GROBOT_EXPERIENCE_PUBLISH_MODE: "",
-  });
-  const startEmptyRecallLimit = runRepoCommand(repoRoot, startCommonArgs, {
-    GROBOT_EXPERIENCE_RECALL_LIMIT: "   ",
-  });
   const combinedOutput = [
     startEmptyTeam.stdout,
     startEmptyTeam.stderr,
@@ -105,12 +111,6 @@ function runStartBoundaryControlsRejectFlow(options) {
     startMissingTeamOption.stderr,
     startEmptyTeamOption.stdout,
     startEmptyTeamOption.stderr,
-    startEmptyPoolPath.stdout,
-    startEmptyPoolPath.stderr,
-    startEmptyPublishMode.stdout,
-    startEmptyPublishMode.stderr,
-    startEmptyRecallLimit.stdout,
-    startEmptyRecallLimit.stderr,
   ].join("\n");
 
   return {
@@ -132,6 +132,32 @@ function runStartBoundaryControlsRejectFlow(options) {
       "invalid_team",
       "team must be a non-empty string",
     ),
+    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
+    start_banner_not_reached: !context.hasStartBannerMarker(combinedOutput),
+  };
+}
+
+function runStartConfigBoundaryControlsRejectFlow(options) {
+  const { context, repoRoot, startCommonArgs } = createBoundaryControlArgs(options);
+  const startEmptyPoolPath = runRepoCommand(repoRoot, startCommonArgs, {
+    GROBOT_EXPERIENCE_POOL_PATH: "   ",
+  });
+  const startEmptyPublishMode = runRepoCommand(repoRoot, startCommonArgs, {
+    GROBOT_EXPERIENCE_PUBLISH_MODE: "",
+  });
+  const startEmptyRecallLimit = runRepoCommand(repoRoot, startCommonArgs, {
+    GROBOT_EXPERIENCE_RECALL_LIMIT: "   ",
+  });
+  const combinedOutput = [
+    startEmptyPoolPath.stdout,
+    startEmptyPoolPath.stderr,
+    startEmptyPublishMode.stdout,
+    startEmptyPublishMode.stderr,
+    startEmptyRecallLimit.stdout,
+    startEmptyRecallLimit.stderr,
+  ].join("\n");
+
+  return {
     start_empty_pool_path_exit_code: startEmptyPoolPath.exit_code,
     start_empty_pool_path_has_stable_error: hasStableError(
       startEmptyPoolPath,
@@ -234,6 +260,16 @@ function runCli(argv) {
     }
     case "start-boundary-controls-reject-flow": {
       const payload = runStartBoundaryControlsRejectFlow(options);
+      process.stdout.write(`${JSON.stringify(payload)}\n`);
+      return 0;
+    }
+    case "start-team-boundary-controls-reject-flow": {
+      const payload = runStartTeamBoundaryControlsRejectFlow(options);
+      process.stdout.write(`${JSON.stringify(payload)}\n`);
+      return 0;
+    }
+    case "start-config-boundary-controls-reject-flow": {
+      const payload = runStartConfigBoundaryControlsRejectFlow(options);
       process.stdout.write(`${JSON.stringify(payload)}\n`);
       return 0;
     }

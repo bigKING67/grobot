@@ -81,7 +81,12 @@ export async function runCasesInWorkers(caseIdsToRun, workers, caseRecords, repo
       result: await runNodeScriptAsync("gateway/tests/check-gateway-node.mjs", [
         ...bucket.caseIds.flatMap((caseId) => ["--case", caseId]),
         "--json",
-      ]),
+      ], {
+        env: {
+          ...process.env,
+          GROBOT_GATEWAY_TIMING_CONTEXT: "suite-worker",
+        },
+      }),
     }));
   const results = await Promise.all(workerRuns);
   const failures = results.filter(({ result }) => result.code !== 0);

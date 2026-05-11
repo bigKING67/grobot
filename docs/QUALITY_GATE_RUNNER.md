@@ -268,8 +268,13 @@ for high-value composite smoke surfaces. Current split cases include:
 - `runtime:status:surface`
 - `runtime:status:window-size`
 - `runtime:controls:context-engine`
-- `runtime:controls:context-engine-env`
-- `runtime:controls:context-engine-toml`
+- `runtime:controls:context-engine-env` (aggregate-only reproduction)
+- `runtime:controls:context-engine-env-core`
+- `runtime:controls:context-engine-env-adaptive`
+- `runtime:controls:context-engine-toml` (aggregate-only reproduction)
+- `runtime:controls:context-engine-toml-basic`
+- `runtime:controls:context-engine-toml-thresholds`
+- `runtime:controls:context-engine-toml-window`
 - `runtime:controls:context-engine-status`
 - `runtime:controls:context-engine-valid-boundary`
 - `runtime:controls:experience-scheduler`
@@ -277,11 +282,17 @@ for high-value composite smoke surfaces. Current split cases include:
 - `runtime:controls:experience-scheduler-toml`
 - `runtime:controls:experience-scheduler-valid-boundary`
 - `runtime:controls:experience-runtime`
-- `runtime:controls:experience-runtime-start`
+- `runtime:controls:experience-runtime-start` (aggregate-only reproduction)
+- `runtime:controls:experience-runtime-start-team`
+- `runtime:controls:experience-runtime-start-config`
 - `runtime:controls:experience-runtime-serve`
 - `runtime:controls:tool-surface-profile`
 - `runtime:controls:runtime-bin`
-- `runtime:controls:mcp-instruction`
+- `runtime:controls:mcp-instruction` (aggregate-only reproduction)
+- `runtime:controls:mcp-instruction-basic`
+- `runtime:controls:mcp-instruction-scope`
+- `runtime:controls:mcp-instruction-server`
+- `runtime:controls:mcp-instruction-valid-disabled-boundary`
 - `runtime:controls:status-line`
 - `runtime:controls:status-line-basic`
 - `runtime:controls:status-line-segment-order`
@@ -440,11 +451,23 @@ and management validation domain while preserving `runtime:describe:full` as
 the aggregate reproduction path.
 Runtime controls cases keep the original aggregate case ids available for
 focused reproduction, but suite selection runs finer case-level shards for the
-large domains: context-engine env/TOML/status/boundary, experience scheduler
-env/TOML/boundary, experience runtime start/serve, and status-line
-basic/order/threshold/cache/segment/boundary. The quality registry runs this
-suite with five internal workers so CI no longer serializes the former
-large control monoliths.
+large domains: context-engine env core/adaptive, context-engine TOML
+basic/threshold/window, context-engine status/boundary, experience scheduler
+env/TOML/boundary, experience runtime start team/config and serve, MCP instruction
+basic/scope/server/disabled-boundary, and status-line basic/order/threshold/
+cache/segment/boundary. New high-value split cases carry seed timing estimates
+in `case-definitions.mjs`, and the gateway case timing cache records EWMA,
+p90, last, and recent samples per timing context. Internal worker runs write a
+`suite-worker` timing context; suite bin packing compares that context with the
+global historical estimate so focused reproduction timings cannot understate the
+default parallel plan while real suite-worker spikes are still retained. This
+keeps worker bin packing from being driven by zero-cost unknowns, stale
+averages, or context-polluted fast samples. The quality registry runs this suite
+with five internal workers so CI no longer serializes the former large control
+monoliths.
+Set `GROBOT_GATEWAY_TIMINGS_PATH=<path>` when benchmarking alternate timing
+snapshots without mutating the default `.cache/grobot-quality/gateway-timings.json`
+cache; set `GROBOT_GATEWAY_TIMING_CONTEXT=<name>` only for harness experiments.
 Runtime start controls are split by control source: CLI runtime options,
 provider env controls, memory maintenance env, context-window env, and
 ask-user TTL env controls. The aggregate `runtime:start-controls:runtime-controls`

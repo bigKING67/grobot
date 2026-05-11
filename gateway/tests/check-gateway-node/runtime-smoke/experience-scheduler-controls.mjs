@@ -23,60 +23,60 @@ function assertNoFatalNoBanner(payload) {
 
 export function assertExperienceSchedulerControlSmoke() {
   const payload = runExperienceSchedulerControlContract("start-invalid-experience-scheduler-controls-reject-flow");
-  assert.equal(payload.invalid_env_boolean_exit_code, 2);
-  assert.equal(payload.invalid_env_boolean_has_stable_error, true);
-  assert.equal(payload.invalid_env_interval_syntax_exit_code, 2);
-  assert.equal(payload.invalid_env_interval_syntax_has_stable_error, true);
-  assert.equal(payload.invalid_env_interval_range_exit_code, 2);
-  assert.equal(payload.invalid_env_interval_range_has_stable_error, true);
-  assert.equal(payload.invalid_env_tasks_dir_exit_code, 2);
-  assert.equal(payload.invalid_env_tasks_dir_has_stable_error, true);
-  assert.equal(payload.invalid_env_default_delay_exit_code, 2);
-  assert.equal(payload.invalid_env_default_delay_has_stable_error, true);
-  assert.equal(payload.invalid_toml_boolean_exit_code, 2);
-  assert.equal(payload.invalid_toml_boolean_has_stable_error, true);
-  assert.equal(payload.invalid_toml_interval_exit_code, 2);
-  assert.equal(payload.invalid_toml_interval_has_stable_error, true);
-  assert.equal(payload.invalid_toml_interval_secs_exit_code, 2);
-  assert.equal(payload.invalid_toml_interval_secs_has_stable_error, true);
-  assert.equal(payload.invalid_toml_path_exit_code, 2);
-  assert.equal(payload.invalid_toml_path_has_stable_error, true);
-  assert.equal(payload.invalid_toml_default_delay_exit_code, 2);
-  assert.equal(payload.invalid_toml_default_delay_has_stable_error, true);
+  assertExperienceSchedulerEnvBasicPayload(payload);
+  assertExperienceSchedulerEnvPathDelayPayload(payload);
+  assertExperienceSchedulerTomlBasicPayload(payload);
+  assertExperienceSchedulerTomlPathDelayPayload(payload);
   assert.equal(payload.valid_boundary_exit_code !== 2, true);
   assert.equal(payload.valid_boundary_reached_runtime, true);
   assertNoFatalNoBanner(payload);
   logStep("start-smoke-contract start-invalid-experience-scheduler-controls-reject-flow");
 }
 
-export function assertExperienceSchedulerEnvControlSmoke() {
-  const payload = runExperienceSchedulerControlContract("start-invalid-experience-scheduler-env-controls-reject-flow");
+function assertExperienceSchedulerEnvBasicPayload(payload) {
   assert.equal(payload.invalid_env_boolean_exit_code, 2);
   assert.equal(payload.invalid_env_boolean_has_stable_error, true);
   assert.equal(payload.invalid_env_interval_syntax_exit_code, 2);
   assert.equal(payload.invalid_env_interval_syntax_has_stable_error, true);
   assert.equal(payload.invalid_env_interval_range_exit_code, 2);
   assert.equal(payload.invalid_env_interval_range_has_stable_error, true);
+}
+
+function assertExperienceSchedulerEnvPathDelayPayload(payload) {
   assert.equal(payload.invalid_env_tasks_dir_exit_code, 2);
   assert.equal(payload.invalid_env_tasks_dir_has_stable_error, true);
   assert.equal(payload.invalid_env_default_delay_exit_code, 2);
   assert.equal(payload.invalid_env_default_delay_has_stable_error, true);
-  assertNoFatalNoBanner(payload);
-  logStep("start-smoke-contract start-invalid-experience-scheduler-env-controls-reject-flow");
 }
 
-export function assertExperienceSchedulerTomlControlSmoke() {
-  const payload = runExperienceSchedulerControlContract("start-invalid-experience-scheduler-toml-controls-reject-flow");
+function assertExperienceSchedulerTomlBasicPayload(payload) {
   assert.equal(payload.invalid_toml_boolean_exit_code, 2);
   assert.equal(payload.invalid_toml_boolean_has_stable_error, true);
   assert.equal(payload.invalid_toml_interval_exit_code, 2);
   assert.equal(payload.invalid_toml_interval_has_stable_error, true);
   assert.equal(payload.invalid_toml_interval_secs_exit_code, 2);
   assert.equal(payload.invalid_toml_interval_secs_has_stable_error, true);
+}
+
+function assertExperienceSchedulerTomlPathDelayPayload(payload) {
   assert.equal(payload.invalid_toml_path_exit_code, 2);
   assert.equal(payload.invalid_toml_path_has_stable_error, true);
   assert.equal(payload.invalid_toml_default_delay_exit_code, 2);
   assert.equal(payload.invalid_toml_default_delay_has_stable_error, true);
+}
+
+export function assertExperienceSchedulerEnvControlSmoke() {
+  const payload = runExperienceSchedulerControlContract("start-invalid-experience-scheduler-env-controls-reject-flow");
+  assertExperienceSchedulerEnvBasicPayload(payload);
+  assertExperienceSchedulerEnvPathDelayPayload(payload);
+  assertNoFatalNoBanner(payload);
+  logStep("start-smoke-contract start-invalid-experience-scheduler-env-controls-reject-flow");
+}
+
+export function assertExperienceSchedulerTomlControlSmoke() {
+  const payload = runExperienceSchedulerControlContract("start-invalid-experience-scheduler-toml-controls-reject-flow");
+  assertExperienceSchedulerTomlBasicPayload(payload);
+  assertExperienceSchedulerTomlPathDelayPayload(payload);
   assertNoFatalNoBanner(payload);
   logStep("start-smoke-contract start-invalid-experience-scheduler-toml-controls-reject-flow");
 }

@@ -107,8 +107,13 @@ import {
 } from "./start-smoke-contract/memory-strategy-profile-control-flow.mjs";
 import {
   runStartInvalidContextEngineControlsRejectFlow,
+  runStartInvalidContextEngineEnvAdaptiveControlsRejectFlow,
   runStartInvalidContextEngineEnvControlsRejectFlow,
+  runStartInvalidContextEngineEnvCoreControlsRejectFlow,
+  runStartInvalidContextEngineTomlBasicControlsRejectFlow,
   runStartInvalidContextEngineTomlControlsRejectFlow,
+  runStartInvalidContextEngineTomlThresholdControlsRejectFlow,
+  runStartInvalidContextEngineTomlWindowControlsRejectFlow,
   runStartContextEngineValidBoundaryFlow,
   runStatusInvalidContextEngineControlsRejectFlow,
 } from "./start-smoke-contract/context-engine-control-flows.mjs";
@@ -127,7 +132,11 @@ import {
   runStartMcpInstructionEventsFlow,
 } from "./start-smoke-contract/mcp-instruction-flows.mjs";
 import {
+  runStartInvalidMcpInstructionBasicControlsRejectFlow,
   runStartInvalidMcpInstructionControlsRejectFlow,
+  runStartInvalidMcpInstructionScopeControlsRejectFlow,
+  runStartInvalidMcpInstructionServerControlsRejectFlow,
+  runStartMcpInstructionValidDisabledBoundaryFlow,
 } from "./start-smoke-contract/mcp-instruction-control-flows.mjs";
 import {
   runStartInvalidStatusLineControlsRejectFlow,
@@ -211,8 +220,23 @@ function runCli(argv) {
     case "start-invalid-context-engine-env-controls-reject-flow":
       payload = runStartInvalidContextEngineEnvControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
+    case "start-invalid-context-engine-env-core-controls-reject-flow":
+      payload = runStartInvalidContextEngineEnvCoreControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-context-engine-env-adaptive-controls-reject-flow":
+      payload = runStartInvalidContextEngineEnvAdaptiveControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
     case "start-invalid-context-engine-toml-controls-reject-flow":
       payload = runStartInvalidContextEngineTomlControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-context-engine-toml-basic-controls-reject-flow":
+      payload = runStartInvalidContextEngineTomlBasicControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-context-engine-toml-threshold-controls-reject-flow":
+      payload = runStartInvalidContextEngineTomlThresholdControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-context-engine-toml-window-controls-reject-flow":
+      payload = runStartInvalidContextEngineTomlWindowControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "status-invalid-context-engine-controls-reject-flow":
       payload = runStatusInvalidContextEngineControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
@@ -346,6 +370,18 @@ function runCli(argv) {
       break;
     case "start-invalid-mcp-instruction-controls-reject-flow":
       payload = runStartInvalidMcpInstructionControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-mcp-instruction-basic-controls-reject-flow":
+      payload = runStartInvalidMcpInstructionBasicControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-mcp-instruction-scope-controls-reject-flow":
+      payload = runStartInvalidMcpInstructionScopeControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-mcp-instruction-server-controls-reject-flow":
+      payload = runStartInvalidMcpInstructionServerControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-mcp-instruction-valid-disabled-boundary-flow":
+      payload = runStartMcpInstructionValidDisabledBoundaryFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "start-invalid-status-line-controls-reject-flow":
       payload = runStartInvalidStatusLineControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));

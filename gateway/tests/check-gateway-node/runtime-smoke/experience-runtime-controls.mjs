@@ -46,21 +46,45 @@ export function assertExperienceRuntimeControlSmoke() {
 
 export function assertExperienceRuntimeStartControlSmoke() {
   const payload = runExperienceRuntimeControlContract("start-boundary-controls-reject-flow");
+  assertExperienceRuntimeStartTeamPayload(payload);
+  assertExperienceRuntimeStartConfigPayload(payload);
+  assert.equal(payload.hides_top_level_fatal, true);
+  assert.equal(payload.start_banner_not_reached, true);
+  logStep("experience-runtime-controls-contract start-boundary-controls-reject-flow");
+}
+
+function assertExperienceRuntimeStartTeamPayload(payload) {
   assert.equal(payload.start_empty_team_exit_code, 2);
   assert.equal(payload.start_empty_team_has_stable_error, true);
   assert.equal(payload.start_missing_team_option_exit_code, 2);
   assert.equal(payload.start_missing_team_option_has_stable_error, true);
   assert.equal(payload.start_empty_team_option_exit_code, 2);
   assert.equal(payload.start_empty_team_option_has_stable_error, true);
+}
+
+function assertExperienceRuntimeStartConfigPayload(payload) {
   assert.equal(payload.start_empty_pool_path_exit_code, 2);
   assert.equal(payload.start_empty_pool_path_has_stable_error, true);
   assert.equal(payload.start_empty_publish_mode_exit_code, 2);
   assert.equal(payload.start_empty_publish_mode_has_stable_error, true);
   assert.equal(payload.start_empty_recall_limit_exit_code, 2);
   assert.equal(payload.start_empty_recall_limit_has_stable_error, true);
+}
+
+export function assertExperienceRuntimeStartTeamControlSmoke() {
+  const payload = runExperienceRuntimeControlContract("start-team-boundary-controls-reject-flow");
+  assertExperienceRuntimeStartTeamPayload(payload);
   assert.equal(payload.hides_top_level_fatal, true);
   assert.equal(payload.start_banner_not_reached, true);
-  logStep("experience-runtime-controls-contract start-boundary-controls-reject-flow");
+  logStep("experience-runtime-controls-contract start-team-boundary-controls-reject-flow");
+}
+
+export function assertExperienceRuntimeStartConfigControlSmoke() {
+  const payload = runExperienceRuntimeControlContract("start-config-boundary-controls-reject-flow");
+  assertExperienceRuntimeStartConfigPayload(payload);
+  assert.equal(payload.hides_top_level_fatal, true);
+  assert.equal(payload.start_banner_not_reached, true);
+  logStep("experience-runtime-controls-contract start-config-boundary-controls-reject-flow");
 }
 
 export function assertExperienceRuntimeServeControlSmoke() {

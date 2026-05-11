@@ -78,36 +78,7 @@ import {
   runRuntimeProviderPersistedFailureStatusSmoke,
   runRuntimeProviderUpstreamFailureStatusSmoke,
 } from "./runtime-smoke/provider-status.mjs";
-import {
-  assertContextEngineControlSmoke,
-  assertContextEngineEnvControlSmoke,
-  assertContextEngineStatusControlSmoke,
-  assertContextEngineTomlControlSmoke,
-  assertContextEngineValidBoundarySmoke,
-} from "./runtime-smoke/context-engine-controls.mjs";
-import {
-  assertExperienceRuntimeControlSmoke,
-  assertExperienceRuntimeServeControlSmoke,
-  assertExperienceRuntimeStartControlSmoke,
-} from "./runtime-smoke/experience-runtime-controls.mjs";
-import {
-  assertExperienceSchedulerControlSmoke,
-  assertExperienceSchedulerEnvControlSmoke,
-  assertExperienceSchedulerTomlControlSmoke,
-  assertExperienceSchedulerValidBoundarySmoke,
-} from "./runtime-smoke/experience-scheduler-controls.mjs";
-import { assertMcpInstructionControlSmoke } from "./runtime-smoke/mcp-instruction-controls.mjs";
-import { assertRuntimeBinControlSmoke } from "./runtime-smoke/runtime-bin-controls.mjs";
-import {
-  assertStatusLineBasicControlSmoke,
-  assertStatusLineCacheControlSmoke,
-  assertStatusLineControlSmoke,
-  assertStatusLineSegmentOrderControlSmoke,
-  assertStatusLineSegmentToggleControlSmoke,
-  assertStatusLineThresholdControlSmoke,
-  assertStatusLineValidBoundarySmoke,
-} from "./runtime-smoke/status-line-controls.mjs";
-import { assertToolSurfaceProfileControlSmoke } from "./runtime-smoke/tool-surface-profile-controls.mjs";
+import { RUNTIME_CONTROLS_CASES } from "./runtime-controls-cases.mjs";
 import {
   runRuntimeGcCliControlSmoke,
   runRuntimeGcControlSmoke,
@@ -284,116 +255,7 @@ export const CASES = Object.freeze({
     description: "Runtime status context graph window-size contract.",
     run: runRuntimeStatusWindowSizeSmoke,
   },
-  "runtime:controls:context-engine": {
-    suite: "runtime:controls",
-    description: "Context engine aggregate control rejection smoke.",
-    run: aggregateOnly(assertContextEngineControlSmoke),
-  },
-  "runtime:controls:context-engine-env": {
-    suite: "runtime:controls",
-    description: "Context engine environment control rejection smoke.",
-    run: assertContextEngineEnvControlSmoke,
-  },
-  "runtime:controls:context-engine-toml": {
-    suite: "runtime:controls",
-    description: "Context engine project TOML control rejection smoke.",
-    run: assertContextEngineTomlControlSmoke,
-  },
-  "runtime:controls:context-engine-status": {
-    suite: "runtime:controls",
-    description: "Context engine status surface control rejection smoke.",
-    run: assertContextEngineStatusControlSmoke,
-  },
-  "runtime:controls:context-engine-valid-boundary": {
-    suite: "runtime:controls",
-    description: "Context engine valid boundary reaches runtime.",
-    run: assertContextEngineValidBoundarySmoke,
-  },
-  "runtime:controls:experience-scheduler": {
-    suite: "runtime:controls",
-    description: "Experience scheduler aggregate control rejection smoke.",
-    run: aggregateOnly(assertExperienceSchedulerControlSmoke),
-  },
-  "runtime:controls:experience-scheduler-env": {
-    suite: "runtime:controls",
-    description: "Experience scheduler environment control rejection smoke.",
-    run: assertExperienceSchedulerEnvControlSmoke,
-  },
-  "runtime:controls:experience-scheduler-toml": {
-    suite: "runtime:controls",
-    description: "Experience scheduler project TOML control rejection smoke.",
-    run: assertExperienceSchedulerTomlControlSmoke,
-  },
-  "runtime:controls:experience-scheduler-valid-boundary": {
-    suite: "runtime:controls",
-    description: "Experience scheduler valid boundary reaches runtime.",
-    run: assertExperienceSchedulerValidBoundarySmoke,
-  },
-  "runtime:controls:experience-runtime": {
-    suite: "runtime:controls",
-    description: "Experience runtime aggregate control rejection smoke.",
-    run: aggregateOnly(assertExperienceRuntimeControlSmoke),
-  },
-  "runtime:controls:experience-runtime-start": {
-    suite: "runtime:controls",
-    description: "Experience runtime start boundary control rejection smoke.",
-    run: assertExperienceRuntimeStartControlSmoke,
-  },
-  "runtime:controls:experience-runtime-serve": {
-    suite: "runtime:controls",
-    description: "Experience runtime serve boundary control rejection smoke.",
-    run: assertExperienceRuntimeServeControlSmoke,
-  },
-  "runtime:controls:tool-surface-profile": {
-    suite: "runtime:controls",
-    description: "Tool surface profile control rejection smoke.",
-    run: assertToolSurfaceProfileControlSmoke,
-  },
-  "runtime:controls:runtime-bin": {
-    suite: "runtime:controls",
-    description: "Runtime binary control rejection smoke.",
-    run: assertRuntimeBinControlSmoke,
-  },
-  "runtime:controls:mcp-instruction": {
-    suite: "runtime:controls",
-    description: "MCP instruction control rejection smoke.",
-    run: assertMcpInstructionControlSmoke,
-  },
-  "runtime:controls:status-line": {
-    suite: "runtime:controls",
-    description: "Status line aggregate control rejection smoke.",
-    run: aggregateOnly(assertStatusLineControlSmoke),
-  },
-  "runtime:controls:status-line-basic": {
-    suite: "runtime:controls",
-    description: "Status line basic config control rejection smoke.",
-    run: assertStatusLineBasicControlSmoke,
-  },
-  "runtime:controls:status-line-segment-order": {
-    suite: "runtime:controls",
-    description: "Status line segment order control rejection smoke.",
-    run: assertStatusLineSegmentOrderControlSmoke,
-  },
-  "runtime:controls:status-line-thresholds": {
-    suite: "runtime:controls",
-    description: "Status line threshold control rejection smoke.",
-    run: assertStatusLineThresholdControlSmoke,
-  },
-  "runtime:controls:status-line-cache": {
-    suite: "runtime:controls",
-    description: "Status line cache and width control rejection smoke.",
-    run: assertStatusLineCacheControlSmoke,
-  },
-  "runtime:controls:status-line-segment-toggle": {
-    suite: "runtime:controls",
-    description: "Status line segment toggle control rejection smoke.",
-    run: assertStatusLineSegmentToggleControlSmoke,
-  },
-  "runtime:controls:status-line-valid-boundary": {
-    suite: "runtime:controls",
-    description: "Status line valid boundary reaches runtime.",
-    run: assertStatusLineValidBoundarySmoke,
-  },
+  ...RUNTIME_CONTROLS_CASES,
   "runtime:start-controls:runtime-options": {
     suite: "runtime:start-controls",
     description: "Runtime start CLI option validation controls.",

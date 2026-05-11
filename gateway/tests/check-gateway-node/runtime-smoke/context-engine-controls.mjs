@@ -57,6 +57,13 @@ export function assertContextEngineControlSmoke() {
 
 export function assertContextEngineEnvControlSmoke() {
   const payload = runContextEngineControlContract("start-invalid-context-engine-env-controls-reject-flow");
+  assertContextEngineEnvCorePayload(payload);
+  assertContextEngineEnvAdaptivePayload(payload);
+  assertNoFatalNoBanner(payload);
+  logStep("start-smoke-contract start-invalid-context-engine-env-controls-reject-flow");
+}
+
+function assertContextEngineEnvCorePayload(payload) {
   assert.equal(payload.invalid_env_window_syntax_exit_code, 2);
   assert.equal(payload.invalid_env_window_syntax_has_stable_error, true);
   assert.equal(payload.invalid_env_window_range_exit_code, 2);
@@ -65,28 +72,76 @@ export function assertContextEngineEnvControlSmoke() {
   assert.equal(payload.invalid_env_ratio_has_stable_error, true);
   assert.equal(payload.invalid_env_boolean_exit_code, 2);
   assert.equal(payload.invalid_env_boolean_has_stable_error, true);
+}
+
+function assertContextEngineEnvAdaptivePayload(payload) {
   assert.equal(payload.invalid_adaptive_allowlist_exit_code, 2);
   assert.equal(payload.invalid_adaptive_allowlist_has_stable_error, true);
+}
+
+export function assertContextEngineEnvCoreControlSmoke() {
+  const payload = runContextEngineControlContract("start-invalid-context-engine-env-core-controls-reject-flow");
+  assertContextEngineEnvCorePayload(payload);
   assertNoFatalNoBanner(payload);
-  logStep("start-smoke-contract start-invalid-context-engine-env-controls-reject-flow");
+  logStep("start-smoke-contract start-invalid-context-engine-env-core-controls-reject-flow");
+}
+
+export function assertContextEngineEnvAdaptiveControlSmoke() {
+  const payload = runContextEngineControlContract("start-invalid-context-engine-env-adaptive-controls-reject-flow");
+  assertContextEngineEnvAdaptivePayload(payload);
+  assertNoFatalNoBanner(payload);
+  logStep("start-smoke-contract start-invalid-context-engine-env-adaptive-controls-reject-flow");
 }
 
 export function assertContextEngineTomlControlSmoke() {
   const payload = runContextEngineControlContract("start-invalid-context-engine-toml-controls-reject-flow");
+  assertContextEngineTomlBasicPayload(payload);
+  assertContextEngineTomlThresholdPayload(payload);
+  assertContextEngineTomlWindowPayload(payload);
+  assertNoFatalNoBanner(payload);
+  logStep("start-smoke-contract start-invalid-context-engine-toml-controls-reject-flow");
+}
+
+function assertContextEngineTomlBasicPayload(payload) {
   assert.equal(payload.invalid_toml_number_exit_code, 2);
   assert.equal(payload.invalid_toml_number_has_stable_error, true);
   assert.equal(payload.invalid_toml_range_exit_code, 2);
   assert.equal(payload.invalid_toml_range_has_stable_error, true);
   assert.equal(payload.invalid_toml_enum_exit_code, 2);
   assert.equal(payload.invalid_toml_enum_has_stable_error, true);
+}
+
+function assertContextEngineTomlThresholdPayload(payload) {
   assert.equal(payload.invalid_threshold_order_exit_code, 2);
   assert.equal(payload.invalid_threshold_order_has_stable_error, true);
+}
+
+function assertContextEngineTomlWindowPayload(payload) {
   assert.equal(payload.invalid_effective_window_exit_code, 2);
   assert.equal(payload.invalid_effective_window_has_stable_error, true);
   assert.equal(payload.invalid_auto_compact_limit_exit_code, 2);
   assert.equal(payload.invalid_auto_compact_limit_has_stable_error, true);
+}
+
+export function assertContextEngineTomlBasicControlSmoke() {
+  const payload = runContextEngineControlContract("start-invalid-context-engine-toml-basic-controls-reject-flow");
+  assertContextEngineTomlBasicPayload(payload);
   assertNoFatalNoBanner(payload);
-  logStep("start-smoke-contract start-invalid-context-engine-toml-controls-reject-flow");
+  logStep("start-smoke-contract start-invalid-context-engine-toml-basic-controls-reject-flow");
+}
+
+export function assertContextEngineTomlThresholdControlSmoke() {
+  const payload = runContextEngineControlContract("start-invalid-context-engine-toml-threshold-controls-reject-flow");
+  assertContextEngineTomlThresholdPayload(payload);
+  assertNoFatalNoBanner(payload);
+  logStep("start-smoke-contract start-invalid-context-engine-toml-threshold-controls-reject-flow");
+}
+
+export function assertContextEngineTomlWindowControlSmoke() {
+  const payload = runContextEngineControlContract("start-invalid-context-engine-toml-window-controls-reject-flow");
+  assertContextEngineTomlWindowPayload(payload);
+  assertNoFatalNoBanner(payload);
+  logStep("start-smoke-contract start-invalid-context-engine-toml-window-controls-reject-flow");
 }
 
 export function assertContextEngineStatusControlSmoke() {

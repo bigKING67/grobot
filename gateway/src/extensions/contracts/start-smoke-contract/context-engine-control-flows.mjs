@@ -25,6 +25,20 @@ function parseStatusJson(stdout) {
   }
 }
 
+function combineCommandOutput(results) {
+  return results
+    .flatMap((result) => [result.stdout, result.stderr])
+    .join("\n");
+}
+
+function buildNoFatalNoBannerPayload(results, hasStartBannerMarker) {
+  const combinedOutput = combineCommandOutput(results);
+  return {
+    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
+    has_start_banner: hasStartBannerMarker(combinedOutput),
+  };
+}
+
 function createContextEngineControlFlow(context) {
   const {
     repoRoot,
@@ -103,7 +117,7 @@ function createContextEngineControlFlow(context) {
   };
 }
 
-export function runStartInvalidContextEngineEnvControlsRejectFlow(context) {
+export function runStartInvalidContextEngineEnvCoreControlsRejectFlow(context) {
   const { makeStartCase, hasStartBannerMarker } = createContextEngineControlFlow(context);
   const invalidEnvWindowSyntaxResult = makeStartCase(
     "env-window-syntax",
@@ -121,38 +135,15 @@ export function runStartInvalidContextEngineEnvControlsRejectFlow(context) {
     "env-boolean",
     { env: { GROBOT_CONTEXT_ENGINE_SEMANTIC_PREFETCH_ENABLED: "maybe" } },
   );
-  const invalidTomlNumberResult = makeStartCase(
-    "toml-number",
-    { projectTomlLines: ['reserved_output_tokens = "bad"'] },
+  const statusPayload = buildNoFatalNoBannerPayload(
+    [
+      invalidEnvWindowSyntaxResult,
+      invalidEnvWindowRangeResult,
+      invalidEnvRatioResult,
+      invalidEnvBooleanResult,
+    ],
+    hasStartBannerMarker,
   );
-  const invalidTomlRangeResult = makeStartCase(
-    "toml-range",
-    { projectTomlLines: ["hard_ratio = 2"] },
-  );
-  const invalidTomlEnumResult = makeStartCase(
-    "toml-enum",
-    { projectTomlLines: ['profile = "fast"'] },
-  );
-  const invalidAdaptiveAllowlistResult = makeStartCase(
-    "adaptive-allowlist",
-    {
-      env: {
-        GROBOT_CONTEXT_ENGINE_PROMPT_QUALITY_GUARD_ADAPTIVE_MODE_ALLOWLIST: "harden,sideways",
-      },
-    },
-  );
-  const combinedOutput = [
-    invalidEnvWindowSyntaxResult.stdout,
-    invalidEnvWindowSyntaxResult.stderr,
-    invalidEnvWindowRangeResult.stdout,
-    invalidEnvWindowRangeResult.stderr,
-    invalidEnvRatioResult.stdout,
-    invalidEnvRatioResult.stderr,
-    invalidEnvBooleanResult.stdout,
-    invalidEnvBooleanResult.stderr,
-    invalidAdaptiveAllowlistResult.stdout,
-    invalidAdaptiveAllowlistResult.stderr,
-  ].join("\n");
   return {
     invalid_env_window_syntax_exit_code: invalidEnvWindowSyntaxResult.exit_code,
     invalid_env_window_syntax_has_stable_error:
@@ -171,16 +162,45 @@ export function runStartInvalidContextEngineEnvControlsRejectFlow(context) {
     invalid_env_boolean_has_stable_error:
       invalidEnvBooleanResult.stderr.includes("error: invalid_context_engine_semantic_prefetch_enabled:")
       && invalidEnvBooleanResult.stderr.includes("context-engine-semantic-prefetch-enabled must be boolean"),
+    ...statusPayload,
+  };
+}
+
+export function runStartInvalidContextEngineEnvAdaptiveControlsRejectFlow(context) {
+  const { makeStartCase, hasStartBannerMarker } = createContextEngineControlFlow(context);
+  const invalidAdaptiveAllowlistResult = makeStartCase(
+    "adaptive-allowlist",
+    {
+      env: {
+        GROBOT_CONTEXT_ENGINE_PROMPT_QUALITY_GUARD_ADAPTIVE_MODE_ALLOWLIST: "harden,sideways",
+      },
+    },
+  );
+  return {
     invalid_adaptive_allowlist_exit_code: invalidAdaptiveAllowlistResult.exit_code,
     invalid_adaptive_allowlist_has_stable_error:
       invalidAdaptiveAllowlistResult.stderr.includes("error: invalid_context_engine_prompt_quality_guard_adaptive_mode_allowlist:")
       && invalidAdaptiveAllowlistResult.stderr.includes("context-engine-prompt-quality-guard-adaptive-mode-allowlist must include only harden or relax"),
-    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
-    has_start_banner: hasStartBannerMarker(combinedOutput),
+    ...buildNoFatalNoBannerPayload([invalidAdaptiveAllowlistResult], hasStartBannerMarker),
   };
 }
 
-export function runStartInvalidContextEngineTomlControlsRejectFlow(context) {
+export function runStartInvalidContextEngineEnvControlsRejectFlow(context) {
+  const coreControls = runStartInvalidContextEngineEnvCoreControlsRejectFlow(context);
+  const adaptiveControls = runStartInvalidContextEngineEnvAdaptiveControlsRejectFlow(context);
+  return {
+    ...coreControls,
+    ...adaptiveControls,
+    hides_top_level_fatal:
+      coreControls.hides_top_level_fatal
+      && adaptiveControls.hides_top_level_fatal,
+    has_start_banner:
+      coreControls.has_start_banner
+      || adaptiveControls.has_start_banner,
+  };
+}
+
+export function runStartInvalidContextEngineTomlBasicControlsRejectFlow(context) {
   const { makeStartCase, hasStartBannerMarker } = createContextEngineControlFlow(context);
   const invalidTomlNumberResult = makeStartCase(
     "toml-number",
@@ -194,6 +214,34 @@ export function runStartInvalidContextEngineTomlControlsRejectFlow(context) {
     "toml-enum",
     { projectTomlLines: ['profile = "fast"'] },
   );
+  const statusPayload = buildNoFatalNoBannerPayload(
+    [
+      invalidTomlNumberResult,
+      invalidTomlRangeResult,
+      invalidTomlEnumResult,
+    ],
+    hasStartBannerMarker,
+  );
+  return {
+    invalid_toml_number_exit_code: invalidTomlNumberResult.exit_code,
+    invalid_toml_number_has_stable_error:
+      invalidTomlNumberResult.stderr.includes("error: invalid_context_engine_reserved_output_tokens:")
+      && invalidTomlNumberResult.stderr.includes("context-engine-reserved-output-tokens must be a number")
+      && invalidTomlNumberResult.stderr.includes("source=project_toml"),
+    invalid_toml_range_exit_code: invalidTomlRangeResult.exit_code,
+    invalid_toml_range_has_stable_error:
+      invalidTomlRangeResult.stderr.includes("error: invalid_context_engine_hard_ratio:")
+      && invalidTomlRangeResult.stderr.includes("context-engine-hard-ratio must be a number between 0.5 and 0.995"),
+    invalid_toml_enum_exit_code: invalidTomlEnumResult.exit_code,
+    invalid_toml_enum_has_stable_error:
+      invalidTomlEnumResult.stderr.includes("error: invalid_context_engine_profile:")
+      && invalidTomlEnumResult.stderr.includes("context-engine-profile must be balanced, aggressive, or conservative"),
+    ...statusPayload,
+  };
+}
+
+export function runStartInvalidContextEngineTomlThresholdControlsRejectFlow(context) {
+  const { makeStartCase, hasStartBannerMarker } = createContextEngineControlFlow(context);
   const invalidThresholdOrderResult = makeStartCase(
     "threshold-order",
     {
@@ -204,6 +252,17 @@ export function runStartInvalidContextEngineTomlControlsRejectFlow(context) {
       ],
     },
   );
+  return {
+    invalid_threshold_order_exit_code: invalidThresholdOrderResult.exit_code,
+    invalid_threshold_order_has_stable_error:
+      invalidThresholdOrderResult.stderr.includes("error: invalid_context_engine_forced_ratio:")
+      && invalidThresholdOrderResult.stderr.includes("context-engine-forced-ratio must be greater than context-engine-proactive-ratio"),
+    ...buildNoFatalNoBannerPayload([invalidThresholdOrderResult], hasStartBannerMarker),
+  };
+}
+
+export function runStartInvalidContextEngineTomlWindowControlsRejectFlow(context) {
+  const { makeStartCase, hasStartBannerMarker } = createContextEngineControlFlow(context);
   const invalidEffectiveWindowResult = makeStartCase(
     "effective-window",
     {
@@ -225,38 +284,7 @@ export function runStartInvalidContextEngineTomlControlsRejectFlow(context) {
       ],
     },
   );
-  const combinedOutput = [
-    invalidTomlNumberResult.stdout,
-    invalidTomlNumberResult.stderr,
-    invalidTomlRangeResult.stdout,
-    invalidTomlRangeResult.stderr,
-    invalidTomlEnumResult.stdout,
-    invalidTomlEnumResult.stderr,
-    invalidThresholdOrderResult.stdout,
-    invalidThresholdOrderResult.stderr,
-    invalidEffectiveWindowResult.stdout,
-    invalidEffectiveWindowResult.stderr,
-    invalidAutoCompactLimitResult.stdout,
-    invalidAutoCompactLimitResult.stderr,
-  ].join("\n");
   return {
-    invalid_toml_number_exit_code: invalidTomlNumberResult.exit_code,
-    invalid_toml_number_has_stable_error:
-      invalidTomlNumberResult.stderr.includes("error: invalid_context_engine_reserved_output_tokens:")
-      && invalidTomlNumberResult.stderr.includes("context-engine-reserved-output-tokens must be a number")
-      && invalidTomlNumberResult.stderr.includes("source=project_toml"),
-    invalid_toml_range_exit_code: invalidTomlRangeResult.exit_code,
-    invalid_toml_range_has_stable_error:
-      invalidTomlRangeResult.stderr.includes("error: invalid_context_engine_hard_ratio:")
-      && invalidTomlRangeResult.stderr.includes("context-engine-hard-ratio must be a number between 0.5 and 0.995"),
-    invalid_toml_enum_exit_code: invalidTomlEnumResult.exit_code,
-    invalid_toml_enum_has_stable_error:
-      invalidTomlEnumResult.stderr.includes("error: invalid_context_engine_profile:")
-      && invalidTomlEnumResult.stderr.includes("context-engine-profile must be balanced, aggressive, or conservative"),
-    invalid_threshold_order_exit_code: invalidThresholdOrderResult.exit_code,
-    invalid_threshold_order_has_stable_error:
-      invalidThresholdOrderResult.stderr.includes("error: invalid_context_engine_forced_ratio:")
-      && invalidThresholdOrderResult.stderr.includes("context-engine-forced-ratio must be greater than context-engine-proactive-ratio"),
     invalid_effective_window_exit_code: invalidEffectiveWindowResult.exit_code,
     invalid_effective_window_has_stable_error:
       invalidEffectiveWindowResult.stderr.includes("error: invalid_context_engine_effective_window:")
@@ -265,8 +293,29 @@ export function runStartInvalidContextEngineTomlControlsRejectFlow(context) {
     invalid_auto_compact_limit_has_stable_error:
       invalidAutoCompactLimitResult.stderr.includes("error: invalid_context_engine_auto_compact_token_limit:")
       && invalidAutoCompactLimitResult.stderr.includes("context-engine-auto-compact-token-limit must be less than or equal to effective context window"),
-    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
-    has_start_banner: hasStartBannerMarker(combinedOutput),
+    ...buildNoFatalNoBannerPayload(
+      [invalidEffectiveWindowResult, invalidAutoCompactLimitResult],
+      hasStartBannerMarker,
+    ),
+  };
+}
+
+export function runStartInvalidContextEngineTomlControlsRejectFlow(context) {
+  const basicControls = runStartInvalidContextEngineTomlBasicControlsRejectFlow(context);
+  const thresholdControls = runStartInvalidContextEngineTomlThresholdControlsRejectFlow(context);
+  const windowControls = runStartInvalidContextEngineTomlWindowControlsRejectFlow(context);
+  return {
+    ...basicControls,
+    ...thresholdControls,
+    ...windowControls,
+    hides_top_level_fatal:
+      basicControls.hides_top_level_fatal
+      && thresholdControls.hides_top_level_fatal
+      && windowControls.hides_top_level_fatal,
+    has_start_banner:
+      basicControls.has_start_banner
+      || thresholdControls.has_start_banner
+      || windowControls.has_start_banner,
   };
 }
 
@@ -309,12 +358,10 @@ export function runStatusInvalidContextEngineControlsRejectFlow(context) {
     ],
     { GROBOT_CONTEXT_ENGINE_SEMANTIC_PREFETCH_ENABLED: "maybe" },
   );
-  const combinedOutput = [
-    statusInvalidRatioResult.stdout,
-    statusInvalidRatioResult.stderr,
-    statusTextInvalidBooleanResult.stdout,
-    statusTextInvalidBooleanResult.stderr,
-  ].join("\n");
+  const statusPayload = buildNoFatalNoBannerPayload(
+    [statusInvalidRatioResult, statusTextInvalidBooleanResult],
+    hasStartBannerMarker,
+  );
   return {
     status_json_invalid_ratio_exit_code: statusInvalidRatioResult.exit_code,
     status_json_invalid_ratio_has_stable_error:
@@ -327,8 +374,7 @@ export function runStatusInvalidContextEngineControlsRejectFlow(context) {
     status_text_invalid_boolean_has_stable_error:
       statusTextInvalidBooleanResult.stderr.includes("error: invalid_context_engine_semantic_prefetch_enabled:")
       && statusTextInvalidBooleanResult.stderr.includes("context-engine-semantic-prefetch-enabled must be boolean"),
-    hides_top_level_fatal: !combinedOutput.includes("fatal error"),
-    has_start_banner: hasStartBannerMarker(combinedOutput),
+    ...statusPayload,
   };
 }
 

@@ -144,6 +144,181 @@ assert.equal(
   "runtime status must expose case-level status surface contract",
 );
 assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:context-engine-env-core"),
+  true,
+  "runtime controls must expose split context-engine env core controls",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:context-engine-env-adaptive"),
+  true,
+  "runtime controls must expose split context-engine env adaptive controls",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:context-engine-toml-basic"),
+  true,
+  "runtime controls must expose split context-engine TOML basic controls",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:context-engine-toml-thresholds"),
+  true,
+  "runtime controls must expose split context-engine TOML threshold controls",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:context-engine-toml-window"),
+  true,
+  "runtime controls must expose split context-engine TOML window controls",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:mcp-instruction-basic"),
+  true,
+  "runtime controls must expose split MCP instruction basic controls",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:mcp-instruction-scope"),
+  true,
+  "runtime controls must expose split MCP instruction scope controls",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:mcp-instruction-server"),
+  true,
+  "runtime controls must expose split MCP instruction server controls",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:mcp-instruction-valid-disabled-boundary"),
+  true,
+  "runtime controls must expose split MCP instruction valid disabled boundary",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:experience-runtime-start-team"),
+  true,
+  "runtime controls must expose split experience runtime start team controls",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:experience-runtime-start-config"),
+  true,
+  "runtime controls must expose split experience runtime start config controls",
+);
+const gatewayHarnessSource = readFileSync("gateway/tests/check-gateway-node.mjs", "utf8");
+const gatewayWorkerRunnerSource = readFileSync("gateway/tests/check-gateway-node/case-worker-runner.mjs", "utf8");
+for (const requiredTimingMechanism of [
+  "GROBOT_GATEWAY_TIMINGS_PATH",
+  "GROBOT_GATEWAY_TIMING_CONTEXT",
+  "suite-worker",
+  "seedMs",
+  "ewmaMs",
+  "p90Ms",
+  "recentMs",
+  "estimateCaseMs",
+]) {
+  assert.equal(
+    gatewayHarnessSource.includes(requiredTimingMechanism),
+    true,
+    `gateway case scheduling must retain ${requiredTimingMechanism} timing support`,
+  );
+}
+assert.equal(
+  gatewayWorkerRunnerSource.includes("GROBOT_GATEWAY_TIMING_CONTEXT")
+  && gatewayWorkerRunnerSource.includes("suite-worker"),
+  true,
+  "gateway worker runner must write suite-worker timing context for default suite scheduling",
+);
+const runtimeControlsPlanDir = mkdtempSync(join(tmpdir(), "grobot-runtime-controls-plan-"));
+try {
+  const runtimeControlsPlanPath = join(runtimeControlsPlanDir, "plan.json");
+  const runtimeControlsPlanResult = spawnSync(
+    "node",
+    [
+      "gateway/tests/check-gateway-node.mjs",
+      "--suite",
+      "runtime:controls",
+      "--write-run-plan",
+      runtimeControlsPlanPath,
+      "--json",
+    ],
+    {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  assert.equal(
+    runtimeControlsPlanResult.status,
+    0,
+    `runtime controls run-plan generation must pass\nstdout:\n${runtimeControlsPlanResult.stdout}\nstderr:\n${runtimeControlsPlanResult.stderr}`,
+  );
+  const runtimeControlsPlan = JSON.parse(readFileSync(runtimeControlsPlanPath, "utf8"));
+  const runtimeControlsCases = new Set(runtimeControlsPlan.cases);
+  for (const aggregateCaseId of [
+    "runtime:controls:context-engine",
+    "runtime:controls:context-engine-env",
+    "runtime:controls:context-engine-toml",
+    "runtime:controls:experience-runtime-start",
+    "runtime:controls:mcp-instruction",
+    "runtime:controls:status-line",
+  ]) {
+    assert.equal(
+      runtimeControlsCases.has(aggregateCaseId),
+      false,
+      `${aggregateCaseId} must stay aggregate-only outside default runtime:controls suite selection`,
+    );
+  }
+  for (const splitCaseId of [
+    "runtime:controls:context-engine-env-core",
+    "runtime:controls:context-engine-env-adaptive",
+    "runtime:controls:context-engine-toml-basic",
+    "runtime:controls:context-engine-toml-thresholds",
+    "runtime:controls:context-engine-toml-window",
+    "runtime:controls:experience-scheduler-env",
+    "runtime:controls:experience-scheduler-toml",
+    "runtime:controls:experience-runtime-start-team",
+    "runtime:controls:experience-runtime-start-config",
+    "runtime:controls:mcp-instruction-basic",
+    "runtime:controls:mcp-instruction-scope",
+    "runtime:controls:mcp-instruction-server",
+    "runtime:controls:mcp-instruction-valid-disabled-boundary",
+  ]) {
+    assert.equal(
+      runtimeControlsCases.has(splitCaseId),
+      true,
+      `${splitCaseId} must be part of default runtime:controls suite selection`,
+    );
+  }
+  const seededCaseMetadata = new Map(casesPayload.cases.map((testCase) => [testCase.id, testCase]));
+  for (const splitCaseId of [
+    "runtime:controls:context-engine-env-core",
+    "runtime:controls:context-engine-env-adaptive",
+    "runtime:controls:context-engine-toml-basic",
+    "runtime:controls:context-engine-toml-thresholds",
+    "runtime:controls:context-engine-toml-window",
+    "runtime:controls:experience-runtime-start-team",
+    "runtime:controls:experience-runtime-start-config",
+    "runtime:controls:mcp-instruction-basic",
+    "runtime:controls:mcp-instruction-scope",
+    "runtime:controls:mcp-instruction-server",
+    "runtime:controls:mcp-instruction-valid-disabled-boundary",
+  ]) {
+    assert.equal(
+      Number(seededCaseMetadata.get(splitCaseId)?.estimatedMs ?? 0) > 0,
+      true,
+      `${splitCaseId} must expose a non-zero seed estimate before historical timings exist`,
+    );
+  }
+  for (const unseededCaseId of [
+    "runtime:controls:context-engine-env",
+    "runtime:controls:context-engine-toml",
+    "runtime:controls:experience-runtime-start",
+    "runtime:controls:mcp-instruction",
+  ]) {
+    assert.equal(
+      runtimeControlsCases.has(unseededCaseId),
+      false,
+      `${unseededCaseId} must not be pulled into default selection by seed estimates`,
+    );
+  }
+} finally {
+  rmSync(runtimeControlsPlanDir, { recursive: true, force: true });
+}
+assert.equal(
   casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:status-line"),
   true,
   "runtime controls must expose case-level status-line contracts",
