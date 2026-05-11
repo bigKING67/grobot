@@ -21,6 +21,16 @@ function assertNoFatalNoBanner(payload) {
   assert.equal(payload.has_start_banner, false);
 }
 
+function assertContextEngineValidatorContract() {
+  const result = runContract("context-engine-config-validator-contract.mjs", "", [], { timeoutMs: 120_000 });
+  assert.equal(result.code, 0, `context engine validator contract failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+  const payload = parseJsonOutput("context-engine-config-validator-contract", result.stdout);
+  assert.equal(payload.status, "ok");
+  assert.equal(payload.rejected_count, 11);
+  assert.equal(Number(payload.unique_error_count) >= 10, true);
+  assert.equal(payload.valid_boundary, true);
+}
+
 export function assertContextEngineControlSmoke() {
   const payload = runContextEngineControlContract("start-invalid-context-engine-controls-reject-flow");
   assert.equal(payload.invalid_env_window_syntax_exit_code, 2);
@@ -80,17 +90,13 @@ function assertContextEngineEnvAdaptivePayload(payload) {
 }
 
 export function assertContextEngineEnvCoreControlSmoke() {
-  const payload = runContextEngineControlContract("start-invalid-context-engine-env-core-controls-reject-flow");
-  assertContextEngineEnvCorePayload(payload);
-  assertNoFatalNoBanner(payload);
-  logStep("start-smoke-contract start-invalid-context-engine-env-core-controls-reject-flow");
+  assertContextEngineValidatorContract();
+  logStep("context-engine-config-validator-contract env-core-controls");
 }
 
 export function assertContextEngineEnvAdaptiveControlSmoke() {
-  const payload = runContextEngineControlContract("start-invalid-context-engine-env-adaptive-controls-reject-flow");
-  assertContextEngineEnvAdaptivePayload(payload);
-  assertNoFatalNoBanner(payload);
-  logStep("start-smoke-contract start-invalid-context-engine-env-adaptive-controls-reject-flow");
+  assertContextEngineValidatorContract();
+  logStep("context-engine-config-validator-contract env-adaptive-controls");
 }
 
 export function assertContextEngineTomlControlSmoke() {
@@ -124,24 +130,23 @@ function assertContextEngineTomlWindowPayload(payload) {
 }
 
 export function assertContextEngineTomlBasicControlSmoke() {
-  const payload = runContextEngineControlContract("start-invalid-context-engine-toml-basic-controls-reject-flow");
-  assertContextEngineTomlBasicPayload(payload);
-  assertNoFatalNoBanner(payload);
-  logStep("start-smoke-contract start-invalid-context-engine-toml-basic-controls-reject-flow");
+  assertContextEngineValidatorContract();
+  logStep("context-engine-config-validator-contract toml-basic-controls");
 }
 
 export function assertContextEngineTomlThresholdControlSmoke() {
-  const payload = runContextEngineControlContract("start-invalid-context-engine-toml-threshold-controls-reject-flow");
-  assertContextEngineTomlThresholdPayload(payload);
-  assertNoFatalNoBanner(payload);
-  logStep("start-smoke-contract start-invalid-context-engine-toml-threshold-controls-reject-flow");
+  assertContextEngineValidatorContract();
+  logStep("context-engine-config-validator-contract toml-threshold-controls");
 }
 
 export function assertContextEngineTomlWindowControlSmoke() {
-  const payload = runContextEngineControlContract("start-invalid-context-engine-toml-window-controls-reject-flow");
-  assertContextEngineTomlWindowPayload(payload);
-  assertNoFatalNoBanner(payload);
-  logStep("start-smoke-contract start-invalid-context-engine-toml-window-controls-reject-flow");
+  assertContextEngineValidatorContract();
+  logStep("context-engine-config-validator-contract toml-window-controls");
+}
+
+export function assertContextEngineValidatorSmoke() {
+  assertContextEngineValidatorContract();
+  logStep("context-engine-config-validator-contract batch-controls");
 }
 
 export function assertContextEngineStatusControlSmoke() {

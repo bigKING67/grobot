@@ -269,12 +269,13 @@ for high-value composite smoke surfaces. Current split cases include:
 - `runtime:status:window-size`
 - `runtime:controls:context-engine`
 - `runtime:controls:context-engine-env` (aggregate-only reproduction)
-- `runtime:controls:context-engine-env-core`
-- `runtime:controls:context-engine-env-adaptive`
+- `runtime:controls:context-engine-env-core` (focused-only reproduction)
+- `runtime:controls:context-engine-env-adaptive` (focused-only reproduction)
 - `runtime:controls:context-engine-toml` (aggregate-only reproduction)
-- `runtime:controls:context-engine-toml-basic`
-- `runtime:controls:context-engine-toml-thresholds`
-- `runtime:controls:context-engine-toml-window`
+- `runtime:controls:context-engine-toml-basic` (focused-only reproduction)
+- `runtime:controls:context-engine-toml-thresholds` (focused-only reproduction)
+- `runtime:controls:context-engine-toml-window` (focused-only reproduction)
+- `runtime:controls:context-engine-validator`
 - `runtime:controls:context-engine-status`
 - `runtime:controls:context-engine-valid-boundary`
 - `runtime:controls:experience-scheduler`
@@ -453,11 +454,14 @@ and management validation domain while preserving `runtime:describe:full` as
 the aggregate reproduction path.
 Runtime controls cases keep the original aggregate case ids available for
 focused reproduction, but suite selection runs finer case-level shards for the
-large domains: context-engine env core/adaptive, context-engine TOML
-basic/threshold/window, context-engine status/boundary, experience scheduler
+large domains: context-engine validator/status/boundary, experience scheduler
 validator/boundary, experience runtime start team/config and serve, MCP
 instruction basic/scope/server/disabled-boundary, and status-line
 validator/boundary.
+Focused context-engine env core/adaptive and TOML basic/threshold/window cases
+remain listed for targeted reproduction but are not selected by the default
+suite because the validator shard already batches those pure config checks
+through one production resolver process.
 Focused experience-scheduler env/TOML cases remain listed for targeted
 reproduction but are not selected by the default suite because the validator
 shard already batches those pure config checks through one production resolver
@@ -478,6 +482,11 @@ monoliths.
 Set `GROBOT_GATEWAY_TIMINGS_PATH=<path>` when benchmarking alternate timing
 snapshots without mutating the default `.cache/grobot-quality/gateway-timings.json`
 cache; set `GROBOT_GATEWAY_TIMING_CONTEXT=<name>` only for harness experiments.
+Context-engine default controls use `context-engine-config-validator-contract.mjs`
+to batch pure env/project config validation in one local `tsx` process through
+the production `resolveContextEngineConfig` resolver; the aggregate
+`runtime:controls:context-engine` case still runs the full `./grobot start`
+smoke path for end-to-end reproduction.
 Status-line default controls use `status-line-config-validator-contract.mjs` to
 batch pure project TOML validation in one local `tsx` process through the production
 `readStatusLineConfigFromProjectToml` parser; the aggregate

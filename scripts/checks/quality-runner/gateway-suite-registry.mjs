@@ -132,9 +132,23 @@ const statusLineValidatorContractSource = readFileSync(
   "gateway/src/extensions/contracts/status-line-config-validator-contract.mjs",
   "utf8",
 );
+const contextEngineValidatorContractSource = readFileSync(
+  "gateway/src/extensions/contracts/context-engine-config-validator-contract.mjs",
+  "utf8",
+);
 const experienceSchedulerValidatorContractSource = readFileSync(
   "gateway/src/extensions/contracts/experience-scheduler-config-validator-contract.mjs",
   "utf8",
+);
+assert.equal(
+  contextEngineValidatorContractSource.includes("resolveContextEngineConfig"),
+  true,
+  "context engine fast controls must reuse the production config resolver",
+);
+assert.equal(
+  contextEngineValidatorContractSource.includes("start-invalid-context-engine"),
+  false,
+  "context engine fast controls must not shell through start smoke for each invalid fixture",
 );
 assert.equal(
   statusLineValidatorContractSource.includes("readStatusLineConfigFromProjectToml"),
@@ -160,9 +174,23 @@ const statusLineControlsSource = readFileSync(
   "gateway/tests/check-gateway-node/runtime-smoke/status-line-controls.mjs",
   "utf8",
 );
+const contextEngineControlsSource = readFileSync(
+  "gateway/tests/check-gateway-node/runtime-smoke/context-engine-controls.mjs",
+  "utf8",
+);
 const experienceSchedulerControlsSource = readFileSync(
   "gateway/tests/check-gateway-node/runtime-smoke/experience-scheduler-controls.mjs",
   "utf8",
+);
+assert.equal(
+  contextEngineControlsSource.includes("context-engine-config-validator-contract.mjs"),
+  true,
+  "context engine split controls must use the validator fast path",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:context-engine-validator"),
+  true,
+  "runtime controls must expose the context engine validator batch shard",
 );
 assert.equal(
   statusLineControlsSource.includes("status-line-config-validator-contract.mjs"),
@@ -193,6 +221,11 @@ assert.equal(
   experienceSchedulerControlsSource.includes('runExperienceSchedulerControlContract("start-invalid-experience-scheduler-controls-reject-flow")'),
   true,
   "experience scheduler aggregate reproduction must keep the full start smoke path",
+);
+assert.equal(
+  contextEngineControlsSource.includes('runContextEngineControlContract("start-invalid-context-engine-controls-reject-flow")'),
+  true,
+  "context engine aggregate reproduction must keep the full start smoke path",
 );
 assert.equal(
   readFileSync("gateway/src/extensions/contracts/_shared/run-tsx-script.mjs", "utf8").includes("node_modules"),
@@ -317,7 +350,12 @@ try {
   for (const aggregateCaseId of [
     "runtime:controls:context-engine",
     "runtime:controls:context-engine-env",
+    "runtime:controls:context-engine-env-core",
+    "runtime:controls:context-engine-env-adaptive",
     "runtime:controls:context-engine-toml",
+    "runtime:controls:context-engine-toml-basic",
+    "runtime:controls:context-engine-toml-thresholds",
+    "runtime:controls:context-engine-toml-window",
     "runtime:controls:experience-scheduler-env",
     "runtime:controls:experience-scheduler-toml",
     "runtime:controls:experience-runtime-start",
@@ -336,11 +374,9 @@ try {
     );
   }
   for (const splitCaseId of [
-    "runtime:controls:context-engine-env-core",
-    "runtime:controls:context-engine-env-adaptive",
-    "runtime:controls:context-engine-toml-basic",
-    "runtime:controls:context-engine-toml-thresholds",
-    "runtime:controls:context-engine-toml-window",
+    "runtime:controls:context-engine-validator",
+    "runtime:controls:context-engine-status",
+    "runtime:controls:context-engine-valid-boundary",
     "runtime:controls:experience-scheduler-validator",
     "runtime:controls:experience-runtime-start-team",
     "runtime:controls:experience-runtime-start-config",
@@ -358,11 +394,9 @@ try {
   }
   const seededCaseMetadata = new Map(casesPayload.cases.map((testCase) => [testCase.id, testCase]));
   for (const splitCaseId of [
-    "runtime:controls:context-engine-env-core",
-    "runtime:controls:context-engine-env-adaptive",
-    "runtime:controls:context-engine-toml-basic",
-    "runtime:controls:context-engine-toml-thresholds",
-    "runtime:controls:context-engine-toml-window",
+    "runtime:controls:context-engine-validator",
+    "runtime:controls:context-engine-status",
+    "runtime:controls:context-engine-valid-boundary",
     "runtime:controls:experience-scheduler-validator",
     "runtime:controls:experience-runtime-start-team",
     "runtime:controls:experience-runtime-start-config",

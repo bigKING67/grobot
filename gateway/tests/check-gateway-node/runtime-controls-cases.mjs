@@ -8,6 +8,7 @@ import {
   assertContextEngineTomlControlSmoke,
   assertContextEngineTomlThresholdControlSmoke,
   assertContextEngineTomlWindowControlSmoke,
+  assertContextEngineValidatorSmoke,
   assertContextEngineValidBoundarySmoke,
 } from "./runtime-smoke/context-engine-controls.mjs";
 import {
@@ -60,13 +61,13 @@ export const RUNTIME_CONTROLS_CASES = Object.freeze({
   "runtime:controls:context-engine-env-core": {
     suite: "runtime:controls",
     description: "Context engine core environment control rejection smoke.",
-    run: assertContextEngineEnvCoreControlSmoke,
+    run: aggregateOnly(assertContextEngineEnvCoreControlSmoke),
     seedMs: 1900,
   },
   "runtime:controls:context-engine-env-adaptive": {
     suite: "runtime:controls",
     description: "Context engine adaptive environment control rejection smoke.",
-    run: assertContextEngineEnvAdaptiveControlSmoke,
+    run: aggregateOnly(assertContextEngineEnvAdaptiveControlSmoke),
     seedMs: 400,
   },
   "runtime:controls:context-engine-toml": {
@@ -77,20 +78,26 @@ export const RUNTIME_CONTROLS_CASES = Object.freeze({
   "runtime:controls:context-engine-toml-basic": {
     suite: "runtime:controls",
     description: "Context engine basic project TOML control rejection smoke.",
-    run: assertContextEngineTomlBasicControlSmoke,
+    run: aggregateOnly(assertContextEngineTomlBasicControlSmoke),
     seedMs: 1300,
   },
   "runtime:controls:context-engine-toml-thresholds": {
     suite: "runtime:controls",
     description: "Context engine threshold-order project TOML control rejection smoke.",
-    run: assertContextEngineTomlThresholdControlSmoke,
+    run: aggregateOnly(assertContextEngineTomlThresholdControlSmoke),
     seedMs: 500,
   },
   "runtime:controls:context-engine-toml-window": {
     suite: "runtime:controls",
     description: "Context engine window project TOML control rejection smoke.",
-    run: assertContextEngineTomlWindowControlSmoke,
+    run: aggregateOnly(assertContextEngineTomlWindowControlSmoke),
     seedMs: 900,
+  },
+  "runtime:controls:context-engine-validator": {
+    suite: "runtime:controls",
+    description: "Context engine production config validator control rejection smoke.",
+    run: assertContextEngineValidatorSmoke,
+    seedMs: 450,
   },
   "runtime:controls:context-engine-status": {
     suite: "runtime:controls",
