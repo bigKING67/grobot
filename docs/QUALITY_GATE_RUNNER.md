@@ -387,7 +387,8 @@ for high-value composite smoke surfaces. Current split cases include:
 Suite selection expands to split cases when a suite has them; direct
 `<suite>:full` cases remain available for aggregate reproduction. Shards are
 deterministic and 1-based (`N/TOTAL`). When timing data exists, the shard
-partitioner uses greedy longest-processing-time bin packing from
+partitioner builds a longest-processing-time estimate and, for bounded case
+counts, improves it with an exact branch-and-bound bucket planner from
 `.cache/grobot-quality/gateway-timings.json`; without timing data it falls back
 to stable deterministic distribution. Each case run updates the timing file so
 later shards become better balanced.
@@ -409,7 +410,7 @@ Plan files use schema `1`:
 ```
 
 `--workers N` runs selected cases through isolated child-process workers using
-the same timing-aware bin packing, so large gateway smoke profiles can
+the same timing-aware bucket planner, so large gateway smoke profiles can
 parallelize internally without forcing the outer quality-runner to know every
 suite implementation detail. Parent JSON reports keep the run diagnosable:
 worker executions add structured worker bucket entries and aggregate child case
@@ -476,10 +477,10 @@ validator shard already batches those pure TOML checks through one production
 parser process. New high-value split cases carry seed timing estimates
 in `case-definitions.mjs`, and the gateway case timing cache records EWMA,
 p90, last, and recent samples per timing context. Internal worker runs write a
-`suite-worker` timing context; suite bin packing compares that context with the
+`suite-worker` timing context; suite bucket planning compares that context with the
 global historical estimate so focused reproduction timings cannot understate the
 default parallel plan while real suite-worker spikes are still retained. This
-keeps worker bin packing from being driven by zero-cost unknowns, stale
+keeps worker scheduling from being driven by zero-cost unknowns, stale
 averages, or context-polluted fast samples. The quality registry runs this suite
 with five internal workers so CI no longer serializes the former large control
 monoliths.

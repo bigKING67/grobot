@@ -9,6 +9,7 @@ import {
   runSemanticBenchmarkContracts,
 } from "./check-gateway-node/gateway-contract-smoke/core-contracts.mjs";
 import { CASES } from "./check-gateway-node/case-definitions.mjs";
+import { planCaseBuckets } from "./check-gateway-node/case-bucket-planner.mjs";
 import { runCasesInWorkers } from "./check-gateway-node/case-worker-runner.mjs";
 import { runSessionContracts } from "./check-gateway-node/gateway-contract-smoke/session-contracts.mjs";
 import { runPlanCommandContracts } from "./check-gateway-node/gateway-contract-smoke/plan-command-contracts.mjs";
@@ -389,15 +390,7 @@ function shardCases(caseIdsToShard, shardValue) {
     return caseIdsToShard;
   }
   const { index, total } = parseShard(shardValue);
-  const cases = listCases()
-    .filter((testCase) => caseIdsToShard.includes(testCase.id))
-    .sort((left, right) => (right.estimatedMs - left.estimatedMs) || left.id.localeCompare(right.id));
-  const buckets = Array.from({ length: total }, () => ({ caseIds: [], totalMs: 0 }));
-  for (const testCase of cases) {
-    const bucket = buckets.sort((left, right) => left.totalMs - right.totalMs)[0];
-    bucket.caseIds.push(testCase.id);
-    bucket.totalMs += Math.max(1, testCase.estimatedMs || 1);
-  }
+  const buckets = planCaseBuckets(caseIdsToShard, total, listCases());
   return buckets[index - 1]?.caseIds ?? [];
 }
 

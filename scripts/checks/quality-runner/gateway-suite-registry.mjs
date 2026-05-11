@@ -332,6 +332,7 @@ assert.equal(
 );
 const gatewayHarnessSource = readFileSync("gateway/tests/check-gateway-node.mjs", "utf8");
 const gatewayWorkerRunnerSource = readFileSync("gateway/tests/check-gateway-node/case-worker-runner.mjs", "utf8");
+const gatewayBucketPlannerSource = readFileSync("gateway/tests/check-gateway-node/case-bucket-planner.mjs", "utf8");
 for (const requiredTimingMechanism of [
   "GROBOT_GATEWAY_TIMINGS_PATH",
   "GROBOT_GATEWAY_TIMING_CONTEXT",
@@ -353,6 +354,14 @@ assert.equal(
   && gatewayWorkerRunnerSource.includes("suite-worker"),
   true,
   "gateway worker runner must write suite-worker timing context for default suite scheduling",
+);
+assert.equal(
+  gatewayHarnessSource.includes("planCaseBuckets")
+  && gatewayWorkerRunnerSource.includes("planCaseBuckets")
+  && gatewayBucketPlannerSource.includes("optimizeBucketsExactly")
+  && gatewayBucketPlannerSource.includes("EXACT_BUCKET_NODE_LIMIT"),
+  true,
+  "gateway case sharding and worker scheduling must share the bounded optimal bucket planner",
 );
 const runtimeControlsPlanDir = mkdtempSync(join(tmpdir(), "grobot-runtime-controls-plan-"));
 try {
@@ -626,6 +635,31 @@ assert.equal(
   workerPayload.cases.some((entry) => entry.type === "case" && entry.id === "workflow:full" && entry.status === "ok"),
   true,
   "worker run must include successful child case metadata",
+);
+const bucketPlannerResult = spawnSync(
+  "node",
+  [
+    "--input-type=module",
+    "--eval",
+    [
+      "import assert from 'node:assert/strict';",
+      "import { planCaseBuckets } from './gateway/tests/check-gateway-node/case-bucket-planner.mjs';",
+      "const cases = [3, 3, 2, 2, 2].map((estimatedMs, index) => ({ id: `case:${index}`, estimatedMs }));",
+      "const buckets = planCaseBuckets(cases.map((testCase) => testCase.id), 2, cases);",
+      "const maxTotal = Math.max(...buckets.map((bucket) => bucket.totalMs));",
+      "assert.equal(maxTotal, 6, 'bounded exact planner must improve non-optimal greedy LPT buckets');",
+    ].join("\n"),
+  ],
+  {
+    encoding: "utf8",
+    maxBuffer: 1024 * 1024,
+    stdio: ["ignore", "pipe", "pipe"],
+  },
+);
+assert.equal(
+  bucketPlannerResult.status,
+  0,
+  `bounded optimal bucket planner smoke must pass\nstdout:\n${bucketPlannerResult.stdout}\nstderr:\n${bucketPlannerResult.stderr}`,
 );
 
 const caseResult = spawnSync("node", ["gateway/tests/check-gateway-node.mjs", "--case", "workflow:full", "--json"], {

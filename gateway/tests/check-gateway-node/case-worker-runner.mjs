@@ -1,4 +1,5 @@
 import { runNodeScriptAsync } from "./harness.mjs";
+import { planCaseBuckets } from "./case-bucket-planner.mjs";
 
 function parseWorkerReport(result, bucket) {
   try {
@@ -58,24 +59,8 @@ export async function runCasesInWorkers(caseIdsToRun, workers, caseRecords, repo
   if (workers <= 1 || caseIdsToRun.length <= 1) {
     return false;
   }
-  const buckets = Array.from({ length: Math.min(workers, caseIdsToRun.length) }, (_, index) => ({
-    caseIds: [],
-    index,
-    totalMs: 0,
-  }));
-  const casesById = new Map(caseRecords.map((testCase) => [testCase.id, testCase]));
-  const ordered = [...caseIdsToRun].sort((left, right) => {
-    const leftMs = casesById.get(left)?.estimatedMs ?? 1;
-    const rightMs = casesById.get(right)?.estimatedMs ?? 1;
-    return rightMs - leftMs || left.localeCompare(right);
-  });
-  for (const caseId of ordered) {
-    const bucket = buckets.sort((left, right) => left.totalMs - right.totalMs)[0];
-    bucket.caseIds.push(caseId);
-    bucket.totalMs += Math.max(1, casesById.get(caseId)?.estimatedMs ?? 1);
-  }
+  const buckets = planCaseBuckets(caseIdsToRun, workers, caseRecords);
   const workerRuns = buckets
-    .filter((bucket) => bucket.caseIds.length > 0)
     .map(async (bucket) => ({
       bucket,
       result: await runNodeScriptAsync("gateway/tests/check-gateway-node.mjs", [
