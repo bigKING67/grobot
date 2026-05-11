@@ -36,6 +36,9 @@ import {
   runRuntimeImOnlyRejectFlowSmoke,
   runRuntimeInteractiveDiagnosticsBaseFlowSmoke,
   runRuntimeInteractiveDiagnosticsCommandFlowSmoke,
+  runRuntimeInteractiveDiagnosticsPlanCommandFlowSmoke,
+  runRuntimeInteractiveDiagnosticsSkillCreatorFlowSmoke,
+  runRuntimeInteractiveDiagnosticsUserCommandFlowSmoke,
   runRuntimeInteractiveSessionCommandsFallbackFlowSmoke,
   runRuntimeInvalidPlanArtifactControlsFlowSmoke,
   runRuntimePlanConcurrencyFlowSmoke,
@@ -629,7 +632,22 @@ export const CASES = Object.freeze({
   "runtime:plan:diagnostics-command": {
     suite: "runtime:plan",
     description: "Interactive diagnostics plan, skill, and command flows.",
-    run: runRuntimeInteractiveDiagnosticsCommandFlowSmoke,
+    run: aggregateOnly(runRuntimeInteractiveDiagnosticsCommandFlowSmoke),
+  },
+  "runtime:plan:diagnostics-plan-command": {
+    suite: "runtime:plan",
+    description: "Interactive diagnostics plan command compact and verbose flows.",
+    run: runRuntimeInteractiveDiagnosticsPlanCommandFlowSmoke,
+  },
+  "runtime:plan:diagnostics-skill-creator": {
+    suite: "runtime:plan",
+    description: "Interactive diagnostics skill creator compact and verbose flows.",
+    run: runRuntimeInteractiveDiagnosticsSkillCreatorFlowSmoke,
+  },
+  "runtime:plan:diagnostics-user-command": {
+    suite: "runtime:plan",
+    description: "Interactive diagnostics user command compact and verbose flows.",
+    run: runRuntimeInteractiveDiagnosticsUserCommandFlowSmoke,
   },
   "runtime:plan:im-only": {
     suite: "runtime:plan",

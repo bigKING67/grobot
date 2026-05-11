@@ -337,6 +337,9 @@ for high-value composite smoke surfaces. Current split cases include:
 - `runtime:plan:bare-interactive`
 - `runtime:plan:diagnostics-base`
 - `runtime:plan:diagnostics-command`
+- `runtime:plan:diagnostics-plan-command`
+- `runtime:plan:diagnostics-skill-creator`
+- `runtime:plan:diagnostics-user-command`
 - `runtime:plan:im-only`
 - `runtime:plan:session-commands`
 - `runtime:plan:session-menu`
@@ -468,6 +471,11 @@ tools-allow status validation, and context status validation cases. The
 aggregate `runtime:tool-context-controls:aggregate` and suite fallback
 `runtime:tool-context-controls:full` remain available for focused reproduction,
 while suite selection runs the focused cases with three internal workers.
+Runtime plan diagnostics keep `runtime:plan:diagnostics-command` as the
+aggregate reproduction case, but plan-command, skill-creator, and user-command
+diagnostic variants are also exposed as separate case ids so the internal
+worker bin-packer can distribute the slow interactive diagnostics surface
+without weakening any compact/verbose assertions.
 The runtime context memory-decay hysteresis case uses seeded prompt-quality
 evidence and an aggressive test-local EMA alpha to prove tighten, no-early-relax,
 monotonic update, and relax-window behavior in at most three relax rounds instead

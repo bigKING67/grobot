@@ -164,6 +164,21 @@ assert.equal(
   "runtime plan must expose case-level diagnostics command flow",
 );
 assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:plan:diagnostics-plan-command"),
+  true,
+  "runtime plan must expose split diagnostics plan-command flow",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:plan:diagnostics-skill-creator"),
+  true,
+  "runtime plan must expose split diagnostics skill-creator flow",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:plan:diagnostics-user-command"),
+  true,
+  "runtime plan must expose split diagnostics user-command flow",
+);
+assert.equal(
   casesPayload.cases.some((testCase) => testCase.id === "runtime:plan:events-policy"),
   true,
   "runtime plan must expose isolated case-level events policy flow",

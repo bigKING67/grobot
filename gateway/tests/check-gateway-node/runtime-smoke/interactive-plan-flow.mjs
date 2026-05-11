@@ -194,39 +194,45 @@ export function runRuntimeInteractiveDiagnosticsBaseFlowSmoke() {
 }
 
 export function runRuntimeInteractiveDiagnosticsCommandFlowSmoke() {
-  const diagnosticsCommandFlows = [
-    {
-      contract: "start-interactive-diagnostics-plan-compact-flow",
-      mode: "compact",
-      markerKey: "has_plan_marker",
-    },
-    {
-      contract: "start-interactive-diagnostics-plan-verbose-flow",
-      mode: "verbose",
-      markerKey: "has_plan_marker",
-    },
-    {
-      contract: "start-interactive-diagnostics-skill-creator-compact-flow",
-      mode: "compact",
-      markerKey: "has_skill_creator_marker",
-    },
-    {
-      contract: "start-interactive-diagnostics-skill-creator-verbose-flow",
-      mode: "verbose",
-      markerKey: "has_skill_creator_marker",
-    },
-    {
-      contract: "start-interactive-diagnostics-user-command-compact-flow",
-      mode: "compact",
-      markerKey: "has_commands_marker",
-    },
-    {
-      contract: "start-interactive-diagnostics-user-command-verbose-flow",
-      mode: "verbose",
-      markerKey: "has_commands_marker",
-    },
-  ];
-  for (const flow of diagnosticsCommandFlows) {
+  for (const flow of DIAGNOSTICS_COMMAND_FLOWS) {
+    assertDiagnosticsCommandFlow(flow);
+  }
+}
+
+const DIAGNOSTICS_COMMAND_FLOWS = [
+  {
+    contract: "start-interactive-diagnostics-plan-compact-flow",
+    mode: "compact",
+    markerKey: "has_plan_marker",
+  },
+  {
+    contract: "start-interactive-diagnostics-plan-verbose-flow",
+    mode: "verbose",
+    markerKey: "has_plan_marker",
+  },
+  {
+    contract: "start-interactive-diagnostics-skill-creator-compact-flow",
+    mode: "compact",
+    markerKey: "has_skill_creator_marker",
+  },
+  {
+    contract: "start-interactive-diagnostics-skill-creator-verbose-flow",
+    mode: "verbose",
+    markerKey: "has_skill_creator_marker",
+  },
+  {
+    contract: "start-interactive-diagnostics-user-command-compact-flow",
+    mode: "compact",
+    markerKey: "has_commands_marker",
+  },
+  {
+    contract: "start-interactive-diagnostics-user-command-verbose-flow",
+    mode: "verbose",
+    markerKey: "has_commands_marker",
+  },
+];
+
+function assertDiagnosticsCommandFlow(flow) {
     const diagnosticsFlowResult = runContract(
       "start-smoke-contract.mjs",
       flow.contract,
@@ -277,6 +283,23 @@ export function runRuntimeInteractiveDiagnosticsCommandFlowSmoke() {
       assert.equal(diagnosticsFlowPayload.stderr_has_event_lines, false);
     }
     logStep(`start-smoke-contract ${flow.contract}`);
+}
+
+export function runRuntimeInteractiveDiagnosticsPlanCommandFlowSmoke() {
+  for (const flow of DIAGNOSTICS_COMMAND_FLOWS.filter((item) => item.contract.includes("diagnostics-plan"))) {
+    assertDiagnosticsCommandFlow(flow);
+  }
+}
+
+export function runRuntimeInteractiveDiagnosticsSkillCreatorFlowSmoke() {
+  for (const flow of DIAGNOSTICS_COMMAND_FLOWS.filter((item) => item.contract.includes("diagnostics-skill-creator"))) {
+    assertDiagnosticsCommandFlow(flow);
+  }
+}
+
+export function runRuntimeInteractiveDiagnosticsUserCommandFlowSmoke() {
+  for (const flow of DIAGNOSTICS_COMMAND_FLOWS.filter((item) => item.contract.includes("diagnostics-user-command"))) {
+    assertDiagnosticsCommandFlow(flow);
   }
 }
 
