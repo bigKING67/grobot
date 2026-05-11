@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildQualityGateRegistry, gateNamesForMode, QUALITY_ENTRYPOINT_SCRIPTS, validateQualityGateRegistry } from "../../lib/quality-gate-registry.mjs";
 import { explainAffectedSelection, listChangedFiles, selectAffectedGates } from "../../lib/quality-affected.mjs";
-import { appendQualityEvent, computeGateTimingFingerprint, createQualityCacheContext, explainGateCache, summarizeQualityEvents } from "../../lib/quality-cache.mjs";
+import { appendQualityEvent, computeGateTimingFingerprint, createQualityCacheContext, explainGateCache, summarizeQualityEvents, writeGateCache } from "../../lib/quality-cache.mjs";
 import { planQualityGates, runQualityGates } from "../../lib/quality-scheduler.mjs";
 import { computeActionContractFingerprint, resolveGateActionContract } from "../../lib/quality-action-contract.mjs";
 
@@ -601,6 +601,40 @@ try {
     resourceCost: 1,
   }).cacheKey;
   assert.notEqual(inputKeyBefore, inputKeyAfter, "input digest changes must invalidate action hashes");
+  writeFileSync(join(tmp, "tracked.txt"), "base\n");
+
+  const explainableGate = {
+    cacheable: true,
+    command: "node pass-a.mjs",
+    cost: "cheap",
+    deps: [],
+    env: [],
+    group: "test",
+    inputs: ["tracked.txt"],
+    name: "cache-explainable-test",
+    parallel: true,
+    resourceClass: "node",
+    resourceCost: 1,
+  };
+  const explainableBaseline = explainGateCache(tmp, explainableGate);
+  writeGateCache(tmp, explainableGate, explainableBaseline.cacheKey, {
+    durationMs: 1,
+    status: "pass",
+    stderr: "",
+    stdout: "",
+  });
+  writeFileSync(join(tmp, "tracked.txt"), "changed-again\n");
+  const explainableMiss = explainGateCache(tmp, explainableGate);
+  assert.equal(
+    explainableMiss.latestEntry.actionComponents.files,
+    explainableBaseline.actionComponents.files,
+    "action cache entries must preserve component digests for explainable misses",
+  );
+  assert.equal(
+    explainableMiss.missReason.includes("files changed"),
+    true,
+    "cache miss reason must identify input-file drift when action components are available",
+  );
 
   const failRun = await runQualityGates([
     {

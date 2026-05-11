@@ -232,6 +232,36 @@ function toolchainVersions(repoRoot, actionContract, context) {
   return versions;
 }
 
+function digestObject(value) {
+  return `sha256:${hashString(stableJson(value))}`;
+}
+
+function actionComponentDigests(action) {
+  return {
+    contract: digestObject(action.contract),
+    env: digestObject(action.env),
+    files: digestObject(action.files),
+    platform: digestObject(action.platform),
+    toolchains: digestObject(action.toolchains),
+  };
+}
+
+function changedActionComponents(currentComponents, latestComponents) {
+  if (!latestComponents || typeof latestComponents !== "object") {
+    return [];
+  }
+  return Object.entries(currentComponents)
+    .filter(([name, digest]) => latestComponents[name] && latestComponents[name] !== digest)
+    .map(([name]) => name);
+}
+
+function formatActionDriftReason(changedComponents) {
+  if (!changedComponents.length) {
+    return "current action hash differs from latest cached action";
+  }
+  return `current action hash differs from latest cached action (${changedComponents.join(", ")} changed)`;
+}
+
 export function createQualityCacheContext(repoRoot) {
   return {
     repoRoot,
@@ -283,6 +313,7 @@ export function computeGateCacheKey(repoRoot, gate, context = null) {
     platform: `${process.platform}-${process.arch}`,
     toolchains: toolchainVersionValues,
   };
+  const actionComponents = actionComponentDigests(action);
   const hash = createHash("sha256");
   hash.update(`schema=${CACHE_SCHEMA_VERSION}\n`);
   hash.update(stableJson(action));
@@ -290,6 +321,7 @@ export function computeGateCacheKey(repoRoot, gate, context = null) {
   flushQualityCacheContext(context);
   return {
     action,
+    actionComponents,
     actionContract,
     actionContractFingerprint: action.contractFingerprint,
     cacheKey: hash.digest("hex"),
@@ -382,12 +414,13 @@ export function readGateCache(repoRoot, gate, cacheKey) {
   return null;
 }
 
-export function writeGateCache(repoRoot, gate, cacheKey, result) {
+export function writeGateCache(repoRoot, gate, cacheKey, result, cacheInfo = null) {
   if (!gate.cacheable || result.status !== "pass") {
     return;
   }
   const stdout = writeCasText(repoRoot, result.stdout ?? "");
   const stderr = writeCasText(repoRoot, result.stderr ?? "");
+  const resolvedCacheInfo = cacheInfo ?? computeGateCacheKey(repoRoot, gate);
   const actionPath = actionCacheFilePath(repoRoot, gate.name, cacheKey);
   mkdirSync(path.dirname(actionPath), { recursive: true });
   writeFileSync(
@@ -397,7 +430,8 @@ export function writeGateCache(repoRoot, gate, cacheKey, result) {
       gate: gate.name,
       cacheKey,
       actionHash: cacheKey,
-      actionContractFingerprint: gate.actionContractFingerprint ?? computeActionContractFingerprint(actionContractForGate(gate)),
+      actionComponents: resolvedCacheInfo.actionComponents,
+      actionContractFingerprint: resolvedCacheInfo.actionContractFingerprint,
       status: "pass",
       durationMs: result.durationMs,
       stdoutDigest: stdout.digest,
@@ -431,12 +465,14 @@ export function explainGateCache(repoRoot, gate, context = null) {
   const legacyPath = legacyCacheFilePath(repoRoot, gate.name, cacheInfo.cacheKey);
   const cached = readGateCache(repoRoot, gate, cacheInfo.cacheKey);
   const latest = readMostRecentActionCacheEntry(repoRoot, gate.name);
+  const changedComponents = changedActionComponents(cacheInfo.actionComponents, latest?.payload?.actionComponents);
   return {
     gate: gate.name,
     cacheable: gate.cacheable === true,
     status: cached ? "hit" : "miss",
     cacheKey: cacheInfo.cacheKey,
     actionContract: cacheInfo.actionContract,
+    actionComponents: cacheInfo.actionComponents,
     actionContractFingerprint: cacheInfo.actionContractFingerprint,
     actionCachePath: actionPath,
     legacyCachePath: legacyPath,
@@ -446,6 +482,7 @@ export function explainGateCache(repoRoot, gate, context = null) {
     latestEntry: latest?.payload
       ? {
         cacheKey: latest.payload.cacheKey ?? "",
+        actionComponents: latest.payload.actionComponents ?? null,
         actionContractFingerprint: latest.payload.actionContractFingerprint ?? "",
         status: latest.payload.status ?? "",
         timestamp: latest.payload.timestamp ?? "",
@@ -457,7 +494,7 @@ export function explainGateCache(repoRoot, gate, context = null) {
       : gate.cacheable === false
         ? "gate is not cacheable"
         : latest?.payload?.cacheKey
-          ? "current action hash differs from latest cached action"
+          ? formatActionDriftReason(changedComponents)
           : "no cached pass result for this gate/action hash",
   };
 }

@@ -322,7 +322,7 @@ export async function runQualityGates(gates, options = {}) {
       stdout: commandResult.stdout,
     };
     if (result.status === "pass" && cacheInfo) {
-      writeGateCache(repoRoot, gate, cacheInfo.cacheKey, result);
+      writeGateCache(repoRoot, gate, cacheInfo.cacheKey, result, cacheInfo);
     }
     logger?.gateDone?.(result);
     return result;

@@ -216,6 +216,12 @@ action hash and the contract fingerprint. This makes cache misses and timing
 model resets auditable: changing a command, declared input set, resource
 contract, cache policy, or declared env boundary intentionally creates a new
 action identity.
+Action cache entries also store component digests for `contract`, `env`,
+`files`, `platform`, and `toolchains`. When `explain cache <gate>` misses but a
+previous action entry exists, the miss reason names the changed component set
+instead of only reporting an opaque hash drift. This is intentionally similar to
+modern build runners: cache misses must be debuggable before the cache can be
+trusted for broader or remote use.
 
 Rules:
 
