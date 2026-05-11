@@ -382,6 +382,7 @@ function explainCache(gateName, options) {
   console.log(`[quality] cache ${gateName}: ${explanation.status}`);
   console.log(`- cacheable: ${explanation.cacheable ? "yes" : "no"}`);
   console.log(`- actionHash: ${explanation.cacheKey}`);
+  console.log(`- actionContract: ${explanation.actionContractFingerprint}`);
   console.log(`- inputs: ${explanation.inputCount}`);
   console.log(`- entries: ${explanation.actionCacheEntries}`);
   if (explanation.missReason) {

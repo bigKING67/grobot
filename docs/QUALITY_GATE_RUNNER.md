@@ -192,16 +192,38 @@ The scheduler lives in `scripts/lib/quality-scheduler.mjs`.
   dependency level, estimated duration, critical-path score, resource class, and
   cacheability before running anything.
 
-### 4. Pass-only action cache
+### 4. Normalized action contracts and pass-only cache
 
 Cache files are stored under `.cache/grobot-quality/` and are git-ignored.
+
+Each registry gate is normalized into an explicit action contract before it is
+planned, timed, or cached. The contract is the quality-runner equivalent of a
+small hermetic build action:
+
+- `name`, `command`, and `workdir`.
+- declared `inputs` and `outputs`.
+- declared environment allowlist `env`.
+- declared toolchain dimensions (`node`, `npm`, and for Rust gates `cargo` /
+  `rustc`).
+- `deps`, `group`, `modes`, `resourceClass`, `resourceCost`,
+  `exclusiveGroup`, and cache policy.
+
+The action contract has its own `sha256:` fingerprint. Timing fingerprints and
+cache action hashes are derived from this normalized contract instead of
+rebuilding separate ad-hoc hashes from loose gate fields. `plan --json` exposes
+`actionContractFingerprint`, and `explain cache <gate>` prints both the current
+action hash and the contract fingerprint. This makes cache misses and timing
+model resets auditable: changing a command, declared input set, resource
+contract, cache policy, or declared env boundary intentionally creates a new
+action identity.
 
 Rules:
 
 - Only successful results are cached; failures are never cached.
 - Cache keys are action hashes. They include schema version, gate name, command,
-  platform, declared env, Node/npm versions, input file contents, and for Rust
-  gates `rustc`/`cargo` versions.
+  platform, declared env values, declared toolchain versions, and input file
+  contents through the normalized action contract. Undeclared environment
+  variables intentionally do not affect the hash.
 - v2 writes an action-cache entry under `ac/<gate>/<hash>.json` and stores
   stdout/stderr payloads in a local content-addressable store under `cas/`.
   The legacy `results/` pass cache is still written for backward compatibility.

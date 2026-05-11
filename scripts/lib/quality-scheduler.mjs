@@ -451,6 +451,7 @@ export function planQualityGates(gates, options = {}) {
   const planned = gates.map((gate) => ({
     name: gate.name,
     command: gate.command,
+    actionContractFingerprint: gate.actionContractFingerprint ?? "",
     group: gate.group,
     deps: [...(pendingDeps.get(gate.name) ?? [])],
     level: levels.get(gate.name) ?? 0,

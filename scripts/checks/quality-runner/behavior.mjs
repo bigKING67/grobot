@@ -9,6 +9,7 @@ import { buildQualityGateRegistry, gateNamesForMode, QUALITY_ENTRYPOINT_SCRIPTS,
 import { explainAffectedSelection, listChangedFiles, selectAffectedGates } from "../../lib/quality-affected.mjs";
 import { appendQualityEvent, computeGateTimingFingerprint, createQualityCacheContext, explainGateCache, summarizeQualityEvents } from "../../lib/quality-cache.mjs";
 import { planQualityGates, runQualityGates } from "../../lib/quality-scheduler.mjs";
+import { computeActionContractFingerprint, resolveGateActionContract } from "../../lib/quality-action-contract.mjs";
 
 function packageJson() {
   return JSON.parse(readFileSync("package.json", "utf8"));
@@ -24,6 +25,47 @@ function assertExcludes(list, unexpected, label) {
 
 const registry = buildQualityGateRegistry({ packageJson: packageJson(), repoRoot: process.cwd() });
 assert.deepEqual(validateQualityGateRegistry(registry, { packageJson: packageJson(), repoRoot: process.cwd() }), []);
+
+const qualityRunnerGate = registry.byName.get("check:quality-runner");
+assert.equal(qualityRunnerGate?.actionContract?.name, "check:quality-runner", "registry gates must expose normalized action contracts");
+assert.equal(qualityRunnerGate?.actionContract?.command, qualityRunnerGate?.command, "action contract command must match executable gate command");
+assert.equal(
+  qualityRunnerGate?.actionContractFingerprint,
+  computeActionContractFingerprint(qualityRunnerGate?.actionContract),
+  "action contract fingerprint must be derived from normalized action contract",
+);
+assert.equal(
+  resolveGateActionContract({
+    cacheable: true,
+    command: "node pass-a.mjs",
+    env: ["BETA", "ALPHA", "ALPHA"],
+    group: "test",
+    inputs: ["b.txt", "a.txt", "b.txt"],
+    name: "contract-normalization",
+  }).inputs.join(","),
+  "a.txt,b.txt",
+  "action contracts must normalize input sets for stable hashing",
+);
+assert.deepEqual(
+  resolveGateActionContract({
+    cacheable: true,
+    command: "node pass-a.mjs",
+    group: "test",
+    name: "contract-toolchains",
+  }).toolchains,
+  ["node", "npm"],
+  "action contracts must declare Node toolchain dimensions by default",
+);
+assert.deepEqual(
+  resolveGateActionContract({
+    cacheable: true,
+    command: "cargo check --manifest-path runtime/Cargo.toml",
+    group: "runtime",
+    name: "contract-rust-toolchains",
+  }).toolchains,
+  ["cargo", "node", "npm", "rustc"],
+  "runtime action contracts must declare Rust and Node toolchain dimensions",
+);
 
 for (const [scriptName, expected] of Object.entries(QUALITY_ENTRYPOINT_SCRIPTS)) {
   assert.equal(packageJson().scripts?.[scriptName], expected, `${scriptName} package script drifted`);
@@ -399,6 +441,12 @@ try {
   });
   assert.equal(cacheExplanation.status, "miss", "uncached gate explanation must report miss");
   assert.equal(cacheExplanation.cacheable, true, "cache explanation must expose cacheability");
+  assert.equal(cacheExplanation.actionContract.name, "cache-test", "cache explanation must expose the normalized action contract");
+  assert.equal(
+    cacheExplanation.actionContractFingerprint,
+    computeActionContractFingerprint(cacheExplanation.actionContract),
+    "cache explanation must expose the action contract fingerprint used by the action hash",
+  );
   assert.equal(
     existsSync(join(tmp, ".cache/grobot-quality/manifests/file-digests.json")),
     true,
@@ -435,6 +483,124 @@ try {
     resourceCost: 1,
   }, reusedContext);
   assert.equal(firstReuse.cacheKey, secondReuse.cacheKey, "digest manifest reuse must preserve cache key stability");
+
+  process.env.GROBOT_QUALITY_CONTRACT_TEST = "alpha";
+  const envKeyAlpha = explainGateCache(tmp, {
+    cacheable: true,
+    command: "node pass-a.mjs",
+    cost: "cheap",
+    deps: [],
+    env: ["GROBOT_QUALITY_CONTRACT_TEST"],
+    group: "test",
+    inputs: ["pass-a.mjs"],
+    name: "cache-env-test",
+    parallel: true,
+    resourceClass: "node",
+    resourceCost: 1,
+  }).cacheKey;
+  process.env.GROBOT_QUALITY_CONTRACT_TEST = "beta";
+  const envKeyBeta = explainGateCache(tmp, {
+    cacheable: true,
+    command: "node pass-a.mjs",
+    cost: "cheap",
+    deps: [],
+    env: ["GROBOT_QUALITY_CONTRACT_TEST"],
+    group: "test",
+    inputs: ["pass-a.mjs"],
+    name: "cache-env-test",
+    parallel: true,
+    resourceClass: "node",
+    resourceCost: 1,
+  }).cacheKey;
+  delete process.env.GROBOT_QUALITY_CONTRACT_TEST;
+  assert.notEqual(envKeyAlpha, envKeyBeta, "declared env values must participate in action hashes");
+
+  const unrelatedEnvKeyBefore = explainGateCache(tmp, {
+    cacheable: true,
+    command: "node pass-a.mjs",
+    cost: "cheap",
+    deps: [],
+    env: [],
+    group: "test",
+    inputs: ["pass-a.mjs"],
+    name: "cache-unrelated-env-test",
+    parallel: true,
+    resourceClass: "node",
+    resourceCost: 1,
+  }).cacheKey;
+  process.env.GROBOT_QUALITY_UNDECLARED_ENV = "changed";
+  const unrelatedEnvKeyAfter = explainGateCache(tmp, {
+    cacheable: true,
+    command: "node pass-a.mjs",
+    cost: "cheap",
+    deps: [],
+    env: [],
+    group: "test",
+    inputs: ["pass-a.mjs"],
+    name: "cache-unrelated-env-test",
+    parallel: true,
+    resourceClass: "node",
+    resourceCost: 1,
+  }).cacheKey;
+  delete process.env.GROBOT_QUALITY_UNDECLARED_ENV;
+  assert.equal(unrelatedEnvKeyBefore, unrelatedEnvKeyAfter, "undeclared env values must not invalidate action hashes");
+
+  const commandKeyA = explainGateCache(tmp, {
+    cacheable: true,
+    command: "node pass-a.mjs",
+    cost: "cheap",
+    deps: [],
+    env: [],
+    group: "test",
+    inputs: ["pass-a.mjs"],
+    name: "cache-command-test",
+    parallel: true,
+    resourceClass: "node",
+    resourceCost: 1,
+  }).cacheKey;
+  const commandKeyB = explainGateCache(tmp, {
+    cacheable: true,
+    command: "node pass-b.mjs",
+    cost: "cheap",
+    deps: [],
+    env: [],
+    group: "test",
+    inputs: ["pass-a.mjs"],
+    name: "cache-command-test",
+    parallel: true,
+    resourceClass: "node",
+    resourceCost: 1,
+  }).cacheKey;
+  assert.notEqual(commandKeyA, commandKeyB, "command changes must invalidate action hashes");
+
+  const inputKeyBefore = explainGateCache(tmp, {
+    cacheable: true,
+    command: "node pass-a.mjs",
+    cost: "cheap",
+    deps: [],
+    env: [],
+    group: "test",
+    inputs: ["tracked.txt"],
+    name: "cache-input-test",
+    parallel: true,
+    resourceClass: "node",
+    resourceCost: 1,
+  }).cacheKey;
+  writeFileSync(join(tmp, "tracked.txt"), "changed\n");
+  const inputKeyAfter = explainGateCache(tmp, {
+    cacheable: true,
+    command: "node pass-a.mjs",
+    cost: "cheap",
+    deps: [],
+    env: [],
+    group: "test",
+    inputs: ["tracked.txt"],
+    name: "cache-input-test",
+    parallel: true,
+    resourceClass: "node",
+    resourceCost: 1,
+  }).cacheKey;
+  assert.notEqual(inputKeyBefore, inputKeyAfter, "input digest changes must invalidate action hashes");
 
   const failRun = await runQualityGates([
     {

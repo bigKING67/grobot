@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
+import { computeActionContractFingerprint, resolveGateActionContract } from "./quality-action-contract.mjs";
+
 export const GATEWAY_SUITE_IDS = Object.freeze([
   "gateway:core",
   "gateway:semantic-benchmark",
@@ -336,7 +338,7 @@ function inferExclusiveGroup(gate) {
 }
 
 function makeGate(definition) {
-  return Object.freeze({
+  const base = {
     cacheable: inferCacheable(definition),
     cachePolicy: inferCachePolicy(definition),
     command: definition.command,
@@ -349,9 +351,19 @@ function makeGate(definition) {
     label: definition.label ?? `[quality] ${definition.name}`,
     modes: Object.freeze(definition.modes ?? []),
     name: definition.name,
+    outputs: Object.freeze(definition.outputs ?? []),
     parallel: inferParallel(definition),
     resourceClass: inferResourceClass(definition),
     resourceCost: inferResourceCost(definition),
+    timeoutMs: definition.timeoutMs ?? 0,
+    toolchains: Object.freeze(definition.toolchains ?? []),
+    workdir: definition.workdir ?? ".",
+  };
+  const actionContract = resolveGateActionContract(base);
+  return Object.freeze({
+    ...base,
+    actionContract,
+    actionContractFingerprint: computeActionContractFingerprint(actionContract),
   });
 }
 
@@ -433,6 +445,18 @@ export function validateQualityGateRegistry(registry, options = {}) {
     seen.add(gate.name);
     if (!gate.command) {
       findings.push(`${gate.name} is missing an executable command`);
+    }
+    if (!gate.actionContract || gate.actionContract.name !== gate.name) {
+      findings.push(`${gate.name} is missing a normalized action contract`);
+    }
+    if (gate.actionContract?.command !== gate.command) {
+      findings.push(`${gate.name} action contract command drifted from gate command`);
+    }
+    if (!String(gate.actionContractFingerprint ?? "").startsWith("sha256:")) {
+      findings.push(`${gate.name} is missing an action contract fingerprint`);
+    }
+    if (gate.cacheable && gate.actionContract?.cachePolicy === "never") {
+      findings.push(`${gate.name} is cacheable but its action contract cachePolicy is never`);
     }
     for (const depName of gate.deps) {
       if (!registry.byName.has(depName)) {

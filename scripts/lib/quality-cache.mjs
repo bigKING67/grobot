@@ -3,6 +3,8 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
+import { computeActionContractFingerprint, resolveGateActionContract, stableJson } from "./quality-action-contract.mjs";
+
 const CACHE_SCHEMA_VERSION = 2;
 export const QUALITY_TIMING_MODEL_VERSION = "quality-timing-v2";
 const CACHE_ROOT = ".cache/grobot-quality";
@@ -20,17 +22,10 @@ function hashString(value) {
 }
 
 export function computeGateTimingFingerprint(gate) {
+  const actionContract = gate?.actionContract ?? resolveGateActionContract(gate);
   const hash = createHash("sha256");
   hash.update(`timing=${QUALITY_TIMING_MODEL_VERSION}\n`);
-  hash.update(`name=${gate?.name ?? ""}\n`);
-  hash.update(`command=${gate?.command ?? ""}\n`);
-  hash.update(`deps=${(gate?.deps ?? []).join(",")}\n`);
-  hash.update(`inputs=${(gate?.inputs ?? []).join(",")}\n`);
-  hash.update(`cachePolicy=${gate?.cachePolicy ?? ""}\n`);
-  hash.update(`parallel=${String(gate?.parallel !== false)}\n`);
-  hash.update(`resourceClass=${gate?.resourceClass ?? ""}\n`);
-  hash.update(`resourceCost=${String(gate?.resourceCost ?? 1)}\n`);
-  hash.update(`exclusiveGroup=${gate?.exclusiveGroup ?? ""}\n`);
+  hash.update(`actionContract=${computeActionContractFingerprint(actionContract)}\n`);
   return `sha256:${hash.digest("hex")}`;
 }
 
@@ -215,6 +210,28 @@ function toolVersion(repoRoot, command, args, context) {
   return version;
 }
 
+function actionContractForGate(gate) {
+  return gate?.actionContract ?? resolveGateActionContract(gate);
+}
+
+function toolchainVersions(repoRoot, actionContract, context) {
+  const versions = {};
+  for (const toolchain of actionContract.toolchains ?? []) {
+    if (toolchain === "node") {
+      versions.node = process.version;
+    } else if (toolchain === "npm") {
+      versions.npm = toolVersion(repoRoot, "npm", ["--version"], context);
+    } else if (toolchain === "rustc") {
+      versions.rustc = toolVersion(repoRoot, "rustc", ["--version"], context);
+    } else if (toolchain === "cargo") {
+      versions.cargo = toolVersion(repoRoot, "cargo", ["--version"], context);
+    } else {
+      versions[toolchain] = "<declared>";
+    }
+  }
+  return versions;
+}
+
 export function createQualityCacheContext(repoRoot) {
   return {
     repoRoot,
@@ -248,29 +265,33 @@ export function ensureQualityCacheDirs(repoRoot) {
 }
 
 export function computeGateCacheKey(repoRoot, gate, context = null) {
-  const files = expandInputPatterns(repoRoot, gate.inputs ?? [], context);
+  const actionContract = actionContractForGate(gate);
+  const files = expandInputPatterns(repoRoot, actionContract.inputs ?? [], context);
+  const fileDigests = files.map((file) => ({
+    digest: fileDigest(repoRoot, file, context),
+    path: file,
+  }));
+  const envValues = Object.fromEntries(
+    (actionContract.env ?? []).map((envName) => [envName, process.env[envName] ?? ""]),
+  );
+  const toolchainVersionValues = toolchainVersions(repoRoot, actionContract, context);
+  const action = {
+    contract: actionContract,
+    contractFingerprint: computeActionContractFingerprint(actionContract),
+    env: envValues,
+    files: fileDigests,
+    platform: `${process.platform}-${process.arch}`,
+    toolchains: toolchainVersionValues,
+  };
   const hash = createHash("sha256");
   hash.update(`schema=${CACHE_SCHEMA_VERSION}\n`);
-  hash.update(`gate=${gate.name}\n`);
-  hash.update(`command=${gate.command}\n`);
-  hash.update(`platform=${process.platform}-${process.arch}\n`);
-  hash.update(`node=${process.version}\n`);
-  hash.update(`npm=${toolVersion(repoRoot, "npm", ["--version"], context)}\n`);
-  hash.update(`cachePolicy=${gate.cachePolicy ?? ""}\n`);
-  for (const envName of gate.env ?? []) {
-    hash.update(`env=${envName}=${process.env[envName] ?? ""}\n`);
-  }
-  if (gate.group === "runtime" || gate.command.includes("cargo ")) {
-    hash.update(`rustc=${toolVersion(repoRoot, "rustc", ["--version"], context)}\n`);
-    hash.update(`cargo=${toolVersion(repoRoot, "cargo", ["--version"], context)}\n`);
-  }
-  for (const file of files) {
-    hash.update(`file=${file}\n`);
-    hash.update(fileDigest(repoRoot, file, context));
-    hash.update("\n");
-  }
+  hash.update(stableJson(action));
+  hash.update("\n");
   flushQualityCacheContext(context);
   return {
+    action,
+    actionContract,
+    actionContractFingerprint: action.contractFingerprint,
     cacheKey: hash.digest("hex"),
     files,
   };
@@ -376,6 +397,7 @@ export function writeGateCache(repoRoot, gate, cacheKey, result) {
       gate: gate.name,
       cacheKey,
       actionHash: cacheKey,
+      actionContractFingerprint: gate.actionContractFingerprint ?? computeActionContractFingerprint(actionContractForGate(gate)),
       status: "pass",
       durationMs: result.durationMs,
       stdoutDigest: stdout.digest,
@@ -414,6 +436,8 @@ export function explainGateCache(repoRoot, gate, context = null) {
     cacheable: gate.cacheable === true,
     status: cached ? "hit" : "miss",
     cacheKey: cacheInfo.cacheKey,
+    actionContract: cacheInfo.actionContract,
+    actionContractFingerprint: cacheInfo.actionContractFingerprint,
     actionCachePath: actionPath,
     legacyCachePath: legacyPath,
     actionCacheEntries: countActionCacheEntries(repoRoot, gate.name),
@@ -422,6 +446,7 @@ export function explainGateCache(repoRoot, gate, context = null) {
     latestEntry: latest?.payload
       ? {
         cacheKey: latest.payload.cacheKey ?? "",
+        actionContractFingerprint: latest.payload.actionContractFingerprint ?? "",
         status: latest.payload.status ?? "",
         timestamp: latest.payload.timestamp ?? "",
         durationMs: latest.payload.durationMs ?? 0,
