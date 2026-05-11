@@ -1,19 +1,14 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { spawnTsxSync } from "./_shared/run-tsx-script.mjs";
 
 const POLICY_OVERRIDE_ALLOW_ENV = "GROBOT_PLAN_EVENTS_POLICY_OVERRIDE_ALLOW";
 const POLICY_OVERRIDE_DENY_ENV = "GROBOT_PLAN_EVENTS_POLICY_OVERRIDE_DENY";
 
 function runGuard(repoRoot, policyPath, reportPath, options = {}) {
   const args = [
-    "--yes",
-    "--package",
-    "tsx@4.20.6",
-    "tsx",
-    "gateway/src/governance/evals/plan-events-policy-guard.ts",
     "--policy",
     policyPath,
     "--report",
@@ -22,15 +17,12 @@ function runGuard(repoRoot, policyPath, reportPath, options = {}) {
   if (options.printJson !== false) {
     args.push("--print-json");
   }
-  const completed = spawnSync("npx", args, {
+  const completed = spawnTsxSync("gateway/src/governance/evals/plan-events-policy-guard.ts", args, {
     cwd: repoRoot,
-    encoding: "utf8",
-    timeout: 120_000,
     env: {
       ...process.env,
       ...(options.env ?? {}),
     },
-    maxBuffer: 16 * 1024 * 1024,
   });
   return {
     code: typeof completed.status === "number" ? completed.status : 1,

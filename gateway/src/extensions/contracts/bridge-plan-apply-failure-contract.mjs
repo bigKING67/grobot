@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { spawnTsxSync } from "./_shared/run-tsx-script.mjs";
 
 function runBridgeTurn(repoRoot, workDir, userMessage, envOverrides = {}) {
   const input = JSON.stringify({
@@ -19,21 +19,14 @@ function runBridgeTurn(repoRoot, workDir, userMessage, envOverrides = {}) {
     },
     workDir,
   });
-  const completed = spawnSync(
-    "npx",
-    ["--yes", "--package", "tsx@4.20.6", "tsx", "gateway/src/extensions/bridge-cli.ts"],
-    {
-      cwd: repoRoot,
-      encoding: "utf8",
-      input,
-      timeout: 120_000,
-      maxBuffer: 16 * 1024 * 1024,
-      env: {
-        ...process.env,
-        ...envOverrides,
-      },
+  const completed = spawnTsxSync("gateway/src/extensions/bridge-cli.ts", [], {
+    cwd: repoRoot,
+    input,
+    env: {
+      ...process.env,
+      ...envOverrides,
     },
-  );
+  });
   const exitCode = typeof completed.status === "number" ? completed.status : 1;
   const stdout = completed.stdout ?? "";
   const stderr = completed.stderr ?? "";

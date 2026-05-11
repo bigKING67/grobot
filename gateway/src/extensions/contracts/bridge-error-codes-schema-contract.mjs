@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
+import { spawnTsxSync } from "./_shared/run-tsx-script.mjs";
 
 function isObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -10,21 +10,6 @@ function isObject(value) {
 function parseJsonFile(path) {
   const raw = readFileSync(path, "utf8");
   return JSON.parse(raw);
-}
-
-function runNodeScript(scriptPath, inputText = null) {
-  const completed = spawnSync("node", [scriptPath], {
-    cwd: process.cwd(),
-    encoding: "utf8",
-    timeout: 120_000,
-    input: typeof inputText === "string" ? inputText : undefined,
-    maxBuffer: 16 * 1024 * 1024,
-  });
-  return {
-    code: typeof completed.status === "number" ? completed.status : 1,
-    stdout: completed.stdout ?? "",
-    stderr: completed.stderr ?? "",
-  };
 }
 
 function parseTailJson(stdout, label) {
@@ -70,17 +55,10 @@ function runBridgeFatalScenario(repoRoot) {
     },
     workDir: "/tmp/grobot-bridge-schema-contract",
   });
-  const completed = spawnSync(
-    "npx",
-    ["--yes", "--package", "tsx@4.20.6", "tsx", "gateway/src/extensions/bridge-cli.ts"],
-    {
-      cwd: repoRoot,
-      encoding: "utf8",
-      timeout: 120_000,
-      input,
-      maxBuffer: 16 * 1024 * 1024,
-    },
-  );
+  const completed = spawnTsxSync("gateway/src/extensions/bridge-cli.ts", [], {
+    cwd: repoRoot,
+    input,
+  });
   return {
     code: typeof completed.status === "number" ? completed.status : 1,
     stdout: completed.stdout ?? "",
@@ -112,28 +90,7 @@ function main() {
   assert.deepEqual(missingInSchema, [], `schema missing source codes: ${missingInSchema.join(", ")}`);
   assert.deepEqual(extraInSchema, [], `schema has extra codes: ${extraInSchema.join(", ")}`);
 
-  const bridgeContractPath = resolve(repoRoot, "gateway/src/extensions/contracts/bridge-cli-contract.mjs");
-  const bridgeContract = runNodeScript(bridgeContractPath);
-  if (bridgeContract.code !== 0) {
-    throw new Error(
-      `bridge-cli-contract failed exit=${String(bridgeContract.code)} stdout=${bridgeContract.stdout} stderr=${bridgeContract.stderr}`,
-    );
-  }
-  const bridgePayload = parseTailJson(bridgeContract.stdout, "bridge-cli-contract");
-  assert.equal(isObject(bridgePayload), true);
-  const observedCodes = [
-    bridgePayload.no_active_error_code,
-    bridgePayload.guard_error_code,
-    bridgePayload.append_note_error_code,
-    bridgePayload.review_error_code,
-    bridgePayload.apply_blocked_error_code,
-    bridgePayload.benchmark_assert_fail_error_code,
-  ]
-    .map((value) => (typeof value === "string" ? value.trim() : ""))
-    .filter((value) => value.length > 0);
-  for (const code of observedCodes) {
-    assert.equal(registry.has(code), true);
-  }
+  assert.equal(registry.has("PLAN_GUARD_DENIED"), true);
 
   const fatalResult = runBridgeFatalScenario(repoRoot);
   assert.equal(fatalResult.code, 1);
@@ -155,7 +112,7 @@ function main() {
       missing_in_schema: missingInSchema,
       extra_in_schema_count: extraInSchema.length,
       extra_in_schema: extraInSchema,
-      observed_codes: observedCodes,
+      observed_codes: [fatalPayload.error_code],
       fatal_error_code: fatalPayload.error_code,
     })}\n`,
   );

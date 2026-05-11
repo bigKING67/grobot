@@ -1,28 +1,14 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { spawnTsxSync } from "./_shared/run-tsx-script.mjs";
 
 function runBenchmark(repoRoot, args = [], options = {}) {
-  const completed = spawnSync(
-    "npx",
-    [
-      "--yes",
-      "--package",
-      "tsx@4.20.6",
-      "tsx",
-      "gateway/src/governance/evals/plan-quality-benchmark.ts",
-      ...args,
-    ],
-    {
-      cwd: repoRoot,
-      encoding: "utf8",
-      env: { ...process.env, ...(options.env ?? {}) },
-      timeout: 120_000,
-      maxBuffer: 16 * 1024 * 1024,
-    },
-  );
+  const completed = spawnTsxSync("gateway/src/governance/evals/plan-quality-benchmark.ts", args, {
+    cwd: repoRoot,
+    env: { ...process.env, ...(options.env ?? {}) },
+  });
   return {
     code: typeof completed.status === "number" ? completed.status : 1,
     stdout: completed.stdout ?? "",

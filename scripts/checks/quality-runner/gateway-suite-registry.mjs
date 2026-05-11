@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GATEWAY_SUITE_IDS } from "../../lib/quality-gate-registry.mjs";
@@ -68,6 +68,37 @@ assert.equal(
   casesPayload.cases.some((testCase) => testCase.id === "gateway:plan:bridge-error-codes"),
   true,
   "gateway plan must expose case-level bridge error code contracts",
+);
+const planBridgeSchemaCase = casesPayload.cases.find((testCase) => testCase.id === "gateway:plan:bridge-error-codes");
+assert.equal(
+  planBridgeSchemaCase?.id,
+  "gateway:plan:bridge-error-codes",
+  "gateway plan bridge schema case lookup must resolve",
+);
+const fastTsxPlanContracts = [
+  "gateway/src/extensions/contracts/bridge-cli-contract.mjs",
+  "gateway/src/extensions/contracts/bridge-error-codes-schema-contract.mjs",
+  "gateway/src/extensions/contracts/bridge-plan-apply-failure-contract.mjs",
+  "gateway/src/extensions/contracts/plan-events-policy-guard-contract.mjs",
+  "gateway/src/extensions/contracts/plan-quality-benchmark-contract.mjs",
+];
+for (const contractPath of fastTsxPlanContracts) {
+  const source = readFileSync(contractPath, "utf8");
+  assert.equal(
+    source.includes("./_shared/run-tsx-script.mjs"),
+    true,
+    `${contractPath} must use the shared local tsx fast path`,
+  );
+  assert.equal(
+    source.includes('"--package"'),
+    false,
+    `${contractPath} must not shell through npx --package on the hot path`,
+  );
+}
+assert.equal(
+  readFileSync("gateway/src/extensions/contracts/_shared/run-tsx-script.mjs", "utf8").includes("node_modules"),
+  true,
+  "shared tsx runner must prefer the repository-local binary when dependencies are installed",
 );
 assert.equal(
   casesPayload.cases.some((testCase) => testCase.id === "runtime:status:interrupt"),

@@ -405,12 +405,15 @@ less monolithic wall time.
 Gateway plan cases are split by contract domain (input/keybinding, failure
 policy, plan mode, user commands, instructions, slash suggestions, bridge
 CLI/apply/error-codes, events policy, and benchmark) while preserving
-`gateway:plan:full` as the aggregate reproduction path. Gateway TUI cases are
-split by browser/health, rendering, activity/status, bottom/ask panel, and
-ask/skill surfaces while preserving `gateway:tui:full` as the aggregate
-reproduction path. Runtime status cases are split by build/interrupt, stdio
-event stream, main status surface, and window-size surface. The shared runtime
-binary guard skips `cargo build` when
+`gateway:plan:full` as the aggregate reproduction path. The heavier plan bridge
+and eval contracts route TypeScript scripts through the local `node_modules/.bin/tsx`
+when available, avoiding repeated `npx --package tsx` launcher work on the hot
+path while keeping the same fallback command for source checkouts without
+installed dependencies. Gateway TUI cases are split by browser/health,
+rendering, activity/status, bottom/ask panel, and ask/skill surfaces while
+preserving `gateway:tui:full` as the aggregate reproduction path. Runtime status
+cases are split by build/interrupt, stdio event stream, main status surface, and
+window-size surface. The shared runtime binary guard skips `cargo build` when
 the debug binary is newer than `runtime/Cargo.toml`, `runtime/Cargo.lock`, and
 `runtime/src/**`, and serializes the rare rebuild through a local lock so
 `runtime:status` does not fight `cargo test` on the common hot path. The
