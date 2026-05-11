@@ -30,6 +30,7 @@ import {
   assertMcpInstructionControlSmoke,
   assertMcpInstructionScopeControlSmoke,
   assertMcpInstructionServerControlSmoke,
+  assertMcpInstructionValidatorSmoke,
   assertMcpInstructionValidDisabledBoundarySmoke,
 } from "./runtime-smoke/mcp-instruction-controls.mjs";
 import { assertRuntimeBinControlSmoke } from "./runtime-smoke/runtime-bin-controls.mjs";
@@ -189,20 +190,26 @@ export const RUNTIME_CONTROLS_CASES = Object.freeze({
   "runtime:controls:mcp-instruction-basic": {
     suite: "runtime:controls",
     description: "MCP instruction basic project TOML control rejection smoke.",
-    run: assertMcpInstructionBasicControlSmoke,
+    run: aggregateOnly(assertMcpInstructionBasicControlSmoke),
     seedMs: 800,
   },
   "runtime:controls:mcp-instruction-scope": {
     suite: "runtime:controls",
     description: "MCP instruction scope project TOML control rejection smoke.",
-    run: assertMcpInstructionScopeControlSmoke,
+    run: aggregateOnly(assertMcpInstructionScopeControlSmoke),
     seedMs: 800,
   },
   "runtime:controls:mcp-instruction-server": {
     suite: "runtime:controls",
     description: "MCP instruction registry server control rejection smoke.",
-    run: assertMcpInstructionServerControlSmoke,
+    run: aggregateOnly(assertMcpInstructionServerControlSmoke),
     seedMs: 650,
+  },
+  "runtime:controls:mcp-instruction-validator": {
+    suite: "runtime:controls",
+    description: "MCP instruction production config validator control rejection smoke.",
+    run: assertMcpInstructionValidatorSmoke,
+    seedMs: 450,
   },
   "runtime:controls:mcp-instruction-valid-disabled-boundary": {
     suite: "runtime:controls",

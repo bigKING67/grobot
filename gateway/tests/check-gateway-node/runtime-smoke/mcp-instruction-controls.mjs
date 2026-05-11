@@ -31,6 +31,16 @@ function assertNoFatalNoBanner(payload) {
   assert.equal(payload.has_start_banner, false);
 }
 
+function assertMcpInstructionValidatorContract() {
+  const result = runContract("mcp-instruction-config-validator-contract.mjs", "", [], { timeoutMs: 120_000 });
+  assert.equal(result.code, 0, `mcp instruction validator contract failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+  const payload = parseJsonOutput("mcp-instruction-config-validator-contract", result.stdout);
+  assert.equal(payload.status, "ok");
+  assert.equal(payload.rejected_count, 6);
+  assert.equal(Number(payload.unique_error_count) >= 5, true);
+  assert.equal(payload.valid_disabled_boundary, true);
+}
+
 function assertMcpInstructionBasicPayload(payload) {
   assert.equal(payload.invalid_enabled_exit_code, 2);
   assert.equal(payload.invalid_enabled_has_stable_error, true);
@@ -58,24 +68,23 @@ function assertMcpInstructionValidDisabledBoundaryPayload(payload) {
 }
 
 export function assertMcpInstructionBasicControlSmoke() {
-  const payload = runMcpInstructionControlContract("start-invalid-mcp-instruction-basic-controls-reject-flow");
-  assertMcpInstructionBasicPayload(payload);
-  assertNoFatalNoBanner(payload);
-  logStep("start-smoke-contract start-invalid-mcp-instruction-basic-controls-reject-flow");
+  assertMcpInstructionValidatorContract();
+  logStep("mcp-instruction-config-validator-contract basic-controls");
 }
 
 export function assertMcpInstructionScopeControlSmoke() {
-  const payload = runMcpInstructionControlContract("start-invalid-mcp-instruction-scope-controls-reject-flow");
-  assertMcpInstructionScopePayload(payload);
-  assertNoFatalNoBanner(payload);
-  logStep("start-smoke-contract start-invalid-mcp-instruction-scope-controls-reject-flow");
+  assertMcpInstructionValidatorContract();
+  logStep("mcp-instruction-config-validator-contract scope-controls");
 }
 
 export function assertMcpInstructionServerControlSmoke() {
-  const payload = runMcpInstructionControlContract("start-invalid-mcp-instruction-server-controls-reject-flow");
-  assertMcpInstructionServerPayload(payload);
-  assertNoFatalNoBanner(payload);
-  logStep("start-smoke-contract start-invalid-mcp-instruction-server-controls-reject-flow");
+  assertMcpInstructionValidatorContract();
+  logStep("mcp-instruction-config-validator-contract server-controls");
+}
+
+export function assertMcpInstructionValidatorSmoke() {
+  assertMcpInstructionValidatorContract();
+  logStep("mcp-instruction-config-validator-contract batch-controls");
 }
 
 export function assertMcpInstructionValidDisabledBoundarySmoke() {

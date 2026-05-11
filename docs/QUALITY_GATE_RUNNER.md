@@ -291,9 +291,10 @@ for high-value composite smoke surfaces. Current split cases include:
 - `runtime:controls:tool-surface-profile`
 - `runtime:controls:runtime-bin`
 - `runtime:controls:mcp-instruction` (aggregate-only reproduction)
-- `runtime:controls:mcp-instruction-basic`
-- `runtime:controls:mcp-instruction-scope`
-- `runtime:controls:mcp-instruction-server`
+- `runtime:controls:mcp-instruction-basic` (focused-only reproduction)
+- `runtime:controls:mcp-instruction-scope` (focused-only reproduction)
+- `runtime:controls:mcp-instruction-server` (focused-only reproduction)
+- `runtime:controls:mcp-instruction-validator`
 - `runtime:controls:mcp-instruction-valid-disabled-boundary`
 - `runtime:controls:status-line` (aggregate-only reproduction)
 - `runtime:controls:status-line-validator`
@@ -456,13 +457,16 @@ Runtime controls cases keep the original aggregate case ids available for
 focused reproduction, but suite selection runs finer case-level shards for the
 large domains: context-engine validator/status/boundary, experience scheduler
 validator/boundary, experience runtime start team/config and serve, MCP
-instruction basic/scope/server/disabled-boundary, and status-line
-validator/boundary.
+instruction validator/disabled-boundary, and status-line validator/boundary.
 Focused context-engine env core/adaptive and TOML basic/threshold/window cases
 remain listed for targeted reproduction but are not selected by the default
 suite because the validator shard already batches those pure config checks
 through one production resolver process.
 Focused experience-scheduler env/TOML cases remain listed for targeted
+reproduction but are not selected by the default suite because the validator
+shard already batches those pure config checks through one production resolver
+process.
+Focused MCP instruction basic/scope/server cases remain listed for targeted
 reproduction but are not selected by the default suite because the validator
 shard already batches those pure config checks through one production resolver
 process.
@@ -498,6 +502,12 @@ config validation in one local `tsx` process through the production
 `resolveExperienceSchedulerConfig` resolver; the aggregate
 `runtime:controls:experience-scheduler` case still runs the full
 `./grobot start` smoke path for end-to-end reproduction.
+MCP instruction default controls use
+`mcp-instruction-config-validator-contract.mjs` to batch pure project TOML and
+MCP registry validation in one local `tsx` process through the production
+`resolveMcpInstructionRuntime` resolver; the aggregate
+`runtime:controls:mcp-instruction` case still runs the full `./grobot start`
+smoke path for end-to-end reproduction.
 Runtime start controls are split by control source: CLI runtime options,
 provider env controls, memory maintenance env, context-window env, and
 ask-user TTL env controls. The aggregate `runtime:start-controls:runtime-controls`

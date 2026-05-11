@@ -140,6 +140,10 @@ const experienceSchedulerValidatorContractSource = readFileSync(
   "gateway/src/extensions/contracts/experience-scheduler-config-validator-contract.mjs",
   "utf8",
 );
+const mcpInstructionValidatorContractSource = readFileSync(
+  "gateway/src/extensions/contracts/mcp-instruction-config-validator-contract.mjs",
+  "utf8",
+);
 assert.equal(
   contextEngineValidatorContractSource.includes("resolveContextEngineConfig"),
   true,
@@ -170,6 +174,16 @@ assert.equal(
   false,
   "experience scheduler fast controls must not shell through start smoke for each invalid fixture",
 );
+assert.equal(
+  mcpInstructionValidatorContractSource.includes("resolveMcpInstructionRuntime"),
+  true,
+  "MCP instruction fast controls must reuse the production config resolver",
+);
+assert.equal(
+  mcpInstructionValidatorContractSource.includes("start-invalid-mcp-instruction"),
+  false,
+  "MCP instruction fast controls must not shell through start smoke for each invalid fixture",
+);
 const statusLineControlsSource = readFileSync(
   "gateway/tests/check-gateway-node/runtime-smoke/status-line-controls.mjs",
   "utf8",
@@ -180,6 +194,10 @@ const contextEngineControlsSource = readFileSync(
 );
 const experienceSchedulerControlsSource = readFileSync(
   "gateway/tests/check-gateway-node/runtime-smoke/experience-scheduler-controls.mjs",
+  "utf8",
+);
+const mcpInstructionControlsSource = readFileSync(
+  "gateway/tests/check-gateway-node/runtime-smoke/mcp-instruction-controls.mjs",
   "utf8",
 );
 assert.equal(
@@ -213,6 +231,16 @@ assert.equal(
   "runtime controls must expose the experience scheduler validator batch shard",
 );
 assert.equal(
+  mcpInstructionControlsSource.includes("mcp-instruction-config-validator-contract.mjs"),
+  true,
+  "MCP instruction split controls must use the validator fast path",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:controls:mcp-instruction-validator"),
+  true,
+  "runtime controls must expose the MCP instruction validator batch shard",
+);
+assert.equal(
   statusLineControlsSource.includes('runStatusLineControlContract("start-invalid-status-line-controls-reject-flow")'),
   true,
   "status-line aggregate reproduction must keep the full start smoke path",
@@ -226,6 +254,11 @@ assert.equal(
   contextEngineControlsSource.includes('runContextEngineControlContract("start-invalid-context-engine-controls-reject-flow")'),
   true,
   "context engine aggregate reproduction must keep the full start smoke path",
+);
+assert.equal(
+  mcpInstructionControlsSource.includes('runMcpInstructionControlContract("start-invalid-mcp-instruction-controls-reject-flow")'),
+  true,
+  "MCP instruction aggregate reproduction must keep the full start smoke path",
 );
 assert.equal(
   readFileSync("gateway/src/extensions/contracts/_shared/run-tsx-script.mjs", "utf8").includes("node_modules"),
@@ -360,6 +393,9 @@ try {
     "runtime:controls:experience-scheduler-toml",
     "runtime:controls:experience-runtime-start",
     "runtime:controls:mcp-instruction",
+    "runtime:controls:mcp-instruction-basic",
+    "runtime:controls:mcp-instruction-scope",
+    "runtime:controls:mcp-instruction-server",
     "runtime:controls:status-line",
     "runtime:controls:status-line-basic",
     "runtime:controls:status-line-segment-order",
@@ -380,9 +416,7 @@ try {
     "runtime:controls:experience-scheduler-validator",
     "runtime:controls:experience-runtime-start-team",
     "runtime:controls:experience-runtime-start-config",
-    "runtime:controls:mcp-instruction-basic",
-    "runtime:controls:mcp-instruction-scope",
-    "runtime:controls:mcp-instruction-server",
+    "runtime:controls:mcp-instruction-validator",
     "runtime:controls:mcp-instruction-valid-disabled-boundary",
     "runtime:controls:status-line-validator",
   ]) {
@@ -400,9 +434,7 @@ try {
     "runtime:controls:experience-scheduler-validator",
     "runtime:controls:experience-runtime-start-team",
     "runtime:controls:experience-runtime-start-config",
-    "runtime:controls:mcp-instruction-basic",
-    "runtime:controls:mcp-instruction-scope",
-    "runtime:controls:mcp-instruction-server",
+    "runtime:controls:mcp-instruction-validator",
     "runtime:controls:mcp-instruction-valid-disabled-boundary",
     "runtime:controls:status-line-validator",
   ]) {
