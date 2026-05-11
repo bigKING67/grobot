@@ -140,6 +140,21 @@ assert.equal(
   "runtime start controls must expose case-level ask-user TTL environment controls",
 );
 assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:experience-state-controls:storage-cli"),
+  true,
+  "runtime experience/state controls must expose case-level storage CLI controls",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:experience-state-controls:session-history"),
+  true,
+  "runtime experience/state controls must expose case-level session history controls",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:experience-state-controls:experience-recall"),
+  true,
+  "runtime experience/state controls must expose case-level experience recall controls",
+);
+assert.equal(
   casesPayload.cases.some((testCase) => testCase.id === "runtime:management-gc-controls:management-policy"),
   true,
   "runtime management/gc controls must expose case-level management policy controls",

@@ -189,6 +189,16 @@ assert.equal(
   "runtime start controls lightweight suite must not reserve internal-worker smoke resources",
 );
 assert.equal(
+  registry.byName.get("check:gateway:suite:runtime:experience-state-controls")?.command,
+  "node gateway/tests/check-gateway-node.mjs --suite runtime:experience-state-controls --json --workers 4",
+  "runtime experience/state controls suite gate must use profitable internal case workers",
+);
+assert.equal(
+  registry.byName.get("check:gateway:suite:runtime:experience-state-controls")?.resourceCost,
+  3,
+  "runtime experience/state controls internal worker suite must reserve enough gateway-smoke resources to avoid noisy overlap",
+);
+assert.equal(
   registry.byName.get("check:gateway:suite:gateway:plan")?.command,
   "node gateway/tests/check-gateway-node.mjs --suite gateway:plan --json --workers 4",
   "gateway plan suite gate must use internal case workers",

@@ -61,14 +61,24 @@ import {
 } from "./start-smoke-contract/start-interactive-flows.mjs";
 import {
   runStartInvalidNamespaceRejectFlow,
-  runStartInvalidExperienceControlsRejectFlow,
-  runStartInvalidSessionControlsRejectFlow,
-  runStartInvalidStorageControlsRejectFlow,
   runPackageLauncherRejectsPython,
   runStartImOnlyRejectFlow,
   runStartMessageProviderConfigTsRust,
   runStartMessageSmoke,
 } from "./start-smoke-contract/start-basic-flows.mjs";
+import {
+  runStartInvalidExperienceControlsRejectFlow,
+  runStartInvalidExperiencePublishControlsRejectFlow,
+  runStartInvalidExperienceRecallControlsRejectFlow,
+  runStartInvalidSessionControlsRejectFlow,
+  runStartInvalidSessionHandoffEnvControlsRejectFlow,
+  runStartInvalidSessionHistoryControlsRejectFlow,
+  runStartInvalidSessionRewindControlsRejectFlow,
+  runStartInvalidStorageCliControlsRejectFlow,
+  runStartInvalidStorageControlsRejectFlow,
+  runStartInvalidStorageEnvControlsRejectFlow,
+  runStartInvalidStorageTomlControlsRejectFlow,
+} from "./start-smoke-contract/experience-state-control-flows.mjs";
 import {
   runStartInvalidAskUserTtlEnvControlsRejectFlow,
   runStartInvalidContextWindowEnvControlsRejectFlow,
@@ -225,11 +235,35 @@ function runCli(argv) {
     case "start-invalid-experience-controls-reject-flow":
       payload = runStartInvalidExperienceControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
+    case "start-invalid-experience-publish-controls-reject-flow":
+      payload = runStartInvalidExperiencePublishControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-experience-recall-controls-reject-flow":
+      payload = runStartInvalidExperienceRecallControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
     case "start-invalid-storage-controls-reject-flow":
       payload = runStartInvalidStorageControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
+    case "start-invalid-storage-cli-controls-reject-flow":
+      payload = runStartInvalidStorageCliControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-storage-env-controls-reject-flow":
+      payload = runStartInvalidStorageEnvControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-storage-toml-controls-reject-flow":
+      payload = runStartInvalidStorageTomlControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
     case "start-invalid-session-controls-reject-flow":
       payload = runStartInvalidSessionControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-session-history-controls-reject-flow":
+      payload = runStartInvalidSessionHistoryControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-session-rewind-controls-reject-flow":
+      payload = runStartInvalidSessionRewindControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-session-handoff-env-controls-reject-flow":
+      payload = runStartInvalidSessionHandoffEnvControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "start-invalid-tool-loop-controls-reject-flow":
       payload = runStartInvalidToolLoopControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));

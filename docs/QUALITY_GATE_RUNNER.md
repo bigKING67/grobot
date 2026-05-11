@@ -281,6 +281,18 @@ for high-value composite smoke surfaces. Current split cases include:
 - `runtime:start-controls:context-window-env`
 - `runtime:start-controls:ask-user-ttl-env`
 - `runtime:start-controls:runtime-controls`
+- `runtime:experience-state-controls:experience`
+- `runtime:experience-state-controls:experience-publish`
+- `runtime:experience-state-controls:experience-recall`
+- `runtime:experience-state-controls:storage-session`
+- `runtime:experience-state-controls:storage`
+- `runtime:experience-state-controls:storage-cli`
+- `runtime:experience-state-controls:storage-env`
+- `runtime:experience-state-controls:storage-toml`
+- `runtime:experience-state-controls:session`
+- `runtime:experience-state-controls:session-history`
+- `runtime:experience-state-controls:session-rewind`
+- `runtime:experience-state-controls:session-handoff-env`
 - `runtime:management-gc-controls:management-config`
 - `runtime:management-gc-controls:management-cli`
 - `runtime:management-gc-controls:management-policy`
@@ -366,10 +378,11 @@ suite implementation detail. Parent JSON reports keep the run diagnosable:
 worker executions add structured worker bucket entries and aggregate child case
 results, while parent `steps` records one `gateway-worker-N` step per worker.
 Heavy split suites (`gateway:plan`, `gateway:context`, `runtime:status`,
-`runtime:context`, `runtime:controls`, `runtime:management-gc-controls`,
-`runtime:plan`, `runtime:model-controls`, `runtime:provider-status`, and
-`runtime:describe`) are invoked with internal workers from the quality gate
-registry so full CI gets the same coverage with less monolithic wall time.
+`runtime:context`, `runtime:controls`, `runtime:experience-state-controls`,
+`runtime:management-gc-controls`, `runtime:plan`, `runtime:model-controls`,
+`runtime:provider-status`, and `runtime:describe`) are invoked with internal
+workers from the quality gate registry so full CI gets the same coverage with
+less monolithic wall time.
 Gateway plan cases are split by contract domain (input/keybinding, failure
 policy, plan mode, user commands, instructions, slash suggestions, bridge
 CLI/apply/error-codes, events policy, and benchmark) while preserving
@@ -406,6 +419,12 @@ and `:maintenance-env` cases remain available for focused reproduction, while
 suite selection runs the finer split cases in a single process because early
 input validation makes the suite smaller than the child-worker startup and
 resource-contention cost.
+Runtime experience/state controls are split by experience publish/recall,
+storage CLI/env/TOML, and session history/rewind/handoff-env controls. The
+aggregate `:experience`, `:storage`, `:session`, and `:storage-session` cases
+remain for focused reproduction, while suite selection runs the eight focused
+cases with four internal workers because the worker critical path is lower than
+the single-process path.
 Runtime management/GC controls follow the same split-case pattern: management
 config validation is split into read-policy, storage/Redis, env, token/TOML,
 and experience controls, while the aggregate `:management-cli` case remains for

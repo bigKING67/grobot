@@ -155,85 +155,179 @@ export function runRuntimeModelControlSurfaceSmoke() {
 }
 
 export function runRuntimeExperienceControlSurfaceSmoke() {
+  const payload = runExperienceStateControlContract("start-invalid-experience-controls-reject-flow");
+  assertExperienceControlsPayload(payload);
+  assertExperienceStateFooter(payload);
+  logStep("start-smoke-contract start-invalid-experience-controls-reject-flow");
+}
+
+function runExperienceStateControlContract(command) {
   const result = runContract(
     "start-smoke-contract.mjs",
-    "start-invalid-experience-controls-reject-flow",
+    command,
     ["--repo-root", repoRoot],
     { timeoutMs: 240_000 },
   );
-  const payload = parseJsonOutput(
-    "start-smoke-contract start-invalid-experience-controls-reject-flow",
-    result.stdout,
-  );
+  return parseJsonOutput(`start-smoke-contract ${command}`, result.stdout);
+}
+
+function assertExperienceStateFooter(payload) {
+  assert.equal(payload.hides_top_level_fatal, true);
+  assert.equal(payload.has_start_banner, false);
+}
+
+function assertExperiencePublishControlsPayload(payload) {
   assert.equal(payload.invalid_publish_mode_exit_code, 2);
   assert.equal(payload.invalid_publish_mode_has_stable_error, true);
+}
+
+function assertExperienceRecallControlsPayload(payload) {
   assert.equal(payload.invalid_recall_limit_exit_code, 2);
   assert.equal(payload.invalid_recall_limit_has_stable_error, true);
   assert.equal(payload.over_recall_limit_exit_code, 2);
   assert.equal(payload.over_recall_limit_has_stable_error, true);
   assert.equal(payload.zero_recall_limit_exit_code, 2);
   assert.equal(payload.zero_recall_limit_has_stable_error, true);
-  assert.equal(payload.hides_top_level_fatal, true);
-  assert.equal(payload.has_start_banner, false);
-  logStep("start-smoke-contract start-invalid-experience-controls-reject-flow");
+}
+
+function assertExperienceControlsPayload(payload) {
+  assertExperiencePublishControlsPayload(payload);
+  assertExperienceRecallControlsPayload(payload);
+}
+
+export function runRuntimeExperiencePublishControlSmoke() {
+  const payload = runExperienceStateControlContract("start-invalid-experience-publish-controls-reject-flow");
+  assertExperiencePublishControlsPayload(payload);
+  assertExperienceStateFooter(payload);
+  logStep("start-smoke-contract start-invalid-experience-publish-controls-reject-flow");
+}
+
+export function runRuntimeExperienceRecallControlSmoke() {
+  const payload = runExperienceStateControlContract("start-invalid-experience-recall-controls-reject-flow");
+  assertExperienceRecallControlsPayload(payload);
+  assertExperienceStateFooter(payload);
+  logStep("start-smoke-contract start-invalid-experience-recall-controls-reject-flow");
 }
 
 export function runRuntimeStorageSessionControlSurfaceSmoke() {
-  const storageResult = runContract(
-    "start-smoke-contract.mjs",
-    "start-invalid-storage-controls-reject-flow",
-    ["--repo-root", repoRoot],
-    { timeoutMs: 240_000 },
-  );
-  const storage = parseJsonOutput(
-    "start-smoke-contract start-invalid-storage-controls-reject-flow",
-    storageResult.stdout,
-  );
-  assert.equal(storage.invalid_backend_exit_code, 2);
-  assert.equal(storage.invalid_backend_has_stable_error, true);
-  assert.equal(storage.missing_backend_exit_code, 2);
-  assert.equal(storage.missing_backend_has_stable_error, true);
-  assert.equal(storage.invalid_redis_fallback_exit_code, 2);
-  assert.equal(storage.invalid_redis_fallback_has_stable_error, true);
-  assert.equal(storage.invalid_redis_url_exit_code, 2);
-  assert.equal(storage.invalid_redis_url_has_stable_error, true);
-  assert.equal(storage.invalid_env_backend_exit_code, 2);
-  assert.equal(storage.invalid_env_backend_has_stable_error, true);
-  assert.equal(storage.invalid_project_hot_cache_trailing_exit_code, 2);
-  assert.equal(storage.invalid_project_hot_cache_trailing_has_stable_error, true);
-  assert.equal(storage.invalid_project_require_redis_trailing_exit_code, 2);
-  assert.equal(storage.invalid_project_require_redis_trailing_has_stable_error, true);
-  assert.equal(storage.hides_top_level_fatal, true);
-  assert.equal(storage.has_start_banner, false);
-  logStep("start-smoke-contract start-invalid-storage-controls-reject-flow");
+  runRuntimeStorageControlSmoke();
+  runRuntimeSessionControlSmoke();
+}
 
-  const sessionResult = runContract(
-    "start-smoke-contract.mjs",
-    "start-invalid-session-controls-reject-flow",
-    ["--repo-root", repoRoot],
-    { timeoutMs: 240_000 },
-  );
-  const session = parseJsonOutput(
-    "start-smoke-contract start-invalid-session-controls-reject-flow",
-    sessionResult.stdout,
-  );
-  assert.equal(session.invalid_history_exit_code, 2);
-  assert.equal(session.invalid_history_has_stable_error, true);
-  assert.equal(session.over_history_exit_code, 2);
-  assert.equal(session.over_history_has_stable_error, true);
-  assert.equal(session.missing_handoff_recent_exit_code, 2);
-  assert.equal(session.missing_handoff_recent_has_stable_error, true);
-  assert.equal(session.zero_handoff_recent_exit_code, 2);
-  assert.equal(session.zero_handoff_recent_has_stable_error, true);
-  assert.equal(session.invalid_rewind_mode_exit_code, 2);
-  assert.equal(session.invalid_rewind_mode_has_stable_error, true);
-  assert.equal(session.missing_rewind_mode_exit_code, 2);
-  assert.equal(session.missing_rewind_mode_has_stable_error, true);
-  assert.equal(session.invalid_env_handoff_exit_code, 2);
-  assert.equal(session.invalid_env_handoff_has_stable_error, true);
-  assert.equal(session.hides_top_level_fatal, true);
-  assert.equal(session.has_start_banner, false);
+export function runRuntimeStorageControlSmoke() {
+  const payload = runExperienceStateControlContract("start-invalid-storage-controls-reject-flow");
+  assertStorageControlPayload(payload);
+  assertExperienceStateFooter(payload);
+  logStep("start-smoke-contract start-invalid-storage-controls-reject-flow");
+}
+
+function assertStorageCliControlPayload(payload) {
+  assert.equal(payload.invalid_backend_exit_code, 2);
+  assert.equal(payload.invalid_backend_has_stable_error, true);
+  assert.equal(payload.missing_backend_exit_code, 2);
+  assert.equal(payload.missing_backend_has_stable_error, true);
+  assert.equal(payload.invalid_redis_fallback_exit_code, 2);
+  assert.equal(payload.invalid_redis_fallback_has_stable_error, true);
+  assert.equal(payload.invalid_redis_url_exit_code, 2);
+  assert.equal(payload.invalid_redis_url_has_stable_error, true);
+}
+
+function assertStorageEnvControlPayload(payload) {
+  assert.equal(payload.invalid_env_backend_exit_code, 2);
+  assert.equal(payload.invalid_env_backend_has_stable_error, true);
+}
+
+function assertStorageTomlControlPayload(payload) {
+  assert.equal(payload.invalid_project_hot_cache_trailing_exit_code, 2);
+  assert.equal(payload.invalid_project_hot_cache_trailing_has_stable_error, true);
+  assert.equal(payload.invalid_project_require_redis_trailing_exit_code, 2);
+  assert.equal(payload.invalid_project_require_redis_trailing_has_stable_error, true);
+}
+
+function assertStorageControlPayload(payload) {
+  assertStorageCliControlPayload(payload);
+  assertStorageEnvControlPayload(payload);
+  assertStorageTomlControlPayload(payload);
+}
+
+export function runRuntimeStorageCliControlSmoke() {
+  const payload = runExperienceStateControlContract("start-invalid-storage-cli-controls-reject-flow");
+  assertStorageCliControlPayload(payload);
+  assertExperienceStateFooter(payload);
+  logStep("start-smoke-contract start-invalid-storage-cli-controls-reject-flow");
+}
+
+export function runRuntimeStorageEnvControlSmoke() {
+  const payload = runExperienceStateControlContract("start-invalid-storage-env-controls-reject-flow");
+  assertStorageEnvControlPayload(payload);
+  assertExperienceStateFooter(payload);
+  logStep("start-smoke-contract start-invalid-storage-env-controls-reject-flow");
+}
+
+export function runRuntimeStorageTomlControlSmoke() {
+  const payload = runExperienceStateControlContract("start-invalid-storage-toml-controls-reject-flow");
+  assertStorageTomlControlPayload(payload);
+  assertExperienceStateFooter(payload);
+  logStep("start-smoke-contract start-invalid-storage-toml-controls-reject-flow");
+}
+
+export function runRuntimeSessionControlSmoke() {
+  const payload = runExperienceStateControlContract("start-invalid-session-controls-reject-flow");
+  assertSessionControlPayload(payload);
+  assertExperienceStateFooter(payload);
   logStep("start-smoke-contract start-invalid-session-controls-reject-flow");
+}
+
+function assertSessionHistoryControlPayload(payload) {
+  assert.equal(payload.invalid_history_exit_code, 2);
+  assert.equal(payload.invalid_history_has_stable_error, true);
+  assert.equal(payload.over_history_exit_code, 2);
+  assert.equal(payload.over_history_has_stable_error, true);
+  assert.equal(payload.missing_handoff_recent_exit_code, 2);
+  assert.equal(payload.missing_handoff_recent_has_stable_error, true);
+  assert.equal(payload.zero_handoff_recent_exit_code, 2);
+  assert.equal(payload.zero_handoff_recent_has_stable_error, true);
+}
+
+function assertSessionRewindControlPayload(payload) {
+  assert.equal(payload.invalid_rewind_mode_exit_code, 2);
+  assert.equal(payload.invalid_rewind_mode_has_stable_error, true);
+  assert.equal(payload.missing_rewind_mode_exit_code, 2);
+  assert.equal(payload.missing_rewind_mode_has_stable_error, true);
+}
+
+function assertSessionHandoffEnvControlPayload(payload) {
+  assert.equal(payload.invalid_env_handoff_exit_code, 2);
+  assert.equal(payload.invalid_env_handoff_has_stable_error, true);
+  assert.equal(payload.empty_env_handoff_exit_code, 2);
+  assert.equal(payload.empty_env_handoff_has_stable_error, true);
+}
+
+function assertSessionControlPayload(payload) {
+  assertSessionHistoryControlPayload(payload);
+  assertSessionRewindControlPayload(payload);
+  assertSessionHandoffEnvControlPayload(payload);
+}
+
+export function runRuntimeSessionHistoryControlSmoke() {
+  const payload = runExperienceStateControlContract("start-invalid-session-history-controls-reject-flow");
+  assertSessionHistoryControlPayload(payload);
+  assertExperienceStateFooter(payload);
+  logStep("start-smoke-contract start-invalid-session-history-controls-reject-flow");
+}
+
+export function runRuntimeSessionRewindControlSmoke() {
+  const payload = runExperienceStateControlContract("start-invalid-session-rewind-controls-reject-flow");
+  assertSessionRewindControlPayload(payload);
+  assertExperienceStateFooter(payload);
+  logStep("start-smoke-contract start-invalid-session-rewind-controls-reject-flow");
+}
+
+export function runRuntimeSessionHandoffEnvControlSmoke() {
+  const payload = runExperienceStateControlContract("start-invalid-session-handoff-env-controls-reject-flow");
+  assertSessionHandoffEnvControlPayload(payload);
+  assertExperienceStateFooter(payload);
+  logStep("start-smoke-contract start-invalid-session-handoff-env-controls-reject-flow");
 }
 
 export function runRuntimeToolStartControlSurfaceSmoke() {
