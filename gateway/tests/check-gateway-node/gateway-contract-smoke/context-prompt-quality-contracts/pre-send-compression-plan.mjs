@@ -2,25 +2,44 @@ import assert from "node:assert/strict";
 import { logStep, parseJsonOutput, runTsContract } from "../../harness.mjs";
 
 export function runPreSendCompressionPlanContracts() {
-  const preSendPlanQualityFirstResult = runTsContract(
-    "context-engine-contract.ts",
-    "pre-send-compression-plan",
-    [
-      "--payload",
-      JSON.stringify({
-        selected_stage: "proactive",
-        estimated_tokens: 10_150,
-        target_token_limit: 10_000,
-        quality_guard_active: false,
-        quality_guard_severe: false,
-        pressure_trend_momentum: 0.08,
-      }),
-    ],
+  const preSendPlanResult = runTsContract("context-engine-contract.ts", "batch", [
+    "--payload",
+    JSON.stringify({
+      cases: [
+        {
+          label: "quality-first",
+          command: "pre-send-compression-plan",
+          payload: {
+            selected_stage: "proactive",
+            estimated_tokens: 10_150,
+            target_token_limit: 10_000,
+            quality_guard_active: false,
+            quality_guard_severe: false,
+            pressure_trend_momentum: 0.08,
+          },
+        },
+        {
+          label: "hard-budget",
+          command: "pre-send-compression-plan",
+          payload: {
+            selected_stage: "minimal",
+            estimated_tokens: 13_600,
+            target_token_limit: 10_000,
+            quality_guard_active: true,
+            quality_guard_severe: true,
+            pressure_trend_momentum: 0.82,
+          },
+        },
+      ],
+    }),
+  ]);
+  const preSendPlanPayload = parseJsonOutput(
+    "context-engine-contract pre-send-compression-plan batch",
+    preSendPlanResult.stdout,
   );
-  const preSendPlanQualityFirstPayload = parseJsonOutput(
-    "context-engine-contract pre-send-compression-plan quality-first",
-    preSendPlanQualityFirstResult.stdout,
-  );
+  const preSendPlanQualityFirstPayload = preSendPlanPayload.results
+    ?.find((row) => row?.label === "quality-first")
+    ?.payload;
   assert.equal(preSendPlanQualityFirstPayload.strategy, "quality_first");
   assert.equal(Array.isArray(preSendPlanQualityFirstPayload.order), true);
   assert.equal(preSendPlanQualityFirstPayload.order[0], "recent_trim");
@@ -30,25 +49,9 @@ export function runPreSendCompressionPlanContracts() {
   assert.equal(typeof preSendPlanQualityFirstPayload.pressure_score, "number");
   logStep("context-engine-contract pre-send-compression-plan quality-first");
 
-  const preSendPlanHardBudgetResult = runTsContract(
-    "context-engine-contract.ts",
-    "pre-send-compression-plan",
-    [
-      "--payload",
-      JSON.stringify({
-        selected_stage: "minimal",
-        estimated_tokens: 13_600,
-        target_token_limit: 10_000,
-        quality_guard_active: true,
-        quality_guard_severe: true,
-        pressure_trend_momentum: 0.82,
-      }),
-    ],
-  );
-  const preSendPlanHardBudgetPayload = parseJsonOutput(
-    "context-engine-contract pre-send-compression-plan hard-budget",
-    preSendPlanHardBudgetResult.stdout,
-  );
+  const preSendPlanHardBudgetPayload = preSendPlanPayload.results
+    ?.find((row) => row?.label === "hard-budget")
+    ?.payload;
   assert.equal(preSendPlanHardBudgetPayload.strategy, "hard_budget");
   assert.equal(Array.isArray(preSendPlanHardBudgetPayload.order), true);
   assert.equal(preSendPlanHardBudgetPayload.order[0], "recent_trim");

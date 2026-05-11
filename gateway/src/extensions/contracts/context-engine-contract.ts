@@ -17,6 +17,7 @@ import {
   runGraphCache,
   runGraphCacheHotLoop,
   runGraphPersistentIndex,
+  runGraphPersistentIndexSequence,
 } from "./context-engine-contract/graph-contracts";
 import {
   runPromptQualityGuardAdaptivePolicy,
@@ -368,73 +369,83 @@ function runPreSendCompressionPlan(payload: Record<string, unknown>): Record<str
   };
 }
 
-function runCli(argv: string[]): number {
-  const { command, options } = parseArgs(argv);
-  const payload = parseJsonArg(requireOption(options, "payload"), "--payload");
+function runContextEngineCommand(command: string, payload: Record<string, unknown>): Record<string, unknown> {
   switch (command) {
-    case "resolve-config": {
-      process.stdout.write(`${JSON.stringify(runResolveConfig(payload))}\n`);
-      return 0;
-    }
-    case "prepare-prompt": {
-      process.stdout.write(`${JSON.stringify(runPreparePrompt(payload))}\n`);
-      return 0;
-    }
-    case "graph-cache": {
-      process.stdout.write(`${JSON.stringify(runGraphCache(payload))}\n`);
-      return 0;
-    }
-    case "graph-cache-hot-loop": {
-      process.stdout.write(`${JSON.stringify(runGraphCacheHotLoop(payload))}\n`);
-      return 0;
-    }
-    case "graph-persistent-index": {
-      process.stdout.write(`${JSON.stringify(runGraphPersistentIndex(payload))}\n`);
-      return 0;
-    }
-    case "downshift-guard": {
-      process.stdout.write(`${JSON.stringify(runDownshiftGuard(payload))}\n`);
-      return 0;
-    }
-    case "trim-recent-turns": {
-      process.stdout.write(`${JSON.stringify(runTrimRecentTurns(payload))}\n`);
-      return 0;
-    }
-    case "trim-snapshot-sections": {
-      process.stdout.write(`${JSON.stringify(runTrimSnapshotSections(payload))}\n`);
-      return 0;
-    }
-    case "semantic-compress-snapshot-sections": {
-      process.stdout.write(`${JSON.stringify(runSemanticCompressSnapshotSections(payload))}\n`);
-      return 0;
-    }
-    case "pre-send-compression-plan": {
-      process.stdout.write(`${JSON.stringify(runPreSendCompressionPlan(payload))}\n`);
-      return 0;
-    }
-    case "prompt-quality-window": {
-      process.stdout.write(`${JSON.stringify(runPromptQualityWindow(payload))}\n`);
-      return 0;
-    }
-    case "prompt-quality-guard": {
-      process.stdout.write(`${JSON.stringify(runPromptQualityGuard(payload))}\n`);
-      return 0;
-    }
-    case "prompt-quality-guard-runtime": {
-      process.stdout.write(`${JSON.stringify(runPromptQualityGuardRuntime(payload))}\n`);
-      return 0;
-    }
-    case "prompt-quality-guard-adaptive-policy": {
-      process.stdout.write(`${JSON.stringify(runPromptQualityGuardAdaptivePolicy(payload))}\n`);
-      return 0;
-    }
-    case "prompt-quality-guard-adaptive-sequence": {
-      process.stdout.write(`${JSON.stringify(runPromptQualityGuardAdaptiveSequence(payload))}\n`);
-      return 0;
-    }
+    case "resolve-config":
+      return runResolveConfig(payload);
+    case "prepare-prompt":
+      return runPreparePrompt(payload);
+    case "graph-cache":
+      return runGraphCache(payload);
+    case "graph-cache-hot-loop":
+      return runGraphCacheHotLoop(payload);
+    case "graph-persistent-index":
+      return runGraphPersistentIndex(payload);
+    case "graph-persistent-index-sequence":
+      return runGraphPersistentIndexSequence(payload);
+    case "downshift-guard":
+      return runDownshiftGuard(payload);
+    case "trim-recent-turns":
+      return runTrimRecentTurns(payload);
+    case "trim-snapshot-sections":
+      return runTrimSnapshotSections(payload);
+    case "semantic-compress-snapshot-sections":
+      return runSemanticCompressSnapshotSections(payload);
+    case "pre-send-compression-plan":
+      return runPreSendCompressionPlan(payload);
+    case "prompt-quality-window":
+      return runPromptQualityWindow(payload);
+    case "prompt-quality-guard":
+      return runPromptQualityGuard(payload);
+    case "prompt-quality-guard-runtime":
+      return runPromptQualityGuardRuntime(payload);
+    case "prompt-quality-guard-adaptive-policy":
+      return runPromptQualityGuardAdaptivePolicy(payload);
+    case "prompt-quality-guard-adaptive-sequence":
+      return runPromptQualityGuardAdaptiveSequence(payload);
     default:
       throw new Error(`unknown command: ${command}`);
   }
+}
+
+function runBatch(payload: Record<string, unknown>): Record<string, unknown> {
+  const casesRaw = Array.isArray(payload.cases) ? payload.cases : [];
+  if (casesRaw.length === 0) {
+    throw new Error("payload.cases must contain at least one case");
+  }
+  const results = casesRaw.map((item, index) => {
+    if (!isRecord(item)) {
+      throw new Error(`payload.cases[${String(index)}] must be an object`);
+    }
+    const label = typeof item.label === "string" && item.label.trim().length > 0
+      ? item.label.trim()
+      : `case-${String(index + 1)}`;
+    const command = typeof item.command === "string" ? item.command.trim() : "";
+    if (!command || command === "batch") {
+      throw new Error(`payload.cases[${String(index)}].command is invalid`);
+    }
+    if (!isRecord(item.payload)) {
+      throw new Error(`payload.cases[${String(index)}].payload must be an object`);
+    }
+    return {
+      label,
+      command,
+      payload: runContextEngineCommand(command, item.payload),
+    };
+  });
+  return {
+    ok: true,
+    case_count: results.length,
+    results,
+  };
+}
+
+function runCli(argv: string[]): number {
+  const { command, options } = parseArgs(argv);
+  const payload = parseJsonArg(requireOption(options, "payload"), "--payload");
+  const result = command === "batch" ? runBatch(payload) : runContextEngineCommand(command, payload);
+  process.stdout.write(`${JSON.stringify(result)}\n`);
+  return 0;
 }
 
 const entryScript = process.argv[1] ?? "";

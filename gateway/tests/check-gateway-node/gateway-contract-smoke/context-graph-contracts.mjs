@@ -375,84 +375,6 @@ export async function runContextGraphContracts() {
       "}",
     ].join("\n"),
   );
-  const persistentGraphPayloadRaw = JSON.stringify({
-    work_dir: persistentGraphRepoDir,
-    query: "trace payment call chain",
-    max_rows: 8,
-  });
-  const persistentGraphResult = runTsContract("context-engine-contract.ts", "graph-persistent-index", [
-    "--payload",
-    persistentGraphPayloadRaw,
-  ]);
-  const persistentGraphPayload = parseJsonOutput(
-    "context-engine-contract graph-persistent-index",
-    persistentGraphResult.stdout,
-  );
-  assert.equal(persistentGraphPayload.cache_reuse_observed, true);
-  assert.deepEqual(
-    persistentGraphPayload.second_pass?.dependency_rows,
-    persistentGraphPayload.first_pass?.dependency_rows,
-  );
-  assert.deepEqual(
-    persistentGraphPayload.second_pass?.symbol_rows,
-    persistentGraphPayload.first_pass?.symbol_rows,
-  );
-  const persistentFirstStatus = persistentGraphPayload.first_pass?.status ?? {};
-  assert.equal(persistentFirstStatus.enabled, true);
-  assert.equal(Number(persistentFirstStatus.file_count) >= 4, true);
-  assert.equal(Number(persistentFirstStatus.symbol_count) >= 4, true);
-  assert.equal(
-    ["cold", "incremental", "steady", "skipped"].includes(
-      String(persistentFirstStatus.last_refresh?.mode ?? ""),
-    ),
-    true,
-  );
-  const persistentIndexPath = String(persistentFirstStatus.index_path ?? "");
-  assert.equal(persistentIndexPath.length > 0, true);
-  assert.equal(existsSync(persistentIndexPath), true);
-
-  writeFixtureFile(
-    resolve(persistentGraphRepoDir, "src/payments/entry.ts"),
-    [
-      "import { settlePayment } from \"./service\";",
-      "import { sendWebhook } from \"./webhook\";",
-      "export const runEntry = async (orderId: string) => {",
-      "  const result = await settlePayment(orderId);",
-      "  sendWebhook(orderId);",
-      "  return result;",
-      "};",
-    ].join("\n"),
-  );
-  writeFixtureFile(
-    resolve(persistentGraphRepoDir, "src/payments/webhook.ts"),
-    [
-      "export function sendWebhook(orderId: string) {",
-      "  return `webhook:${orderId}`;",
-      "}",
-    ].join("\n"),
-  );
-  const persistentGraphAfterUpdateResult = runTsContract("context-engine-contract.ts", "graph-persistent-index", [
-    "--payload",
-    persistentGraphPayloadRaw,
-  ]);
-  const persistentGraphAfterUpdatePayload = parseJsonOutput(
-    "context-engine-contract graph-persistent-index after-update",
-    persistentGraphAfterUpdateResult.stdout,
-  );
-  const persistentAfterStatus = persistentGraphAfterUpdatePayload.first_pass?.status ?? {};
-  assert.equal(persistentAfterStatus.enabled, true);
-  assert.equal(Number(persistentAfterStatus.file_count) >= Number(persistentFirstStatus.file_count), true);
-  assert.equal(Number(persistentAfterStatus.last_refresh?.parsed_files) >= 1, true);
-  assert.equal(
-    (persistentGraphAfterUpdatePayload.first_pass?.dependency_rows ?? [])
-      .some((row) => String(row).includes("webhook")),
-    true,
-  );
-  assert.equal(
-    (persistentGraphAfterUpdatePayload.first_pass?.symbol_rows ?? [])
-      .some((row) => String(row).includes("sendWebhook")),
-    true,
-  );
   const persistentGraphExtraRepoDir = makeTempDir("context-graph-persistent-index-extra");
   const gitInitPersistentGraphExtraResult = runCommand("git", ["init"], {
     cwd: persistentGraphExtraRepoDir,
@@ -485,19 +407,85 @@ export async function runContextGraphContracts() {
       "}",
     ].join("\n"),
   );
-  const persistentGraphCrossRepoResult = runTsContract("context-engine-contract.ts", "graph-persistent-index", [
+  const persistentGraphPayloadRaw = JSON.stringify({
+    work_dir: persistentGraphRepoDir,
+    query: "trace payment call chain",
+    max_rows: 8,
+    cross_repo_query: "trace billing payment call chain",
+    update_files: [
+      {
+        path: "src/payments/entry.ts",
+        content: [
+          "import { settlePayment } from \"./service\";",
+          "import { sendWebhook } from \"./webhook\";",
+          "export const runEntry = async (orderId: string) => {",
+          "  const result = await settlePayment(orderId);",
+          "  sendWebhook(orderId);",
+          "  return result;",
+          "};",
+        ].join("\n"),
+      },
+      {
+        path: "src/payments/webhook.ts",
+        content: [
+          "export function sendWebhook(orderId: string) {",
+          "  return `webhook:${orderId}`;",
+          "}",
+        ].join("\n"),
+      },
+    ],
+    extra_work_dirs: [persistentGraphExtraRepoDir],
+  });
+  const persistentGraphResult = runTsContract("context-engine-contract.ts", "graph-persistent-index-sequence", [
     "--payload",
-    JSON.stringify({
-      work_dir: persistentGraphRepoDir,
-      extra_work_dirs: [persistentGraphExtraRepoDir],
-      query: "trace billing payment call chain",
-      max_rows: 8,
-    }),
+    persistentGraphPayloadRaw,
   ]);
-  const persistentGraphCrossRepoPayload = parseJsonOutput(
-    "context-engine-contract graph-persistent-index cross-repo",
-    persistentGraphCrossRepoResult.stdout,
+  const persistentGraphSequencePayload = parseJsonOutput(
+    "context-engine-contract graph-persistent-index-sequence",
+    persistentGraphResult.stdout,
   );
+  assert.equal(persistentGraphSequencePayload.ok, true);
+  assert.equal(Number(persistentGraphSequencePayload.updated_file_count), 2);
+  const persistentGraphPayload = persistentGraphSequencePayload.initial ?? {};
+  assert.equal(persistentGraphPayload.cache_reuse_observed, true);
+  assert.deepEqual(
+    persistentGraphPayload.second_pass?.dependency_rows,
+    persistentGraphPayload.first_pass?.dependency_rows,
+  );
+  assert.deepEqual(
+    persistentGraphPayload.second_pass?.symbol_rows,
+    persistentGraphPayload.first_pass?.symbol_rows,
+  );
+  const persistentFirstStatus = persistentGraphPayload.first_pass?.status ?? {};
+  assert.equal(persistentFirstStatus.enabled, true);
+  assert.equal(Number(persistentFirstStatus.file_count) >= 4, true);
+  assert.equal(Number(persistentFirstStatus.symbol_count) >= 4, true);
+  assert.equal(
+    ["cold", "incremental", "steady", "skipped"].includes(
+      String(persistentFirstStatus.last_refresh?.mode ?? ""),
+    ),
+    true,
+  );
+  const persistentIndexPath = String(persistentFirstStatus.index_path ?? "");
+  assert.equal(persistentIndexPath.length > 0, true);
+  assert.equal(existsSync(persistentIndexPath), true);
+
+  const persistentGraphAfterUpdatePayload = persistentGraphSequencePayload.after_update ?? {};
+  const persistentAfterStatus = persistentGraphAfterUpdatePayload.first_pass?.status ?? {};
+  assert.equal(persistentAfterStatus.enabled, true);
+  assert.equal(Number(persistentAfterStatus.file_count) >= Number(persistentFirstStatus.file_count), true);
+  assert.equal(Number(persistentAfterStatus.last_refresh?.parsed_files) >= 1, true);
+  assert.equal(
+    (persistentGraphAfterUpdatePayload.first_pass?.dependency_rows ?? [])
+      .some((row) => String(row).includes("webhook")),
+    true,
+  );
+  assert.equal(
+    (persistentGraphAfterUpdatePayload.first_pass?.symbol_rows ?? [])
+      .some((row) => String(row).includes("sendWebhook")),
+    true,
+  );
+  const persistentGraphCrossRepoPayload = persistentGraphSequencePayload.cross_repo ?? {};
   assert.equal(persistentGraphCrossRepoPayload.cross_repo_observed, true);
   assert.equal(Array.isArray(persistentGraphCrossRepoPayload.extra_roots), true);
   assert.equal(Number(persistentGraphCrossRepoPayload.extra_roots.length) >= 1, true);

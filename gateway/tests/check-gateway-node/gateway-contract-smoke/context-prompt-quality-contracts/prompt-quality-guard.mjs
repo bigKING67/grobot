@@ -2,58 +2,95 @@ import assert from "node:assert/strict";
 import { logStep, parseJsonOutput, runTsContract } from "../../harness.mjs";
 
 export function runPromptQualityGuardContracts() {
-  const contextEnginePromptQualityGuardResult = runTsContract("context-engine-contract.ts", "prompt-quality-guard", [
+  const contextEnginePromptQualityGuardResult = runTsContract("context-engine-contract.ts", "batch", [
     "--payload",
     JSON.stringify({
-      selected_stage: "normal",
-      policy: {
-        enabled: true,
-        promote_streak: 1,
-        severe_promote_streak: 2,
-        release_streak: 2,
-        hold_turns: 1,
-        max_floor_stage: "minimal",
-        severe_overall_threshold: 0.45,
-        severe_low_quality_rate_threshold: 0.7,
-      },
-      observations: [
+      cases: [
         {
-          degraded: true,
-          reason: "overall_below_threshold",
-          observed_overall: 0.7,
-          observed_low_quality_rate: 0.2,
+          label: "guard",
+          command: "prompt-quality-guard",
+          payload: {
+            selected_stage: "normal",
+            policy: {
+              enabled: true,
+              promote_streak: 1,
+              severe_promote_streak: 2,
+              release_streak: 2,
+              hold_turns: 1,
+              max_floor_stage: "minimal",
+              severe_overall_threshold: 0.45,
+              severe_low_quality_rate_threshold: 0.7,
+            },
+            observations: [
+              {
+                degraded: true,
+                reason: "overall_below_threshold",
+                observed_overall: 0.7,
+                observed_low_quality_rate: 0.2,
+              },
+              {
+                degraded: true,
+                reason: "overall_below_threshold",
+                observed_overall: 0.32,
+                observed_low_quality_rate: 0.6,
+              },
+              {
+                degraded: true,
+                reason: "low_quality_rate_above_threshold",
+                observed_overall: 0.3,
+                observed_low_quality_rate: 0.85,
+              },
+              {
+                degraded: false,
+                reason: "healthy",
+                observed_overall: 0.82,
+                observed_low_quality_rate: 0.1,
+              },
+              {
+                degraded: false,
+                reason: "healthy",
+                observed_overall: 0.88,
+                observed_low_quality_rate: 0.08,
+              },
+            ],
+          },
         },
         {
-          degraded: true,
-          reason: "overall_below_threshold",
-          observed_overall: 0.32,
-          observed_low_quality_rate: 0.6,
-        },
-        {
-          degraded: true,
-          reason: "low_quality_rate_above_threshold",
-          observed_overall: 0.3,
-          observed_low_quality_rate: 0.85,
-        },
-        {
-          degraded: false,
-          reason: "healthy",
-          observed_overall: 0.82,
-          observed_low_quality_rate: 0.1,
-        },
-        {
-          degraded: false,
-          reason: "healthy",
-          observed_overall: 0.88,
-          observed_low_quality_rate: 0.08,
+          label: "runtime",
+          command: "prompt-quality-guard-runtime",
+          payload: {
+            policy: {
+              enabled: true,
+              promote_streak: 2,
+              severe_promote_streak: 2,
+              release_streak: 3,
+              hold_turns: 2,
+              max_floor_stage: "minimal",
+              severe_overall_threshold: 0.45,
+              severe_low_quality_rate_threshold: 0.7,
+            },
+            state: {
+              floorStage: "forced",
+              degradedStreak: 2,
+              severeStreak: 2,
+              healthyStreak: 0,
+              holdTurnsRemaining: 2,
+              lastReason: "low_quality_rate_above_threshold",
+              updatedAt: "2026-04-18T00:00:00.000Z",
+            },
+            degraded: true,
+            reason: "low_quality_rate_above_threshold",
+            observed_overall: 0.31,
+            observed_low_quality_rate: 0.86,
+          },
         },
       ],
     }),
   ]);
   const contextEnginePromptQualityGuardPayload = parseJsonOutput(
-    "context-engine-contract prompt-quality-guard",
+    "context-engine-contract prompt-quality-guard batch",
     contextEnginePromptQualityGuardResult.stdout,
-  );
+  ).results?.find((row) => row?.label === "guard")?.payload;
   assert.equal(Array.isArray(contextEnginePromptQualityGuardPayload.timeline), true);
   assert.equal(contextEnginePromptQualityGuardPayload.timeline.length >= 5, true);
   assert.equal(contextEnginePromptQualityGuardPayload.timeline[0]?.floor_stage, "proactive");
@@ -64,42 +101,10 @@ export function runPromptQualityGuardContracts() {
   assert.equal(contextEnginePromptQualityGuardPayload.timeline[4]?.floor_stage, "forced");
   logStep("context-engine-contract prompt-quality-guard");
 
-  const contextEnginePromptQualityGuardRuntimeResult = runTsContract(
-    "context-engine-contract.ts",
-    "prompt-quality-guard-runtime",
-    [
-      "--payload",
-      JSON.stringify({
-        policy: {
-          enabled: true,
-          promote_streak: 2,
-          severe_promote_streak: 2,
-          release_streak: 3,
-          hold_turns: 2,
-          max_floor_stage: "minimal",
-          severe_overall_threshold: 0.45,
-          severe_low_quality_rate_threshold: 0.7,
-        },
-        state: {
-          floorStage: "forced",
-          degradedStreak: 2,
-          severeStreak: 2,
-          healthyStreak: 0,
-          holdTurnsRemaining: 2,
-          lastReason: "low_quality_rate_above_threshold",
-          updatedAt: "2026-04-18T00:00:00.000Z",
-        },
-        degraded: true,
-        reason: "low_quality_rate_above_threshold",
-        observed_overall: 0.31,
-        observed_low_quality_rate: 0.86,
-      }),
-    ],
-  );
   const contextEnginePromptQualityGuardRuntimePayload = parseJsonOutput(
-    "context-engine-contract prompt-quality-guard-runtime",
-    contextEnginePromptQualityGuardRuntimeResult.stdout,
-  );
+    "context-engine-contract prompt-quality-guard batch",
+    contextEnginePromptQualityGuardResult.stdout,
+  ).results?.find((row) => row?.label === "runtime")?.payload;
   assert.equal(contextEnginePromptQualityGuardRuntimePayload.assessment?.enabled, true);
   assert.equal(contextEnginePromptQualityGuardRuntimePayload.assessment?.phase, "escalating");
   assert.equal(contextEnginePromptQualityGuardRuntimePayload.assessment?.transition, "promote");

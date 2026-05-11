@@ -409,7 +409,12 @@ CLI/apply/error-codes, events policy, and benchmark) while preserving
 and eval contracts route TypeScript scripts through the local `node_modules/.bin/tsx`
 when available, avoiding repeated `npx --package tsx` launcher work on the hot
 path while keeping the same fallback command for source checkouts without
-installed dependencies. Gateway TUI cases are split by browser/health,
+installed dependencies. Gateway context prompt-quality contracts batch related
+contract commands inside one `context-engine-contract.ts` process, and the
+context graph persistent-index case keeps cold, incremental-update, and
+cross-repo assertions in a single sequence command. This preserves the
+aggregate `gateway:context:full` reproduction path while avoiding repeated
+TypeScript launcher overhead on the hot path. Gateway TUI cases are split by browser/health,
 rendering, activity/status, bottom/ask panel, and ask/skill surfaces while
 preserving `gateway:tui:full` as the aggregate reproduction path. Runtime status
 cases are split by build/interrupt, stdio event stream, main status surface, and

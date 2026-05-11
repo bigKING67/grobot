@@ -60,6 +60,39 @@ assert.equal(
   "gateway context must expose case-level history contracts",
 );
 assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "gateway:context:prompt-quality"),
+  true,
+  "gateway context must expose case-level prompt-quality contracts",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "gateway:context:graph"),
+  true,
+  "gateway context must expose case-level graph contracts",
+);
+const contextEngineContractSource = readFileSync(
+  "gateway/src/extensions/contracts/context-engine-contract.ts",
+  "utf8",
+);
+assert.equal(
+  contextEngineContractSource.includes('command === "batch"'),
+  true,
+  "context engine contract must keep an in-process batch command for prompt-quality contracts",
+);
+assert.equal(
+  contextEngineContractSource.includes("graph-persistent-index-sequence"),
+  true,
+  "context engine contract must keep a persistent-index sequence command for graph contracts",
+);
+const contextGraphContractSource = readFileSync(
+  "gateway/tests/check-gateway-node/gateway-contract-smoke/context-graph-contracts.mjs",
+  "utf8",
+);
+assert.equal(
+  contextGraphContractSource.includes("graph-persistent-index-sequence"),
+  true,
+  "gateway context graph smoke must use the persistent-index sequence command",
+);
+assert.equal(
   casesPayload.cases.some((testCase) => testCase.id === "gateway:plan:input-keybinding"),
   true,
   "gateway plan must expose case-level input keybinding contracts",

@@ -236,29 +236,37 @@ export function runAdaptiveSequenceContracts() {
   }
   const contextEnginePromptQualityGuardAdaptiveSequenceDriftGuardResult = runTsContract(
     "context-engine-contract.ts",
-    "prompt-quality-guard-adaptive-sequence",
+    "batch",
     [
       "--payload",
       JSON.stringify({
-        selected_stage: "normal",
-        policy: {
-          enabled: true,
-          promote_streak: 2,
-          severe_promote_streak: 2,
-          release_streak: 3,
-          hold_turns: 2,
-          max_floor_stage: "minimal",
-          adaptive_mode_allowlist: ["harden", "relax"],
-        },
-        adaptive_enabled: true,
-        windows: adaptiveSequenceHighEvidenceHardenWindows,
+        cases: [
+          {
+            label: "drift-guard",
+            command: "prompt-quality-guard-adaptive-sequence",
+            payload: {
+              selected_stage: "normal",
+              policy: {
+                enabled: true,
+                promote_streak: 2,
+                severe_promote_streak: 2,
+                release_streak: 3,
+                hold_turns: 2,
+                max_floor_stage: "minimal",
+                adaptive_mode_allowlist: ["harden", "relax"],
+              },
+              adaptive_enabled: true,
+              windows: adaptiveSequenceHighEvidenceHardenWindows,
+            },
+          },
+        ],
       }),
     ],
   );
   const contextEnginePromptQualityGuardAdaptiveSequenceDriftGuardPayload = parseJsonOutput(
     "context-engine-contract prompt-quality-guard-adaptive-sequence drift-guard",
     contextEnginePromptQualityGuardAdaptiveSequenceDriftGuardResult.stdout,
-  );
+  ).results?.find((row) => row?.label === "drift-guard")?.payload;
   assert.equal(
     contextEnginePromptQualityGuardAdaptiveSequenceDriftGuardPayload.drift_guard?.high_evidence_harden_bias,
     true,

@@ -1,3 +1,6 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
+
 import { retrieveDependencyGraphHints } from "../../../tools/context/graph/dependency-hints";
 import { retrieveSymbolGraphHints } from "../../../tools/context/graph/symbol-hints";
 import {
@@ -14,6 +17,46 @@ import { type ChangedCodeSnapshot } from "../../../tools/context/graph/changed-c
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function resolveFixturePath(rootPath: string, rawPath: unknown): string {
+  const path = typeof rawPath === "string" ? rawPath.trim() : "";
+  if (!path || isAbsolute(path)) {
+    throw new Error("fixture path must be a non-empty relative path");
+  }
+  const absolutePath = resolve(rootPath, path);
+  const relativePath = relative(rootPath, absolutePath);
+  if (
+    !relativePath
+    || relativePath === "."
+    || relativePath === ".."
+    || relativePath.startsWith(`..${"/"}`)
+    || relativePath.startsWith(`..${"\\"}`)
+    || isAbsolute(relativePath)
+  ) {
+    throw new Error(`fixture path escapes work_dir: ${path}`);
+  }
+  return absolutePath;
+}
+
+function writeFixtureUpdates(rootPath: string, rawUpdates: unknown): number {
+  if (!Array.isArray(rawUpdates)) {
+    return 0;
+  }
+  let count = 0;
+  for (const [index, item] of rawUpdates.entries()) {
+    if (!isRecord(item)) {
+      throw new Error(`payload.update_files[${String(index)}] must be an object`);
+    }
+    const absolutePath = resolveFixturePath(rootPath, item.path);
+    if (typeof item.content !== "string") {
+      throw new Error(`payload.update_files[${String(index)}].content must be a string`);
+    }
+    mkdirSync(dirname(absolutePath), { recursive: true });
+    writeFileSync(absolutePath, item.content, "utf8");
+    count += 1;
+  }
+  return count;
 }
 
 function readOptionalStringArray(
@@ -377,7 +420,12 @@ export function runGraphCacheHotLoop(payload: Record<string, unknown>): Record<s
   };
 }
 
-export function runGraphPersistentIndex(payload: Record<string, unknown>): Record<string, unknown> {
+function buildGraphPersistentIndexReport(
+  payload: Record<string, unknown>,
+  options: {
+    forceRefreshMain?: boolean;
+  } = {},
+): Record<string, unknown> {
   const query = typeof payload.query === "string" ? payload.query.trim() : "";
   if (!query) {
     throw new Error("payload.query must be non-empty");
@@ -392,12 +440,13 @@ export function runGraphPersistentIndex(payload: Record<string, unknown>): Recor
   const windowSize = typeof payload.window_size === "number" && Number.isFinite(payload.window_size)
     ? Math.max(1, Math.min(200, Math.floor(payload.window_size)))
     : 20;
+  const forceRefreshMain = options.forceRefreshMain !== false;
   const extraWorkDirs = readOptionalStringArray(payload, "extra_work_dirs", 6)
     .filter((extraWorkDir) => extraWorkDir !== workDir);
   const firstDependencyRows = queryPersistentDependencyHints(query, {
     workDir,
     maxRows,
-    forceRefresh: true,
+    forceRefresh: forceRefreshMain,
   });
   const firstStatus = readPersistentGraphIndexStatus({
     workDir,
@@ -470,5 +519,61 @@ export function runGraphPersistentIndex(payload: Record<string, unknown>): Recor
       },
       status: secondStatus,
     },
+  };
+}
+
+export function runGraphPersistentIndex(payload: Record<string, unknown>): Record<string, unknown> {
+  return buildGraphPersistentIndexReport(payload, { forceRefreshMain: true });
+}
+
+export function runGraphPersistentIndexSequence(payload: Record<string, unknown>): Record<string, unknown> {
+  const query = typeof payload.query === "string" ? payload.query.trim() : "";
+  if (!query) {
+    throw new Error("payload.query must be non-empty");
+  }
+  const workDir = typeof payload.work_dir === "string" ? payload.work_dir.trim() : "";
+  if (!workDir) {
+    throw new Error("payload.work_dir must be non-empty");
+  }
+  const maxRows = typeof payload.max_rows === "number" && Number.isFinite(payload.max_rows)
+    ? Math.max(1, Math.min(20, Math.floor(payload.max_rows)))
+    : 4;
+  const windowSize = typeof payload.window_size === "number" && Number.isFinite(payload.window_size)
+    ? Math.max(1, Math.min(200, Math.floor(payload.window_size)))
+    : 20;
+  const extraWorkDirs = readOptionalStringArray(payload, "extra_work_dirs", 6)
+    .filter((extraWorkDir) => extraWorkDir !== workDir);
+  const crossRepoQuery = typeof payload.cross_repo_query === "string" && payload.cross_repo_query.trim().length > 0
+    ? payload.cross_repo_query.trim()
+    : query;
+
+  const initial = buildGraphPersistentIndexReport({
+    work_dir: workDir,
+    query,
+    max_rows: maxRows,
+    window_size: windowSize,
+  }, { forceRefreshMain: true });
+  const updatedFileCount = writeFixtureUpdates(workDir, payload.update_files);
+  const afterUpdate = buildGraphPersistentIndexReport({
+    work_dir: workDir,
+    query,
+    max_rows: maxRows,
+    window_size: windowSize,
+  }, { forceRefreshMain: true });
+  const crossRepo = buildGraphPersistentIndexReport({
+    work_dir: workDir,
+    extra_work_dirs: extraWorkDirs,
+    query: crossRepoQuery,
+    max_rows: maxRows,
+    window_size: windowSize,
+  }, { forceRefreshMain: false });
+
+  return {
+    ok: true,
+    updated_file_count: updatedFileCount,
+    extra_work_dir_count: extraWorkDirs.length,
+    initial,
+    after_update: afterUpdate,
+    cross_repo: crossRepo,
   };
 }
