@@ -686,6 +686,54 @@ try {
   }).actionContractFingerprint;
   assert.notEqual(outputContractA, outputContractB, "outputs declaration changes must change the action contract fingerprint");
 
+  const cacheSlotSeedGate = {
+    cacheable: true,
+    command: "node pass-a.mjs",
+    cost: "cheap",
+    deps: [],
+    group: "test",
+    inputs: ["pass-a.mjs"],
+    name: "cache-slot-seed",
+    parallel: true,
+    resourceClass: "node",
+    resourceCost: 1,
+  };
+  const cacheSlotSeed = await runQualityGates([cacheSlotSeedGate], { cache: true, repoRoot: tmp });
+  assert.equal(cacheSlotSeed.status, "pass", "cache slot seed gate must pass before scheduling test");
+  const cacheSlotRun = await runQualityGates([
+    cacheSlotSeedGate,
+    {
+      cacheable: false,
+      command: "node slow-a.mjs",
+      cost: "cheap",
+      deps: [],
+      group: "test",
+      inputs: ["slow-a.mjs"],
+      name: "cache-slot-slow-a",
+      parallel: true,
+      resourceClass: "node",
+      resourceCost: 1,
+    },
+    {
+      cacheable: false,
+      command: "node slow-b.mjs",
+      cost: "cheap",
+      deps: [],
+      group: "test",
+      inputs: ["slow-b.mjs"],
+      name: "cache-slot-slow-b",
+      parallel: true,
+      resourceClass: "node",
+      resourceCost: 1,
+    },
+  ], { cache: true, parallel: 2, repoRoot: tmp });
+  assert.equal(cacheSlotRun.status, "pass", "mixed cached/slow scheduling test must pass");
+  assert.equal(
+    cacheSlotRun.durationMs < 1_100,
+    true,
+    "scheduler cache hits must not consume parallel/resource slots before slow gates are launched",
+  );
+
   const failRun = await runQualityGates([
     {
       cacheable: false,

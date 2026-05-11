@@ -168,6 +168,10 @@ The scheduler lives in `scripts/lib/quality-scheduler.mjs`.
 - Scheduler strategy can be `interactive` or `throughput`. Interactive mode
   prioritizes cheap feedback first. Throughput mode uses local historical timing
   and critical-path scores so long DAG paths start earlier.
+- Cache hits are resolved before a gate consumes worker parallelism or resource
+  tokens, while still satisfying dependencies and restoring declared outputs.
+  Repeated runs therefore do not let many already-cached gates delay the few
+  remaining cold gates.
 - Resource tokens prevent oversubscription. Rust and TypeScript compiler gates
   use dedicated resource classes; gateway smoke suites share a separate
   `gateway-smoke` pool instead of consuming all generic Node capacity.

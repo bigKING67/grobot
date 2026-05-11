@@ -252,6 +252,21 @@ function outputTail(text, maxLines = 40) {
   return lines.length <= maxLines ? lines.join("\n") : lines.slice(-maxLines).join("\n");
 }
 
+function cachedGateResult(gate, cached) {
+  return {
+    cacheHit: true,
+    command: String(gate.command ?? "").trim(),
+    commandFingerprint: computeGateTimingFingerprint(gate),
+    durationMs: 0,
+    exitCode: 0,
+    gate,
+    outputRestore: cached.outputRestore ?? null,
+    status: "pass",
+    stderr: "",
+    stdout: "",
+  };
+}
+
 export async function runQualityGates(gates, options = {}) {
   const {
     cache = true,
@@ -291,23 +306,6 @@ export async function runQualityGates(gates, options = {}) {
     }
 
     const cacheInfo = cache && gate.cacheable ? computeGateCacheKey(repoRoot, gate, cacheContext) : null;
-    const cached = cacheInfo ? readGateCache(repoRoot, gate, cacheInfo.cacheKey) : null;
-    if (cached) {
-      const result = {
-        cacheHit: true,
-        command,
-        commandFingerprint: computeGateTimingFingerprint(gate),
-        durationMs: 0,
-        exitCode: 0,
-        gate,
-        outputRestore: cached.outputRestore ?? null,
-        status: "pass",
-        stderr: "",
-        stdout: "",
-      };
-      logger?.gateDone?.(result);
-      return result;
-    }
 
     logger?.gateStart?.(gate);
     const commandResult = await runShellCommand(command, { cwd: repoRoot, env, verbose });
@@ -377,17 +375,27 @@ export async function runQualityGates(gates, options = {}) {
         }
       }
 
+      let madeCachedProgress = false;
       for (const gateName of orderReadyGates(ready, selectedByName, {
         criticalPathScores,
         historicalStats,
         strategy,
       })) {
-        if (running.size >= parallel) {
-          break;
-        }
         const gate = selectedByName.get(gateName);
         if (!gate) {
           continue;
+        }
+        const cacheInfo = cache && gate.cacheable ? computeGateCacheKey(repoRoot, gate, cacheContext) : null;
+        const cached = cacheInfo ? readGateCache(repoRoot, gate, cacheInfo.cacheKey) : null;
+        if (cached) {
+          const result = cachedGateResult(gate, cached);
+          markComplete(gateName, result);
+          logger?.gateDone?.(result);
+          madeCachedProgress = true;
+          continue;
+        }
+        if (running.size >= parallel) {
+          break;
         }
         if (conflictsWithExclusiveGroup(gate, running, selectedByName)) {
           continue;
@@ -418,6 +426,10 @@ export async function runQualityGates(gates, options = {}) {
         if (exclusiveGroup(gate) === "global") {
           break;
         }
+      }
+      if (madeCachedProgress) {
+        schedule();
+        return;
       }
       finishIfDone();
     }
