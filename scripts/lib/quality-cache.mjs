@@ -259,6 +259,46 @@ function formatActionDriftReason(changedComponents) {
   return `current action hash differs from latest cached action (${changedComponents.join(", ")} changed)`;
 }
 
+function mapByName(values = [], nameKey = "path") {
+  return new Map(values.map((value) => [value?.[nameKey], value]).filter(([name]) => typeof name === "string" && name.length > 0));
+}
+
+function diffObjectKeys(current = {}, previous = {}) {
+  return [...new Set([...Object.keys(current ?? {}), ...Object.keys(previous ?? {})])]
+    .sort()
+    .filter((name) => stableJson(current?.[name]) !== stableJson(previous?.[name]));
+}
+
+function diffActionComponentDetails(currentAction, previousAction) {
+  if (!previousAction || typeof previousAction !== "object") {
+    return {};
+  }
+  const details = {};
+  const currentFiles = mapByName(currentAction.files ?? []);
+  const previousFiles = mapByName(previousAction.files ?? []);
+  const changedFiles = [...new Set([...currentFiles.keys(), ...previousFiles.keys()])]
+    .sort()
+    .filter((file) => currentFiles.get(file)?.digest !== previousFiles.get(file)?.digest);
+  if (changedFiles.length > 0) {
+    details.files = changedFiles;
+  }
+  const changedEnv = diffObjectKeys(currentAction.env, previousAction.env);
+  if (changedEnv.length > 0) {
+    details.env = changedEnv;
+  }
+  const changedToolchains = diffObjectKeys(currentAction.toolchains, previousAction.toolchains);
+  if (changedToolchains.length > 0) {
+    details.toolchains = changedToolchains;
+  }
+  if (stableJson(currentAction.contract) !== stableJson(previousAction.contract)) {
+    details.contract = diffObjectKeys(currentAction.contract, previousAction.contract);
+  }
+  if (stableJson(currentAction.platform) !== stableJson(previousAction.platform)) {
+    details.platform = [previousAction.platform, currentAction.platform].filter(Boolean);
+  }
+  return details;
+}
+
 export function createQualityCacheContext(repoRoot) {
   return {
     repoRoot,
@@ -578,6 +618,7 @@ export function explainGateCache(repoRoot, gate, context = null) {
   const cached = readiness.cached;
   const latest = readMostRecentActionCacheEntry(repoRoot, gate.name);
   const changedComponents = changedActionComponents(cacheInfo.actionComponents, latest?.payload?.actionComponents);
+  const actionDiff = diffActionComponentDetails(cacheInfo.action, latest?.payload?.action);
   const currentOutputPolicy = outputRestorePolicy(cacheInfo.actionContract);
   return {
     gate: gate.name,
@@ -601,6 +642,7 @@ export function explainGateCache(repoRoot, gate, context = null) {
       restorePolicy: currentOutputPolicy,
     },
     sampleInputs: cacheInfo.files.slice(0, 20),
+    actionDiff,
     latestEntry: latest?.payload
       ? {
         cacheKey: latest.payload.cacheKey ?? "",

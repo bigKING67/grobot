@@ -680,6 +680,11 @@ try {
     true,
     "cache miss reason must identify input-file drift when action components are available",
   );
+  assert.deepEqual(
+    explainableMiss.actionDiff.files,
+    ["tracked.txt"],
+    "cache miss explanation must identify the changed input files when portable action metadata is available",
+  );
 
   const outputGate = {
     cacheable: true,

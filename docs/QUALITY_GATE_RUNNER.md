@@ -229,9 +229,11 @@ Action cache entries also store component digests for `contract`, `env`,
 the normalized contract, env values, input file digests, platform, toolchain
 versions, action hash, and backend kind. When `explain cache <gate>` misses but
 a previous action entry exists, the miss reason names the changed component set
-instead of only reporting an opaque hash drift. This is intentionally similar to
-modern build runners: cache misses must be debuggable before the cache can be
-trusted for broader or remote use.
+instead of only reporting an opaque hash drift. For entries with portable action
+metadata, JSON explain output also includes `actionDiff` with concrete changed
+input file paths, env keys, toolchain keys, contract keys, or platform values.
+This is intentionally similar to modern build runners: cache misses must be
+debuggable before the cache can be trusted for broader or remote use.
 
 Rules:
 
