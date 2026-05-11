@@ -445,6 +445,44 @@ function restoreCachedOutputs(repoRoot, cached) {
   return { restoredCount, restorePolicy: "declared-outputs" };
 }
 
+function cacheReadiness(repoRoot, gate, cacheKey) {
+  if (!gate.cacheable) {
+    return { cached: null, missReason: "gate is not cacheable" };
+  }
+  const actionPath = actionCacheFilePath(repoRoot, gate.name, cacheKey);
+  if (existsSync(actionPath)) {
+    const cached = readJsonFile(actionPath);
+    if (cached?.status !== "pass") {
+      return { cached: null, missReason: "cached action is not a passing result" };
+    }
+    const restore = restoreCachedOutputs(repoRoot, cached);
+    if (restore.error) {
+      return { cached: null, missReason: restore.error };
+    }
+    return { cached: { ...cached, outputRestore: restore }, missReason: "" };
+  }
+
+  const legacyPath = legacyCacheFilePath(repoRoot, gate.name, cacheKey);
+  if (existsSync(legacyPath)) {
+    const cached = readJsonFile(legacyPath);
+    if (cached?.status !== "pass") {
+      return { cached: null, missReason: "legacy cached action is not a passing result" };
+    }
+    if ((actionContractForGate(gate).outputs ?? []).length > 0) {
+      return { cached: null, missReason: "legacy cache entry cannot restore declared outputs" };
+    }
+    return {
+      cached: {
+        ...cached,
+        outputRestore: { restoredCount: 0, restorePolicy: "no-output" },
+        outputRestorePolicy: "no-output",
+      },
+      missReason: "",
+    };
+  }
+  return { cached: null, missReason: "" };
+}
+
 function readMostRecentActionCacheEntry(repoRoot, gateName) {
   const dir = path.join(getQualityCacheRoot(repoRoot), ACTION_CACHE_DIR, safeGateName(gateName));
   if (!existsSync(dir)) {
@@ -483,38 +521,7 @@ function cacheFilePath(repoRoot, gateName, cacheKey) {
 }
 
 export function readGateCache(repoRoot, gate, cacheKey) {
-  if (!gate.cacheable) {
-    return null;
-  }
-  const actionPath = actionCacheFilePath(repoRoot, gate.name, cacheKey);
-  if (existsSync(actionPath)) {
-    const cached = readJsonFile(actionPath);
-    if (cached?.status !== "pass") {
-      return null;
-    }
-    const restore = restoreCachedOutputs(repoRoot, cached);
-    if (restore.error) {
-      return null;
-    }
-    return { ...cached, outputRestore: restore };
-  }
-
-  const legacyPath = legacyCacheFilePath(repoRoot, gate.name, cacheKey);
-  if (existsSync(legacyPath)) {
-    const cached = readJsonFile(legacyPath);
-    if (cached?.status !== "pass") {
-      return null;
-    }
-    if ((actionContractForGate(gate).outputs ?? []).length > 0) {
-      return null;
-    }
-    return {
-      ...cached,
-      outputRestore: { restoredCount: 0, restorePolicy: "no-output" },
-      outputRestorePolicy: "no-output",
-    };
-  }
-  return null;
+  return cacheReadiness(repoRoot, gate, cacheKey).cached;
 }
 
 export function writeGateCache(repoRoot, gate, cacheKey, result, cacheInfo = null) {
@@ -570,7 +577,8 @@ export function explainGateCache(repoRoot, gate, context = null) {
   const cacheInfo = computeGateCacheKey(repoRoot, gate, context);
   const actionPath = actionCacheFilePath(repoRoot, gate.name, cacheInfo.cacheKey);
   const legacyPath = legacyCacheFilePath(repoRoot, gate.name, cacheInfo.cacheKey);
-  const cached = readGateCache(repoRoot, gate, cacheInfo.cacheKey);
+  const readiness = cacheReadiness(repoRoot, gate, cacheInfo.cacheKey);
+  const cached = readiness.cached;
   const latest = readMostRecentActionCacheEntry(repoRoot, gate.name);
   const changedComponents = changedActionComponents(cacheInfo.actionComponents, latest?.payload?.actionComponents);
   const currentOutputPolicy = outputRestorePolicy(cacheInfo.actionContract);
@@ -608,8 +616,8 @@ export function explainGateCache(repoRoot, gate, context = null) {
       : null,
     missReason: cached
       ? ""
-      : gate.cacheable === false
-        ? "gate is not cacheable"
+      : readiness.missReason
+        ? readiness.missReason
         : latest?.payload?.cacheKey
           ? formatActionDriftReason(changedComponents)
           : "no cached pass result for this gate/action hash",

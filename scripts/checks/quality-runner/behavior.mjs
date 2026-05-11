@@ -668,6 +668,16 @@ try {
   assert.equal(existsSync(join(tmp, "artifact.txt")), true, "declared output must be restored from cache on hit");
   assert.equal(readFileSync(join(tmp, "artifact.txt"), "utf8"), "artifact\n", "restored output content must match cached artifact");
   assert.equal(outputRestoreRun.results[0]?.outputRestore?.restoredCount, 1, "cache hit result must report restored output count");
+  const restoredOutputDigest = outputExplanation.outputs.outputs[0]?.digest.replace(/^sha256:/, "");
+  rmSync(join(tmp, ".cache/grobot-quality/cas", restoredOutputDigest.slice(0, 2), restoredOutputDigest), { force: true });
+  unlinkSync(join(tmp, "artifact.txt"));
+  const casMissingExplanation = explainGateCache(tmp, outputGate);
+  assert.equal(casMissingExplanation.status, "miss", "missing output CAS artifact must prevent cache reuse");
+  assert.equal(
+    casMissingExplanation.missReason.includes("cached output missing from CAS"),
+    true,
+    "missing output CAS artifact must be reported as the cache miss reason",
+  );
 
   const outputContractA = explainGateCache(tmp, outputGate).actionContractFingerprint;
   const outputContractB = explainGateCache(tmp, {

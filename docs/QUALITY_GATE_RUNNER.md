@@ -240,8 +240,8 @@ variables intentionally do not affect the hash.
   metadata for each declared file output, with file bytes stored in the local
   CAS. On cache hit, declared file outputs are restored before the gate is
   reported as cached; if a required CAS entry is missing, the cache entry is not
-  reused. Output declaration changes are part of the action contract
-  fingerprint.
+  reused and `explain cache` reports `cached output missing from CAS: <path>`.
+  Output declaration changes are part of the action contract fingerprint.
 - A single runner process reuses git file lists, glob expansion, file digests,
   and tool version probes to reduce repeated scanning.
 - v3 persists a best-effort file digest manifest under
