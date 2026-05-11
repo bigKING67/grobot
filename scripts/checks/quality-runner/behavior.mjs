@@ -116,6 +116,16 @@ for (const section of ["registry", "cache", "scheduler"]) {
     `quality-runner ${section} shard must run the matching behavior section`,
   );
 }
+assertIncludes(
+  registry.byName.get("check:quality-runner:cache")?.inputs ?? [],
+  "scripts/lib/quality-cache-backend.mjs",
+  "quality-runner cache shard inputs",
+);
+assertExcludes(
+  registry.byName.get("check:quality-runner:registry")?.inputs ?? [],
+  "scripts/lib/quality-cache-backend.mjs",
+  "quality-runner registry shard inputs",
+);
 assert.equal(
   qualityRunnerGate?.actionContractFingerprint,
   computeActionContractFingerprint(qualityRunnerGate?.actionContract),

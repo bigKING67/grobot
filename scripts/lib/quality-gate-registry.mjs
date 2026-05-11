@@ -60,6 +60,35 @@ export const QUALITY_ENTRYPOINT_SCRIPTS = Object.freeze({
   "check:quality:stats": QUALITY_RUNNER_COMMANDS.stats,
 });
 
+const QUALITY_RUNNER_BEHAVIOR_SCRIPT = "scripts/checks/quality-runner/behavior.mjs";
+const QUALITY_RUNNER_COMMON_INPUTS = Object.freeze([
+  QUALITY_RUNNER_BEHAVIOR_SCRIPT,
+  "package.json",
+  "package-lock.json",
+]);
+const QUALITY_RUNNER_REGISTRY_INPUTS = Object.freeze([
+  ...QUALITY_RUNNER_COMMON_INPUTS,
+  "scripts/quality-runner.mjs",
+  "scripts/lib/quality-action-contract.mjs",
+  "scripts/lib/quality-affected.mjs",
+  "scripts/lib/quality-benchmark-policy.mjs",
+  "scripts/lib/quality-gate-registry.mjs",
+]);
+const QUALITY_RUNNER_CACHE_INPUTS = Object.freeze([
+  ...QUALITY_RUNNER_COMMON_INPUTS,
+  "scripts/lib/quality-action-contract.mjs",
+  "scripts/lib/quality-cache-backend.mjs",
+  "scripts/lib/quality-cache.mjs",
+  "scripts/lib/quality-scheduler.mjs",
+]);
+const QUALITY_RUNNER_SCHEDULER_INPUTS = Object.freeze([
+  ...QUALITY_RUNNER_COMMON_INPUTS,
+  "scripts/lib/quality-action-contract.mjs",
+  "scripts/lib/quality-affected.mjs",
+  "scripts/lib/quality-cache.mjs",
+  "scripts/lib/quality-scheduler.mjs",
+]);
+
 const BASE_GATE_DEFINITIONS = Object.freeze([
   {
     name: "audit:python:target",
@@ -176,28 +205,28 @@ const BASE_GATE_DEFINITIONS = Object.freeze([
     command: "node scripts/checks/quality-runner/behavior.mjs --section registry",
     deps: ["check:gateway:suite-registry"],
     group: "quality",
-    inputs: ["scripts/quality-runner.mjs", "scripts/lib/quality-*.mjs", "scripts/checks/quality-runner/**", "package.json", "package-lock.json"],
+    inputs: QUALITY_RUNNER_REGISTRY_INPUTS,
   },
   {
     name: "check:quality-runner:cache",
     command: "node scripts/checks/quality-runner/behavior.mjs --section cache",
     deps: ["check:gateway:suite-registry"],
     group: "quality",
-    inputs: ["scripts/quality-runner.mjs", "scripts/lib/quality-*.mjs", "scripts/checks/quality-runner/**", "package.json", "package-lock.json"],
+    inputs: QUALITY_RUNNER_CACHE_INPUTS,
   },
   {
     name: "check:quality-runner:scheduler",
     command: "node scripts/checks/quality-runner/behavior.mjs --section scheduler",
     deps: ["check:gateway:suite-registry"],
     group: "quality",
-    inputs: ["scripts/quality-runner.mjs", "scripts/lib/quality-*.mjs", "scripts/checks/quality-runner/**", "package.json", "package-lock.json"],
+    inputs: QUALITY_RUNNER_SCHEDULER_INPUTS,
   },
   {
     name: "check:quality-runner",
     command: "node scripts/checks/quality-runner/behavior.mjs --section aggregate",
     deps: ["check:quality-runner:registry", "check:quality-runner:cache", "check:quality-runner:scheduler"],
     group: "quality",
-    inputs: ["scripts/quality-runner.mjs", "scripts/lib/quality-*.mjs", "scripts/checks/quality-runner/**", "package.json", "package-lock.json"],
+    inputs: QUALITY_RUNNER_COMMON_INPUTS,
     modes: ["quick", "ci"],
     cacheable: false,
   },
