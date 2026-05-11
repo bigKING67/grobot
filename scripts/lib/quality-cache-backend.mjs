@@ -9,6 +9,8 @@ const CAS_DIR = "cas";
 const MANIFEST_DIR = "manifests";
 const RESULT_CACHE_DIR = "results";
 const EVENTS_FILE = "events.jsonl";
+const CACHE_BACKEND_ENV = "GROBOT_QUALITY_CACHE_BACKEND";
+const CACHE_ROOT_ENV = "GROBOT_QUALITY_CACHE_ROOT";
 
 function safeGateName(gateName) {
   return gateName.replace(/[^A-Za-z0-9_.-]/g, "_");
@@ -23,10 +25,10 @@ function readJsonFile(filePath) {
 }
 
 export class LocalQualityCacheBackend {
-  constructor(repoRoot) {
-    this.kind = "local";
+  constructor(repoRoot, options = {}) {
+    this.kind = options.kind ?? "local";
     this.repoRoot = repoRoot;
-    this.root = path.join(repoRoot, CACHE_ROOT);
+    this.root = options.root ?? path.join(repoRoot, CACHE_ROOT);
   }
 
   describe() {
@@ -204,6 +206,23 @@ export class LocalQualityCacheBackend {
 }
 
 export function createQualityCacheBackend(repoRoot) {
+  const backendKind = String(process.env[CACHE_BACKEND_ENV] ?? "local").trim() || "local";
+  if (!["local", "filesystem"].includes(backendKind)) {
+    throw new Error(`unsupported quality cache backend: ${backendKind}`);
+  }
+  if (backendKind === "filesystem") {
+    const configuredRoot = String(process.env[CACHE_ROOT_ENV] ?? "").trim();
+    if (!configuredRoot) {
+      throw new Error(`${CACHE_ROOT_ENV} is required when ${CACHE_BACKEND_ENV}=filesystem`);
+    }
+    if (!path.isAbsolute(configuredRoot)) {
+      throw new Error(`${CACHE_ROOT_ENV} must be an absolute path`);
+    }
+    return new LocalQualityCacheBackend(repoRoot, {
+      kind: "filesystem",
+      root: configuredRoot,
+    });
+  }
   return new LocalQualityCacheBackend(repoRoot);
 }
 

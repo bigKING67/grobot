@@ -206,6 +206,12 @@ legacy entries, content-addressed blobs, event logs, and GC all go through that
 boundary so a future remote backend can reuse the same action contract and CAS
 semantics without changing scheduler behavior.
 
+Set `GROBOT_QUALITY_CACHE_BACKEND=filesystem` and
+`GROBOT_QUALITY_CACHE_ROOT=/absolute/shared/cache/path` to use the same cache
+layout from a shared filesystem root. Invalid backend names, missing filesystem
+roots, and relative filesystem roots fail closed instead of silently falling
+back to local cache.
+
 Each registry gate is normalized into an explicit action contract before it is
 planned, timed, or cached. The contract is the quality-runner equivalent of a
 small hermetic build action:

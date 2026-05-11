@@ -4,12 +4,13 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { buildQualityGateRegistry, gateNamesForMode, QUALITY_ENTRYPOINT_SCRIPTS, validateQualityGateRegistry } from "../../lib/quality-gate-registry.mjs";
 import { explainAffectedSelection, listChangedFiles, selectAffectedGates } from "../../lib/quality-affected.mjs";
 import { appendQualityEvent, computeGateTimingFingerprint, createQualityCacheContext, explainGateCache, summarizeQualityEvents, writeGateCache } from "../../lib/quality-cache.mjs";
 import { planQualityGates, runQualityGates } from "../../lib/quality-scheduler.mjs";
 import { computeActionContractFingerprint, resolveDeclaredOutputPath, resolveGateActionContract } from "../../lib/quality-action-contract.mjs";
+import { createQualityCacheBackend } from "../../lib/quality-cache-backend.mjs";
 
 function packageJson() {
   return JSON.parse(readFileSync("package.json", "utf8"));
@@ -21,6 +22,35 @@ function assertIncludes(list, expected, label) {
 
 function assertExcludes(list, unexpected, label) {
   assert.equal(list.includes(unexpected), false, `${label} must not include ${unexpected}`);
+}
+
+async function withQualityCacheEnv(env, callback) {
+  const previousCacheBackend = process.env.GROBOT_QUALITY_CACHE_BACKEND;
+  const previousCacheRoot = process.env.GROBOT_QUALITY_CACHE_ROOT;
+  try {
+    if (env.GROBOT_QUALITY_CACHE_BACKEND === undefined) {
+      delete process.env.GROBOT_QUALITY_CACHE_BACKEND;
+    } else {
+      process.env.GROBOT_QUALITY_CACHE_BACKEND = env.GROBOT_QUALITY_CACHE_BACKEND;
+    }
+    if (env.GROBOT_QUALITY_CACHE_ROOT === undefined) {
+      delete process.env.GROBOT_QUALITY_CACHE_ROOT;
+    } else {
+      process.env.GROBOT_QUALITY_CACHE_ROOT = env.GROBOT_QUALITY_CACHE_ROOT;
+    }
+    return await callback();
+  } finally {
+    if (previousCacheBackend === undefined) {
+      delete process.env.GROBOT_QUALITY_CACHE_BACKEND;
+    } else {
+      process.env.GROBOT_QUALITY_CACHE_BACKEND = previousCacheBackend;
+    }
+    if (previousCacheRoot === undefined) {
+      delete process.env.GROBOT_QUALITY_CACHE_ROOT;
+    } else {
+      process.env.GROBOT_QUALITY_CACHE_ROOT = previousCacheRoot;
+    }
+  }
 }
 
 const registry = buildQualityGateRegistry({ packageJson: packageJson(), repoRoot: process.cwd() });
@@ -705,6 +735,53 @@ try {
   const outputExplanation = explainGateCache(tmp, outputGate);
   assert.equal(outputExplanation.status, "hit", "output-producing gate should be cache-readable after a pass");
   assert.equal(outputExplanation.cacheBackend.kind, "local", "cache explanations must expose the cache backend kind");
+  await withQualityCacheEnv({
+    GROBOT_QUALITY_CACHE_BACKEND: "filesystem",
+    GROBOT_QUALITY_CACHE_ROOT: resolve(tmp, "shared-quality-cache"),
+  }, () => {
+    const filesystemBackend = createQualityCacheBackend(tmp);
+    assert.equal(filesystemBackend.describe().kind, "filesystem", "filesystem cache backend must be selectable by env");
+    assert.equal(filesystemBackend.describe().root, resolve(tmp, "shared-quality-cache"), "filesystem cache backend must use configured absolute root");
+  });
+  await withQualityCacheEnv({
+    GROBOT_QUALITY_CACHE_BACKEND: "filesystem",
+    GROBOT_QUALITY_CACHE_ROOT: resolve(tmp, "shared-quality-cache-run"),
+  }, async () => {
+    const filesystemGate = {
+      ...outputGate,
+      name: "cache-filesystem-output-test",
+    };
+    const filesystemRun = await runQualityGates([filesystemGate], { cache: true, repoRoot: tmp });
+    assert.equal(filesystemRun.status, "pass", "filesystem cache backend gate run must pass");
+    const filesystemExplanation = explainGateCache(tmp, filesystemGate);
+    assert.equal(filesystemExplanation.status, "hit", "filesystem cache backend must read back written action entries");
+    assert.equal(filesystemExplanation.cacheBackend.kind, "filesystem", "filesystem cache explain must expose backend kind");
+    assert.equal(
+      filesystemExplanation.actionCachePath.startsWith(resolve(tmp, "shared-quality-cache-run")),
+      true,
+      "filesystem cache action entries must be stored under the configured root",
+    );
+  });
+  await withQualityCacheEnv({
+    GROBOT_QUALITY_CACHE_BACKEND: "filesystem",
+    GROBOT_QUALITY_CACHE_ROOT: "relative-cache",
+  }, () => {
+    assert.throws(
+      () => createQualityCacheBackend(tmp),
+      /GROBOT_QUALITY_CACHE_ROOT must be an absolute path/,
+      "filesystem cache backend must reject relative roots",
+    );
+  });
+  await withQualityCacheEnv({
+    GROBOT_QUALITY_CACHE_BACKEND: "remote",
+    GROBOT_QUALITY_CACHE_ROOT: resolve(tmp, "shared-quality-cache"),
+  }, () => {
+    assert.throws(
+      () => createQualityCacheBackend(tmp),
+      /unsupported quality cache backend/,
+      "unknown cache backend kind must fail closed",
+    );
+  });
   assert.equal(outputExplanation.portableAction.actionHash, outputExplanation.cacheKey, "portable action metadata must include the action hash");
   assert.equal(outputExplanation.portableAction.backend.kind, "local", "portable action metadata must include backend kind");
   assert.equal(outputExplanation.portableAction.contractFingerprint, outputExplanation.actionContractFingerprint, "portable action metadata must include contract fingerprint");
