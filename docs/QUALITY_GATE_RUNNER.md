@@ -42,6 +42,7 @@ node scripts/quality-runner.mjs plan affected --strategy throughput
 node scripts/quality-runner.mjs explain affected --summary
 node scripts/quality-runner.mjs explain cache check:quality-runner
 node scripts/quality-runner.mjs benchmark prepush --samples 5 --json
+node scripts/quality-runner.mjs benchmark prepush --samples 5 --fail-on-median-ms 800 --fail-on-p90-ms 1500 --fail-below-cache-hit-ratio 90%
 node scripts/quality-runner.mjs stats --slow 20
 node scripts/quality-runner.mjs cache gc --max-age-days 30
 ```
@@ -649,13 +650,19 @@ over.
 
 Stats now include p50/p90/p95, failure rate, cold durations, and recommendation
 hints. Benchmark mode runs repeated samples and reports min, median, p90, per
-sample durations, and the latest cache-hit ratio; use `--no-cache` for cold-path
-samples and default cached mode for warm-path regression checks. Slow uncached
-smoke gates are intentionally reported as candidates for case splitting or
-timing-based sharding, not for blind caching. Timing-sensitive benchmark gates
-are treated differently: the preferred recommendation is profile separation
-(quick smoke vs. full benchmark) while preserving global exclusivity, because
-blind sharding can contaminate the performance signal.
+sample durations, the latest cache-hit ratio, and `cacheHitPercent`; use
+`--no-cache` for cold-path samples and default cached mode for warm-path
+regression checks. Benchmark runs can fail closed on explicit performance
+budgets with `--fail-on-median-ms N`, `--fail-on-p90-ms N`,
+`--fail-on-max-ms N`, and `--fail-below-cache-hit-ratio PCT` (`90`, `90%`, and
+`0.9` are accepted as the same 90% threshold). JSON output includes
+`thresholds` and `thresholdFailures`, so local scripts or CI can enforce
+regression budgets without parsing human text. Slow uncached smoke gates are
+intentionally reported as candidates for case splitting or timing-based
+sharding, not for blind caching. Timing-sensitive benchmark gates are treated
+differently: the preferred recommendation is profile separation (quick smoke
+vs. full benchmark) while preserving global exclusivity, because blind sharding
+can contaminate the performance signal.
 
 ## Adding or changing a gate
 

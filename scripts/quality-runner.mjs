@@ -32,6 +32,12 @@ import {
   runQualityGates,
   summarizeResults,
 } from "./lib/quality-scheduler.mjs";
+import {
+  compactBenchmarkThresholds,
+  evaluateBenchmarkThresholds,
+  parseBenchmarkCacheHitRatioThreshold,
+  parseBenchmarkMsThreshold,
+} from "./lib/quality-benchmark-policy.mjs";
 
 const KNOWN_RUN_MODES = new Set(["affected", "quick", "prepush", "ci", "release"]);
 
@@ -44,7 +50,7 @@ function printUsage() {
     "  node scripts/quality-runner.mjs explain affected [--summary] [--base REF] [--changed-files a,b]",
     "  node scripts/quality-runner.mjs explain cache <gate> [--json]",
     "  node scripts/quality-runner.mjs stats [--json] [--slow N] [--limit N]",
-    "  node scripts/quality-runner.mjs benchmark <affected|quick|prepush|ci|release> [--samples N] [--json] [--no-cache] [--parallel N] [--changed-files a,b]",
+    "  node scripts/quality-runner.mjs benchmark <affected|quick|prepush|ci|release> [--samples N] [--json] [--no-cache] [--parallel N] [--changed-files a,b] [--fail-on-median-ms N] [--fail-on-p90-ms N] [--fail-on-max-ms N] [--fail-below-cache-hit-ratio PCT]",
     "  node scripts/quality-runner.mjs cache gc [--max-age-days N] [--json]",
   ].join("\n"));
 }
@@ -65,6 +71,10 @@ function parseArgs(argv) {
     verbose: false,
     maxAgeDays: 30,
     samples: 3,
+    failBelowCacheHitRatio: null,
+    failOnMaxMs: null,
+    failOnMedianMs: null,
+    failOnP90Ms: null,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -118,6 +128,14 @@ function parseArgs(argv) {
       if (!Number.isInteger(options.samples) || options.samples <= 0) {
         throw new Error("--samples must be a positive integer");
       }
+    } else if (arg === "--fail-on-median-ms") {
+      options.failOnMedianMs = parseBenchmarkMsThreshold(arg, argv[++index]);
+    } else if (arg === "--fail-on-p90-ms") {
+      options.failOnP90Ms = parseBenchmarkMsThreshold(arg, argv[++index]);
+    } else if (arg === "--fail-on-max-ms") {
+      options.failOnMaxMs = parseBenchmarkMsThreshold(arg, argv[++index]);
+    } else if (arg === "--fail-below-cache-hit-ratio" || arg === "--fail-on-cache-hit-ratio") {
+      options.failBelowCacheHitRatio = parseBenchmarkCacheHitRatioThreshold(arg, argv[++index]);
     } else {
       positionals.push(arg);
     }
@@ -477,9 +495,20 @@ async function benchmarkMode(mode, options) {
     }
   }
   const durations = samples.map((sample) => sample.durationMs);
+  const lastSample = samples.at(-1) ?? { cached: 0, total: 0 };
+  const cacheHitPercent = lastSample.total > 0
+    ? Number(((lastSample.cached / lastSample.total) * 100).toFixed(2))
+    : 100;
+  const thresholds = compactBenchmarkThresholds({
+    maxMs: options.failOnMaxMs,
+    medianMs: options.failOnMedianMs,
+    minCacheHitRatio: options.failBelowCacheHitRatio,
+    p90Ms: options.failOnP90Ms,
+  });
   const payload = {
     cache: options.cache,
-    cacheHitRatio: `${samples.at(-1)?.cached ?? 0}/${samples.at(-1)?.total ?? 0}`,
+    cacheHitPercent,
+    cacheHitRatio: `${lastSample.cached}/${lastSample.total}`,
     changedFiles: context.changedFiles,
     maxMs: durations.length ? Math.max(...durations) : 0,
     medianMs: percentile(durations, 50),
@@ -487,15 +516,26 @@ async function benchmarkMode(mode, options) {
     mode,
     p90Ms: percentile(durations, 90),
     samples,
-    status: samples.every((sample) => sample.status === "pass") ? "pass" : "fail",
     strategy: strategyForMode(mode, options),
+    thresholdFailures: [],
+    thresholds,
   };
+  payload.thresholdFailures = evaluateBenchmarkThresholds(payload, thresholds);
+  payload.status = samples.every((sample) => sample.status === "pass") && payload.thresholdFailures.length === 0
+    ? "pass"
+    : "fail";
   if (options.json) {
     console.log(JSON.stringify(payload, null, 2));
   } else {
     console.log(`[quality] benchmark mode=${mode} status=${payload.status} samples=${samples.length} min=${payload.minMs}ms median=${payload.medianMs}ms p90=${payload.p90Ms}ms cache=${payload.cacheHitRatio}`);
     for (const [index, sample] of samples.entries()) {
       console.log(`- sample ${index + 1}: ${sample.durationMs}ms status=${sample.status} cached=${sample.cached}/${sample.total}`);
+    }
+    if (payload.thresholdFailures.length > 0) {
+      console.error("[quality] benchmark threshold failures:");
+      for (const failure of payload.thresholdFailures) {
+        console.error(`- ${failure.message}`);
+      }
     }
   }
   if (payload.status !== "pass") {

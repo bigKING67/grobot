@@ -12,6 +12,7 @@ import { appendQualityEvent, computeGateTimingFingerprint, createQualityCacheCon
 import { planQualityGates, runQualityGates } from "../../lib/quality-scheduler.mjs";
 import { computeActionContractFingerprint, resolveDeclaredOutputPath, resolveGateActionContract } from "../../lib/quality-action-contract.mjs";
 import { createQualityCacheBackend } from "../../lib/quality-cache-backend.mjs";
+import { evaluateBenchmarkThresholds, parseBenchmarkCacheHitRatioThreshold, parseBenchmarkMsThreshold } from "../../lib/quality-benchmark-policy.mjs";
 
 function packageJson() {
   return JSON.parse(readFileSync("package.json", "utf8"));
@@ -436,6 +437,41 @@ assert.equal(
   /if \(mode === "prepush"\) \{[\s\S]*?base: options\.base \?\? null,[\s\S]*?explicitFiles: options\.changedFiles,/m.test(affectedRunnerSource),
   true,
   "prepush must not implicitly diff origin/main; callers must pass --base explicitly",
+);
+assert.equal(
+  affectedRunnerSource.includes("--fail-on-median-ms"),
+  true,
+  "benchmark CLI must expose a median regression threshold",
+);
+assert.equal(
+  parseBenchmarkMsThreshold("--fail-on-median-ms", "1000"),
+  1000,
+  "benchmark millisecond thresholds must parse explicit integer budgets",
+);
+assert.equal(
+  parseBenchmarkCacheHitRatioThreshold("--fail-below-cache-hit-ratio", "95%"),
+  95,
+  "benchmark cache-hit thresholds must parse percentage values",
+);
+assert.equal(
+  parseBenchmarkCacheHitRatioThreshold("--fail-below-cache-hit-ratio", "0.95"),
+  95,
+  "benchmark cache-hit thresholds must parse ratio values",
+);
+assert.equal(
+  evaluateBenchmarkThresholds({
+    cacheHitPercent: 80,
+    maxMs: 1500,
+    medianMs: 900,
+    p90Ms: 1200,
+  }, {
+    maxMs: 2000,
+    medianMs: 800,
+    minCacheHitRatio: 90,
+    p90Ms: 1300,
+  }).map((failure) => failure.metric).join(","),
+  "medianMs,cacheHitPercent",
+  "benchmark threshold policy must report only violated metrics",
 );
 
 const packageChange = selectAffectedGates(registry, ["package.json"]).names;
