@@ -80,12 +80,42 @@ function spawnNode(args, options = {}) {
   });
 }
 
+const ALL_SECTIONS = Object.freeze(["registry", "cache", "scheduler"]);
+const sectionArgIndex = process.argv.indexOf("--section");
+const requestedSections = sectionArgIndex === -1
+  ? new Set(ALL_SECTIONS)
+  : new Set(String(process.argv[sectionArgIndex + 1] ?? "").split(",").map((item) => item.trim()).filter(Boolean));
+if (requestedSections.size === 0) {
+  throw new Error(`--section requires one of: ${ALL_SECTIONS.join(", ")}, aggregate`);
+}
+for (const section of requestedSections) {
+  if (!ALL_SECTIONS.includes(section) && section !== "aggregate") {
+    throw new Error(`unknown quality-runner behavior section: ${section}`);
+  }
+}
+function shouldRun(section) {
+  return requestedSections.has(section);
+}
+
+if (shouldRun("registry")) {
 const registry = buildQualityGateRegistry({ packageJson: packageJson(), repoRoot: process.cwd() });
 assert.deepEqual(validateQualityGateRegistry(registry, { packageJson: packageJson(), repoRoot: process.cwd() }), []);
 
 const qualityRunnerGate = registry.byName.get("check:quality-runner");
 assert.equal(qualityRunnerGate?.actionContract?.name, "check:quality-runner", "registry gates must expose normalized action contracts");
 assert.equal(qualityRunnerGate?.actionContract?.command, qualityRunnerGate?.command, "action contract command must match executable gate command");
+assert.deepEqual(
+  qualityRunnerGate?.deps,
+  ["check:quality-runner:registry", "check:quality-runner:cache", "check:quality-runner:scheduler"],
+  "quality-runner aggregate gate must depend on behavior shards",
+);
+for (const section of ["registry", "cache", "scheduler"]) {
+  assert.equal(
+    registry.byName.get(`check:quality-runner:${section}`)?.command,
+    `node scripts/checks/quality-runner/behavior.mjs --section ${section}`,
+    `quality-runner ${section} shard must run the matching behavior section`,
+  );
+}
 assert.equal(
   qualityRunnerGate?.actionContractFingerprint,
   computeActionContractFingerprint(qualityRunnerGate?.actionContract),
@@ -484,7 +514,9 @@ assertExcludes(packageChange, "check:gateway:runtime-tools:release-report", "pac
 const unknown = selectAffectedGates(registry, ["unknown/surface.txt"]).names;
 assertIncludes(unknown, "check:layer-contract", "unknown affected fallback");
 assertIncludes(unknown, "check:runtime:check", "unknown affected fallback");
+}
 
+if (shouldRun("cache") || shouldRun("scheduler")) {
 const tmp = mkdtempSync(join(tmpdir(), "grobot-quality-runner-"));
 try {
   mkdirSync(join(tmp, "scripts"), { recursive: true });
@@ -510,6 +542,7 @@ try {
   execFileSync("git", ["commit", "-m", "init"], { cwd: tmp, stdio: "ignore" });
   writeFileSync(join(tmp, "dirty.txt"), "worktree\n");
 
+  if (shouldRun("scheduler")) {
   const defaultChanged = listChangedFiles(tmp);
   assert.deepEqual(defaultChanged, ["dirty.txt"], "default affected scan must use worktree only");
   const baseChanged = listChangedFiles(tmp, { base: "HEAD" });
@@ -604,7 +637,9 @@ try {
   ], { repoRoot: tmp, strategy: "throughput" });
   assert.equal(plan.gates.length, 2, "plan must include all selected gates");
   assert.equal(plan.gates[0].name, "a", "plan must respect dependency levels");
+  }
 
+  if (shouldRun("cache")) {
   const cacheExplanation = explainGateCache(tmp, {
     cacheable: true,
     command: "node pass-a.mjs",
@@ -1055,7 +1090,9 @@ for (let iteration = 0; iteration < 1; iteration += 1) {
     true,
     "unsafe cached output paths must be reported as the cache miss reason",
   );
+  }
 
+  if (shouldRun("scheduler")) {
   const cacheSlotSeedGate = {
     cacheable: true,
     command: "node pass-a.mjs",
@@ -1240,8 +1277,10 @@ for (let iteration = 0; iteration < 1; iteration += 1) {
   assert.equal(timingSensitiveStats.staleTimingCount, 1, "timing stats must count stale command fingerprints");
   assert.equal(timingSensitiveStats.compatibleColdCount, 1, "timing stats must preserve compatible cold sample count");
   assert.equal(timingSensitiveStats.estimatedMs, 600, "timing estimate must prefer compatible recent command samples over stale averages");
+  }
 } finally {
   rmSync(tmp, { recursive: true, force: true });
+}
 }
 
 process.stdout.write("quality runner behavior checks passed.\n");

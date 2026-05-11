@@ -78,6 +78,20 @@ declared in `GATEWAY_SUITE_IDS` and verified against
 `node gateway/tests/check-gateway-node.mjs --list-suites --json` by
 `scripts/checks/quality-runner/gateway-suite-registry.mjs`.
 
+The quality-runner self-check is also sharded by behavior surface. The
+aggregate `check:quality-runner` gate depends on:
+
+- `check:quality-runner:registry`:
+  `node scripts/checks/quality-runner/behavior.mjs --section registry`
+- `check:quality-runner:cache`:
+  `node scripts/checks/quality-runner/behavior.mjs --section cache`
+- `check:quality-runner:scheduler`:
+  `node scripts/checks/quality-runner/behavior.mjs --section scheduler`
+
+The direct package script `npm run check:quality-runner` still runs all sections
+in one process for local reproduction. The quality runner uses the shard gates
+so self-check surfaces can run in parallel and cache independently.
+
 ### 2. Affected selection
 
 Affected rules live in `scripts/lib/quality-affected.mjs`.
