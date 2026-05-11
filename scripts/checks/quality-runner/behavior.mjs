@@ -662,6 +662,9 @@ try {
   assert.equal(outputExplanation.outputs.outputs[0]?.path, "artifact.txt", "output manifest must include declared output path");
   assert.equal(outputExplanation.outputs.outputs[0]?.digest.startsWith("sha256:"), true, "output manifest must store output file digest");
   unlinkSync(join(tmp, "artifact.txt"));
+  const outputExplainAfterDelete = explainGateCache(tmp, outputGate);
+  assert.equal(outputExplainAfterDelete.status, "hit", "explain cache must report restorable output cache hits without restoring them");
+  assert.equal(existsSync(join(tmp, "artifact.txt")), false, "explain cache must not mutate the worktree by restoring outputs");
   const outputRestoreRun = await runQualityGates([outputGate], { cache: true, repoRoot: tmp });
   assert.equal(outputRestoreRun.status, "pass", "output cache hit must pass after declared output restore");
   assert.equal(outputRestoreRun.results[0]?.cacheHit, true, "second output gate run must hit cache");

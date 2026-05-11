@@ -419,7 +419,8 @@ function outputManifest(repoRoot, actionContract) {
   };
 }
 
-function restoreCachedOutputs(repoRoot, cached) {
+function resolveCachedOutputs(repoRoot, cached, options = {}) {
+  const { restore = false } = options;
   const outputs = cached?.outputs?.outputs ?? [];
   if ((cached?.outputRestorePolicy ?? cached?.outputs?.restorePolicy) !== "declared-outputs") {
     return { restoredCount: 0, restorePolicy: "no-output" };
@@ -437,6 +438,9 @@ function restoreCachedOutputs(repoRoot, cached) {
         restorePolicy: "declared-outputs",
       };
     }
+    if (!restore) {
+      continue;
+    }
     const outputPath = path.join(repoRoot, normalizePath(output.path));
     mkdirSync(path.dirname(outputPath), { recursive: true });
     copyFileSync(storedPath, outputPath);
@@ -445,7 +449,8 @@ function restoreCachedOutputs(repoRoot, cached) {
   return { restoredCount, restorePolicy: "declared-outputs" };
 }
 
-function cacheReadiness(repoRoot, gate, cacheKey) {
+function cachedActionReadiness(repoRoot, gate, cacheKey, options = {}) {
+  const { restoreOutputs = false } = options;
   if (!gate.cacheable) {
     return { cached: null, missReason: "gate is not cacheable" };
   }
@@ -455,7 +460,7 @@ function cacheReadiness(repoRoot, gate, cacheKey) {
     if (cached?.status !== "pass") {
       return { cached: null, missReason: "cached action is not a passing result" };
     }
-    const restore = restoreCachedOutputs(repoRoot, cached);
+    const restore = resolveCachedOutputs(repoRoot, cached, { restore: restoreOutputs });
     if (restore.error) {
       return { cached: null, missReason: restore.error };
     }
@@ -521,7 +526,7 @@ function cacheFilePath(repoRoot, gateName, cacheKey) {
 }
 
 export function readGateCache(repoRoot, gate, cacheKey) {
-  return cacheReadiness(repoRoot, gate, cacheKey).cached;
+  return cachedActionReadiness(repoRoot, gate, cacheKey, { restoreOutputs: true }).cached;
 }
 
 export function writeGateCache(repoRoot, gate, cacheKey, result, cacheInfo = null) {
@@ -577,7 +582,7 @@ export function explainGateCache(repoRoot, gate, context = null) {
   const cacheInfo = computeGateCacheKey(repoRoot, gate, context);
   const actionPath = actionCacheFilePath(repoRoot, gate.name, cacheInfo.cacheKey);
   const legacyPath = legacyCacheFilePath(repoRoot, gate.name, cacheInfo.cacheKey);
-  const readiness = cacheReadiness(repoRoot, gate, cacheInfo.cacheKey);
+  const readiness = cachedActionReadiness(repoRoot, gate, cacheInfo.cacheKey, { restoreOutputs: false });
   const cached = readiness.cached;
   const latest = readMostRecentActionCacheEntry(repoRoot, gate.name);
   const changedComponents = changedActionComponents(cacheInfo.actionComponents, latest?.payload?.actionComponents);
