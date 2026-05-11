@@ -235,7 +235,6 @@ const BASE_GATE_DEFINITIONS = Object.freeze([
     group: "quality",
     inputs: QUALITY_RUNNER_COMMON_INPUTS,
     modes: ["quick", "ci"],
-    cacheable: false,
   },
   {
     name: "harness:ci-label-policy:check",

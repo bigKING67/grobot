@@ -92,8 +92,10 @@ aggregate `check:quality-runner` gate depends on:
 
 The direct package script `npm run check:quality-runner` still runs all sections
 in one process for local reproduction. The quality runner uses the shard gates
-so self-check surfaces can run in parallel and cache independently. Shard cache
-inputs are intentionally narrower than the old monolithic
+so self-check surfaces can run in parallel and cache independently; the
+aggregate gate is cacheable but still waits for every shard dependency, so warm
+runs can reach a true all-gates cache hit without bypassing failed shards. Shard
+cache inputs are intentionally narrower than the old monolithic
 `scripts/lib/quality-*.mjs` glob: registry changes do not invalidate cache
 backend checks, and cache backend changes do not invalidate registry-only
 checks unless the shared behavior script itself changes. The cache self-check

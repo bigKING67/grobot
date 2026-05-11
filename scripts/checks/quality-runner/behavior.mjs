@@ -113,6 +113,7 @@ assert.deepEqual(
   ["check:quality-runner:registry", "check:quality-runner:cache-core", "check:quality-runner:cache-output", "check:quality-runner:scheduler"],
   "quality-runner aggregate gate must depend on behavior shards",
 );
+assert.equal(qualityRunnerGate?.cacheable, true, "quality-runner aggregate gate must be cacheable after shard dependencies pass");
 for (const section of ["registry", "cache-core", "cache-output", "scheduler"]) {
   assert.equal(
     registry.byName.get(`check:quality-runner:${section}`)?.command,
