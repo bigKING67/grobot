@@ -198,7 +198,11 @@ The scheduler lives in `scripts/lib/quality-scheduler.mjs`.
 
 ### 4. Normalized action contracts and pass-only cache
 
-Cache files are stored under `.cache/grobot-quality/` and are git-ignored.
+Cache files are accessed through a backend boundary. The current backend is
+`local`, stored under `.cache/grobot-quality/` and git-ignored; action entries,
+legacy entries, content-addressed blobs, event logs, and GC all go through that
+boundary so a future remote backend can reuse the same action contract and CAS
+semantics without changing scheduler behavior.
 
 Each registry gate is normalized into an explicit action contract before it is
 planned, timed, or cached. The contract is the quality-runner equivalent of a
@@ -234,9 +238,10 @@ Rules:
   platform, declared env values, declared toolchain versions, and input file
   contents through the normalized action contract. Undeclared environment
 variables intentionally do not affect the hash.
-- v2 writes an action-cache entry under `ac/<gate>/<hash>.json` and stores
-  stdout/stderr payloads in a local content-addressable store under `cas/`.
-  The legacy `results/` pass cache is still written for backward compatibility.
+- v2 writes an action-cache entry under `ac/<gate>/<hash>.json` through the
+  active cache backend and stores stdout/stderr payloads in a
+  content-addressable store under `cas/`. The legacy `results/` pass cache is
+  still written for backward compatibility.
 - Action cache entries record declared output manifests. Gates with
   `outputs=[]` are explicitly tagged `outputRestorePolicy=no-output` so a cache
   hit never pretends to restore artifacts. Gates that declare outputs are tagged
@@ -269,7 +274,7 @@ variables intentionally do not affect the hash.
 - `--no-cache` disables the outer runner cache.
 - `node scripts/quality-runner.mjs explain cache <gate>` reports the current
   action hash, action contract fingerprint, cache status, input/output count,
-  output restore policy, latest cached action, and miss reason.
+  cache backend, output restore policy, latest cached action, and miss reason.
 - `node scripts/quality-runner.mjs cache gc --max-age-days N` performs
   best-effort local cache garbage collection.
 

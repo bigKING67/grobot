@@ -1,19 +1,15 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { computeActionContractFingerprint, resolveDeclaredOutputPath, resolveGateActionContract, stableJson } from "./quality-action-contract.mjs";
+import { createQualityCacheBackend } from "./quality-cache-backend.mjs";
+export { getQualityCacheRoot } from "./quality-cache-backend.mjs";
 
 const CACHE_SCHEMA_VERSION = 2;
 export const QUALITY_TIMING_MODEL_VERSION = "quality-timing-v2";
-const CACHE_ROOT = ".cache/grobot-quality";
-const ACTION_CACHE_DIR = "ac";
-const CAS_DIR = "cas";
-const MANIFEST_DIR = "manifests";
 const FILE_DIGEST_MANIFEST = "file-digests.json";
-const RESULT_CACHE_DIR = "results";
-const EVENTS_FILE = "events.jsonl";
 const RECENT_TIMING_WINDOW = 5;
 const RECENT_TIMING_ALPHA = 0.9;
 
@@ -140,7 +136,7 @@ function readJsonFile(filePath) {
 }
 
 function digestManifestPath(repoRoot) {
-  return path.join(getQualityCacheRoot(repoRoot), MANIFEST_DIR, FILE_DIGEST_MANIFEST);
+  return createQualityCacheBackend(repoRoot).manifestPath(FILE_DIGEST_MANIFEST);
 }
 
 function loadDigestManifest(repoRoot, context) {
@@ -155,8 +151,9 @@ function loadDigestManifest(repoRoot, context) {
 }
 
 function writeDigestManifest(repoRoot, manifest, context) {
-  mkdirSync(path.join(getQualityCacheRoot(repoRoot), MANIFEST_DIR), { recursive: true });
-  writeFileSync(digestManifestPath(repoRoot), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  const backend = createQualityCacheBackend(repoRoot);
+  backend.ensureDirs();
+  backend.writeJson(digestManifestPath(repoRoot), manifest);
   if (context) {
     context.digestManifestDirty = false;
   }
@@ -281,17 +278,8 @@ export function flushQualityCacheContext(context) {
   writeDigestManifest(context.repoRoot, context.digestManifest, context);
 }
 
-export function getQualityCacheRoot(repoRoot) {
-  return path.join(repoRoot, CACHE_ROOT);
-}
-
 export function ensureQualityCacheDirs(repoRoot) {
-  const root = getQualityCacheRoot(repoRoot);
-  mkdirSync(path.join(root, ACTION_CACHE_DIR), { recursive: true });
-  mkdirSync(path.join(root, CAS_DIR), { recursive: true });
-  mkdirSync(path.join(root, MANIFEST_DIR), { recursive: true });
-  mkdirSync(path.join(root, RESULT_CACHE_DIR), { recursive: true });
-  return root;
+  return createQualityCacheBackend(repoRoot).ensureDirs();
 }
 
 export function computeGateCacheKey(repoRoot, gate, context = null) {
@@ -329,34 +317,11 @@ export function computeGateCacheKey(repoRoot, gate, context = null) {
   };
 }
 
-function safeGateName(gateName) {
-  return gateName.replace(/[^A-Za-z0-9_.-]/g, "_");
-}
-
-function legacyCacheFilePath(repoRoot, gateName, cacheKey) {
-  return path.join(getQualityCacheRoot(repoRoot), RESULT_CACHE_DIR, safeGateName(gateName), `${cacheKey}.json`);
-}
-
-function actionCacheFilePath(repoRoot, gateName, cacheKey) {
-  return path.join(getQualityCacheRoot(repoRoot), ACTION_CACHE_DIR, safeGateName(gateName), `${cacheKey}.json`);
-}
-
-function casFilePath(repoRoot, digest) {
-  return path.join(getQualityCacheRoot(repoRoot), CAS_DIR, digest.slice(0, 2), digest);
-}
-
-function casStoredFilePath(repoRoot, digest) {
-  return casFilePath(repoRoot, String(digest).replace(/^sha256:/, ""));
-}
-
 function writeCasText(repoRoot, value) {
   const text = String(value ?? "");
   const digest = hashString(text);
-  const filePath = casFilePath(repoRoot, digest);
-  mkdirSync(path.dirname(filePath), { recursive: true });
-  if (!existsSync(filePath)) {
-    writeFileSync(filePath, text, "utf8");
-  }
+  const backend = createQualityCacheBackend(repoRoot);
+  backend.writeCasText(digest, text);
   return {
     digest,
     sizeBytes: Buffer.byteLength(text),
@@ -365,11 +330,8 @@ function writeCasText(repoRoot, value) {
 
 function writeCasFile(repoRoot, filePath) {
   const digest = hashString(readFileSync(filePath));
-  const storedPath = casFilePath(repoRoot, digest);
-  mkdirSync(path.dirname(storedPath), { recursive: true });
-  if (!existsSync(storedPath)) {
-    copyFileSync(filePath, storedPath);
-  }
+  const backend = createQualityCacheBackend(repoRoot);
+  backend.writeCasFile(digest, filePath);
   return {
     digest: `sha256:${digest}`,
     sizeBytes: statSync(filePath).size,
@@ -466,8 +428,8 @@ function resolveCachedOutputs(repoRoot, cached, options = {}) {
         restorePolicy: "declared-outputs",
       };
     }
-    const storedPath = casStoredFilePath(repoRoot, output.digest);
-    if (!existsSync(storedPath)) {
+    const backend = createQualityCacheBackend(repoRoot);
+    if (!backend.hasCasBlob(output.digest)) {
       return {
         error: `cached output missing from CAS: ${output.path}`,
         restoredCount,
@@ -477,8 +439,7 @@ function resolveCachedOutputs(repoRoot, cached, options = {}) {
     if (!restore) {
       continue;
     }
-    mkdirSync(path.dirname(resolved.absolutePath), { recursive: true });
-    copyFileSync(storedPath, resolved.absolutePath);
+    backend.restoreCasFile(output.digest, resolved.absolutePath);
     restoredCount += 1;
   }
   return { restoredCount, restorePolicy: "declared-outputs" };
@@ -493,9 +454,10 @@ function cachedActionReadiness(repoRoot, gate, cacheKey, options = {}) {
   if (outputSafetyError) {
     return { cached: null, missReason: outputSafetyError };
   }
-  const actionPath = actionCacheFilePath(repoRoot, gate.name, cacheKey);
-  if (existsSync(actionPath)) {
-    const cached = readJsonFile(actionPath);
+  const backend = createQualityCacheBackend(repoRoot);
+  const cachedAction = backend.readActionEntry(gate.name, cacheKey);
+  if (cachedAction) {
+    const cached = cachedAction;
     if (cached?.status !== "pass") {
       return { cached: null, missReason: "cached action is not a passing result" };
     }
@@ -506,9 +468,9 @@ function cachedActionReadiness(repoRoot, gate, cacheKey, options = {}) {
     return { cached: { ...cached, outputRestore: restore }, missReason: "" };
   }
 
-  const legacyPath = legacyCacheFilePath(repoRoot, gate.name, cacheKey);
-  if (existsSync(legacyPath)) {
-    const cached = readJsonFile(legacyPath);
+  const cachedLegacy = backend.readLegacyEntry(gate.name, cacheKey);
+  if (cachedLegacy) {
+    const cached = cachedLegacy;
     if (cached?.status !== "pass") {
       return { cached: null, missReason: "legacy cached action is not a passing result" };
     }
@@ -528,40 +490,13 @@ function cachedActionReadiness(repoRoot, gate, cacheKey, options = {}) {
 }
 
 function readMostRecentActionCacheEntry(repoRoot, gateName) {
-  const dir = path.join(getQualityCacheRoot(repoRoot), ACTION_CACHE_DIR, safeGateName(gateName));
-  if (!existsSync(dir)) {
-    return null;
-  }
-  const entries = readdirSync(dir)
-    .filter((entry) => entry.endsWith(".json"))
-    .map((entry) => {
-      const filePath = path.join(dir, entry);
-      try {
-        return {
-          filePath,
-          mtimeMs: statSync(filePath).mtimeMs,
-          payload: readJsonFile(filePath),
-        };
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean)
+  const entries = createQualityCacheBackend(repoRoot).listActionEntries(gateName)
     .sort((left, right) => right.mtimeMs - left.mtimeMs);
   return entries[0] ?? null;
 }
 
 function countActionCacheEntries(repoRoot, gateName) {
-  const dir = path.join(getQualityCacheRoot(repoRoot), ACTION_CACHE_DIR, safeGateName(gateName));
-  if (!existsSync(dir)) {
-    return 0;
-  }
-  return readdirSync(dir).filter((entry) => entry.endsWith(".json")).length;
-}
-
-function cacheFilePath(repoRoot, gateName, cacheKey) {
-  const safeGateName = gateName.replace(/[^A-Za-z0-9_.-]/g, "_");
-  return path.join(getQualityCacheRoot(repoRoot), RESULT_CACHE_DIR, safeGateName, `${cacheKey}.json`);
+  return createQualityCacheBackend(repoRoot).actionEntryCount(gateName);
 }
 
 export function readGateCache(repoRoot, gate, cacheKey) {
@@ -583,52 +518,42 @@ export function writeGateCache(repoRoot, gate, cacheKey, result, cacheInfo = nul
   if (cacheInfoOutputSafetyError) {
     return;
   }
-  const actionPath = actionCacheFilePath(repoRoot, gate.name, cacheKey);
   const outputs = outputManifest(repoRoot, resolvedCacheInfo.actionContract);
-  mkdirSync(path.dirname(actionPath), { recursive: true });
-  writeFileSync(
-    actionPath,
-    `${JSON.stringify({
-      schema: CACHE_SCHEMA_VERSION,
-      gate: gate.name,
-      cacheKey,
-      actionHash: cacheKey,
-      actionComponents: resolvedCacheInfo.actionComponents,
-      actionContractFingerprint: resolvedCacheInfo.actionContractFingerprint,
-      status: "pass",
-      durationMs: result.durationMs,
-      outputs,
-      outputCount: outputs.count,
-      outputRestorePolicy: outputs.restorePolicy,
-      stdoutDigest: stdout.digest,
-      stdoutSizeBytes: stdout.sizeBytes,
-      stderrDigest: stderr.digest,
-      stderrSizeBytes: stderr.sizeBytes,
-      timestamp: new Date().toISOString(),
-    }, null, 2)}\n`,
-    "utf8",
-  );
+  const backend = createQualityCacheBackend(repoRoot);
+  backend.writeActionEntry(gate.name, cacheKey, {
+    schema: CACHE_SCHEMA_VERSION,
+    gate: gate.name,
+    cacheKey,
+    actionHash: cacheKey,
+    actionComponents: resolvedCacheInfo.actionComponents,
+    actionContractFingerprint: resolvedCacheInfo.actionContractFingerprint,
+    status: "pass",
+    durationMs: result.durationMs,
+    outputs,
+    outputCount: outputs.count,
+    outputRestorePolicy: outputs.restorePolicy,
+    stdoutDigest: stdout.digest,
+    stdoutSizeBytes: stdout.sizeBytes,
+    stderrDigest: stderr.digest,
+    stderrSizeBytes: stderr.sizeBytes,
+    timestamp: new Date().toISOString(),
+  });
 
-  const filePath = legacyCacheFilePath(repoRoot, gate.name, cacheKey);
-  mkdirSync(path.dirname(filePath), { recursive: true });
-  writeFileSync(
-    filePath,
-    `${JSON.stringify({
-      schema: CACHE_SCHEMA_VERSION,
-      gate: gate.name,
-      cacheKey,
-      status: "pass",
-      durationMs: result.durationMs,
-      timestamp: new Date().toISOString(),
-    }, null, 2)}\n`,
-    "utf8",
-  );
+  backend.writeLegacyEntry(gate.name, cacheKey, {
+    schema: CACHE_SCHEMA_VERSION,
+    gate: gate.name,
+    cacheKey,
+    status: "pass",
+    durationMs: result.durationMs,
+    timestamp: new Date().toISOString(),
+  });
 }
 
 export function explainGateCache(repoRoot, gate, context = null) {
+  const backend = createQualityCacheBackend(repoRoot);
   const cacheInfo = computeGateCacheKey(repoRoot, gate, context);
-  const actionPath = actionCacheFilePath(repoRoot, gate.name, cacheInfo.cacheKey);
-  const legacyPath = legacyCacheFilePath(repoRoot, gate.name, cacheInfo.cacheKey);
+  const actionPath = backend.actionCachePath(gate.name, cacheInfo.cacheKey);
+  const legacyPath = backend.legacyCachePath(gate.name, cacheInfo.cacheKey);
   const readiness = cachedActionReadiness(repoRoot, gate, cacheInfo.cacheKey, { restoreOutputs: false });
   const cached = readiness.cached;
   const latest = readMostRecentActionCacheEntry(repoRoot, gate.name);
@@ -643,6 +568,7 @@ export function explainGateCache(repoRoot, gate, context = null) {
     actionComponents: cacheInfo.actionComponents,
     actionContractFingerprint: cacheInfo.actionContractFingerprint,
     actionCachePath: actionPath,
+    cacheBackend: backend.describe(),
     legacyCachePath: legacyPath,
     actionCacheEntries: countActionCacheEntries(repoRoot, gate.name),
     inputCount: cacheInfo.files.length,
@@ -677,11 +603,7 @@ export function explainGateCache(repoRoot, gate, context = null) {
 }
 
 export function appendQualityEvent(repoRoot, event) {
-  const root = ensureQualityCacheDirs(repoRoot);
-  writeFileSync(path.join(root, EVENTS_FILE), `${JSON.stringify(event)}\n`, {
-    encoding: "utf8",
-    flag: "a",
-  });
+  createQualityCacheBackend(repoRoot).appendEvent(event);
 }
 
 function percentile(values, p) {
@@ -741,7 +663,7 @@ export function summarizeQualityEvents(repoRoot, options = {}) {
   const { limit = 200, slowLimit = 10 } = options;
   const fingerprints = currentTimingFingerprints(options.currentGates ?? options.gates ?? []);
   const hasCurrentGateSet = fingerprints.size > 0;
-  const eventPath = path.join(getQualityCacheRoot(repoRoot), EVENTS_FILE);
+  const eventPath = createQualityCacheBackend(repoRoot).eventsPath();
   if (!existsSync(eventPath)) {
     return {
       cacheHitRate: 0,
@@ -891,44 +813,5 @@ export function summarizeQualityEvents(repoRoot, options = {}) {
 
 export function gcQualityCache(repoRoot, options = {}) {
   const { maxAgeDays = 30 } = options;
-  const root = getQualityCacheRoot(repoRoot);
-  if (!existsSync(root)) {
-    return { deleted: 0, root };
-  }
-  const cutoffMs = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
-  let deleted = 0;
-  function walk(dir) {
-    if (!existsSync(dir)) {
-      return;
-    }
-    for (const entry of readdirSync(dir)) {
-      const filePath = path.join(dir, entry);
-      let stat = null;
-      try {
-        stat = statSync(filePath);
-      } catch {
-        continue;
-      }
-      if (stat.isDirectory()) {
-        walk(filePath);
-        try {
-          if (readdirSync(filePath).length === 0) {
-            rmSync(filePath, { recursive: true, force: true });
-          }
-        } catch {
-          // Best-effort cleanup only.
-        }
-        continue;
-      }
-      if (stat.mtimeMs < cutoffMs) {
-        rmSync(filePath, { force: true });
-        deleted += 1;
-      }
-    }
-  }
-  walk(path.join(root, ACTION_CACHE_DIR));
-  walk(path.join(root, CAS_DIR));
-  walk(path.join(root, MANIFEST_DIR));
-  walk(path.join(root, RESULT_CACHE_DIR));
-  return { deleted, maxAgeDays, root };
+  return { ...createQualityCacheBackend(repoRoot).gc(maxAgeDays), maxAgeDays };
 }

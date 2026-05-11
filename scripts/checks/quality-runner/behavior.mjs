@@ -699,6 +699,7 @@ try {
   assert.equal(outputRun.status, "pass", "output-producing gate must pass");
   const outputExplanation = explainGateCache(tmp, outputGate);
   assert.equal(outputExplanation.status, "hit", "output-producing gate should be cache-readable after a pass");
+  assert.equal(outputExplanation.cacheBackend.kind, "local", "cache explanations must expose the cache backend kind");
   assert.equal(outputExplanation.outputCount, 1, "declared outputs must be counted in cache explanation");
   assert.equal(outputExplanation.outputRestorePolicy, "declared-outputs", "declared outputs must expose restore policy");
   assert.equal(outputExplanation.outputs.outputs[0]?.path, "artifact.txt", "output manifest must include declared output path");
