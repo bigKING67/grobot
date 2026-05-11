@@ -319,6 +319,10 @@ for high-value composite smoke surfaces. Current split cases include:
 - `runtime:management-gc-controls:gc-cli`
 - `runtime:management-gc-controls:gc-env`
 - `runtime:management-gc-controls:gc-toml`
+- `runtime:tool-context-controls:tool-start`
+- `runtime:tool-context-controls:tool-status`
+- `runtime:tool-context-controls:context-status`
+- `runtime:tool-context-controls:aggregate`
 - `runtime:context:mcp-instruction`
 - `runtime:context:pre-send-head-trim`
 - `runtime:context:quality-guard`
@@ -451,6 +455,11 @@ TOML/default-policy cases.
 The standard `runtime:management-gc-controls:full` suite fallback plus
 `:management-config` and `:gc` remain available as aggregate reproduction
 cases, but suite selection runs the finer shards with four internal workers.
+Runtime tool/context controls are split into tool-loop start validation,
+tools-allow status validation, and context status validation cases. The
+aggregate `runtime:tool-context-controls:aggregate` and suite fallback
+`runtime:tool-context-controls:full` remain available for focused reproduction,
+while suite selection runs the focused cases with three internal workers.
 The runtime context memory-decay hysteresis case uses seeded prompt-quality
 evidence and an aggressive test-local EMA alpha to prove tighten, no-early-relax,
 monotonic update, and relax-window behavior in at most three relax rounds instead

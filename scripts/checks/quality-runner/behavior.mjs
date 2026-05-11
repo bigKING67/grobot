@@ -224,6 +224,11 @@ assert.equal(
   "runtime controls internal worker suite must reserve enough gateway-smoke resources to avoid noisy overlap",
 );
 assert.equal(
+  registry.byName.get("check:gateway:suite:runtime:tool-context-controls")?.command,
+  "node gateway/tests/check-gateway-node.mjs --suite runtime:tool-context-controls --json --workers 3",
+  "runtime tool/context controls suite gate must use internal case workers",
+);
+assert.equal(
   registry.byName.get("check:gateway:suite:gateway:context")?.command,
   "node gateway/tests/check-gateway-node.mjs --suite gateway:context --json --workers 3",
   "gateway context suite gate must use internal case workers",

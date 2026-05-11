@@ -136,6 +136,10 @@ import {
   runRuntimeManagementConfigPolicyControlSmoke,
   runRuntimeManagementConfigStorageControlSmoke,
   runRuntimeManagementConfigTokenControlSmoke,
+  runRuntimeContextStatusControlSmoke,
+  runRuntimeToolContextControlSurfaceSmoke,
+  runRuntimeToolStartControlSurfaceSmoke,
+  runRuntimeToolStatusControlSurfaceSmoke,
 } from "./runtime-smoke/control-surface.mjs";
 import {
   runRuntimeContextGraphAutotuneAdaptiveSequenceFlowSmoke,
@@ -536,6 +540,26 @@ export const CASES = Object.freeze({
     suite: "runtime:management-gc-controls",
     description: "GC TOML and valid default input validation smoke.",
     run: runRuntimeGcTomlControlSmoke,
+  },
+  "runtime:tool-context-controls:tool-start": {
+    suite: "runtime:tool-context-controls",
+    description: "Runtime tool-loop start control rejection smoke.",
+    run: runRuntimeToolStartControlSurfaceSmoke,
+  },
+  "runtime:tool-context-controls:tool-status": {
+    suite: "runtime:tool-context-controls",
+    description: "Runtime tools-allow status control rejection smoke.",
+    run: runRuntimeToolStatusControlSurfaceSmoke,
+  },
+  "runtime:tool-context-controls:context-status": {
+    suite: "runtime:tool-context-controls",
+    description: "Runtime context status control rejection smoke.",
+    run: runRuntimeContextStatusControlSmoke,
+  },
+  "runtime:tool-context-controls:aggregate": {
+    suite: "runtime:tool-context-controls",
+    description: "Runtime tool/context aggregate control rejection smoke.",
+    run: aggregateOnly(runRuntimeToolContextControlSurfaceSmoke),
   },
   "runtime:context:mcp-instruction": {
     suite: "runtime:context",

@@ -170,6 +170,16 @@ assert.equal(
   "runtime management/gc controls must expose case-level GC environment controls",
 );
 assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:tool-context-controls:tool-start"),
+  true,
+  "runtime tool/context controls must expose case-level tool start controls",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:tool-context-controls:context-status"),
+  true,
+  "runtime tool/context controls must expose case-level context status controls",
+);
+assert.equal(
   casesPayload.cases.some((testCase) => testCase.id === "gateway:semantic-benchmark:smoke"),
   true,
   "semantic benchmark suite must expose a quick smoke benchmark case",
