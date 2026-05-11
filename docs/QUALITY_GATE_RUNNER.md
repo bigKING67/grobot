@@ -28,6 +28,7 @@ not reduce quality coverage to gain speed; it changes when and how gates run.
 | `npm run check:ci` | Full CI-equivalent static gate profile. CI should run this with `--no-cache`. |
 | `npm run check:release` | CI profile plus release-only gates. |
 | `npm run check:quality-runner` | Runner self-checks. |
+| `npm run check:quality:benchmark` | Repeated prepush benchmark samples for local regression checks. |
 | `npm run check:quality:stats` | Local duration, cache-hit, and slow-gate diagnostics. |
 
 Direct runner examples:
@@ -40,6 +41,7 @@ node scripts/quality-runner.mjs run ci --parallel 4
 node scripts/quality-runner.mjs plan affected --strategy throughput
 node scripts/quality-runner.mjs explain affected --summary
 node scripts/quality-runner.mjs explain cache check:quality-runner
+node scripts/quality-runner.mjs benchmark prepush --samples 5 --json
 node scripts/quality-runner.mjs stats --slow 20
 node scripts/quality-runner.mjs cache gc --max-age-days 30
 ```
@@ -623,6 +625,7 @@ Use:
 
 ```bash
 npm run check:quality:stats
+node scripts/quality-runner.mjs benchmark prepush --samples 5
 node scripts/quality-runner.mjs stats --json
 node scripts/quality-runner.mjs stats --slow 20
 ```
@@ -633,11 +636,14 @@ reuse, or cache policy. It is safe to delete `.cache/grobot-quality/` and start
 over.
 
 Stats now include p50/p90/p95, failure rate, cold durations, and recommendation
-hints. Slow uncached smoke gates are intentionally reported as candidates for
-case splitting or timing-based sharding, not for blind caching. Timing-sensitive
-benchmark gates are treated differently: the preferred recommendation is profile
-separation (quick smoke vs. full benchmark) while preserving global exclusivity,
-because blind sharding can contaminate the performance signal.
+hints. Benchmark mode runs repeated samples and reports min, median, p90, per
+sample durations, and the latest cache-hit ratio; use `--no-cache` for cold-path
+samples and default cached mode for warm-path regression checks. Slow uncached
+smoke gates are intentionally reported as candidates for case splitting or
+timing-based sharding, not for blind caching. Timing-sensitive benchmark gates
+are treated differently: the preferred recommendation is profile separation
+(quick smoke vs. full benchmark) while preserving global exclusivity, because
+blind sharding can contaminate the performance signal.
 
 ## Adding or changing a gate
 

@@ -44,6 +44,7 @@ export const QUALITY_RUNNER_COMMANDS = Object.freeze({
   prepush: "node scripts/quality-runner.mjs run prepush",
   quick: "node scripts/quality-runner.mjs run quick",
   release: "node scripts/quality-runner.mjs run release",
+  benchmark: "node scripts/quality-runner.mjs benchmark prepush",
   stats: "node scripts/quality-runner.mjs stats",
 });
 
@@ -55,6 +56,7 @@ export const QUALITY_ENTRYPOINT_SCRIPTS = Object.freeze({
   "check:quick": QUALITY_RUNNER_COMMANDS.quick,
   "check:release": QUALITY_RUNNER_COMMANDS.release,
   "check:quality:plan": "node scripts/quality-runner.mjs plan affected",
+  "check:quality:benchmark": QUALITY_RUNNER_COMMANDS.benchmark,
   "check:quality:stats": QUALITY_RUNNER_COMMANDS.stats,
 });
 

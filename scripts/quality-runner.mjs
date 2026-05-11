@@ -2,6 +2,7 @@
 
 import { existsSync } from "node:fs";
 import process from "node:process";
+import { performance } from "node:perf_hooks";
 
 import {
   appendQualityEvent,
@@ -43,6 +44,7 @@ function printUsage() {
     "  node scripts/quality-runner.mjs explain affected [--summary] [--base REF] [--changed-files a,b]",
     "  node scripts/quality-runner.mjs explain cache <gate> [--json]",
     "  node scripts/quality-runner.mjs stats [--json] [--slow N] [--limit N]",
+    "  node scripts/quality-runner.mjs benchmark <affected|quick|prepush|ci|release> [--samples N] [--json] [--no-cache] [--parallel N] [--changed-files a,b]",
     "  node scripts/quality-runner.mjs cache gc [--max-age-days N] [--json]",
   ].join("\n"));
 }
@@ -62,6 +64,7 @@ function parseArgs(argv) {
     summary: false,
     verbose: false,
     maxAgeDays: 30,
+    samples: 3,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -109,6 +112,11 @@ function parseArgs(argv) {
       options.maxAgeDays = Number.parseInt(argv[++index], 10);
       if (!Number.isInteger(options.maxAgeDays) || options.maxAgeDays <= 0) {
         throw new Error("--max-age-days must be a positive integer");
+      }
+    } else if (arg === "--samples") {
+      options.samples = Number.parseInt(argv[++index], 10);
+      if (!Number.isInteger(options.samples) || options.samples <= 0) {
+        throw new Error("--samples must be a positive integer");
       }
     } else {
       positionals.push(arg);
@@ -416,6 +424,85 @@ function printStats(options) {
   }
 }
 
+function percentile(values, p) {
+  if (values.length === 0) {
+    return 0;
+  }
+  const sorted = [...values].sort((left, right) => left - right);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  return sorted[index];
+}
+
+async function benchmarkMode(mode, options) {
+  if (!KNOWN_RUN_MODES.has(mode)) {
+    throw new Error(`unknown benchmark mode: ${mode}`);
+  }
+  const repoRoot = getRepoRoot();
+  ensureQualityCacheDirs(repoRoot);
+  const registry = buildQualityGateRegistry({ repoRoot });
+  const findings = validateQualityGateRegistry(registry, { repoRoot });
+  if (findings.length > 0) {
+    throw new Error(`registry validation failed: ${findings.join("; ")}`);
+  }
+  const context = modeGateNames(mode, registry, repoRoot, options);
+  const { gates, missing } = selectGatesByNames(registry, context.names);
+  if (missing.length > 0) {
+    throw new Error(`missing gates: ${missing.join(", ")}`);
+  }
+  const samples = [];
+  for (let index = 0; index < options.samples; index += 1) {
+    const startedAt = performance.now();
+    const run = await runQualityGates(gates, {
+      cache: options.cache,
+      env: {
+        GROBOT_QUALITY_CHANGED_FILES: changedFilesEnvValue(context.changedFiles),
+      },
+      logger: { gateDone() {}, gateStart() {} },
+      parallel: options.parallel,
+      repoRoot,
+      strategy: strategyForMode(mode, options),
+      verbose: false,
+    });
+    const summary = summarizeResults(run.results);
+    const sample = {
+      cached: summary.cached,
+      durationMs: run.durationMs,
+      measuredMs: Math.round(performance.now() - startedAt),
+      status: run.status,
+      total: summary.total,
+    };
+    samples.push(sample);
+    if (run.status !== "pass") {
+      break;
+    }
+  }
+  const durations = samples.map((sample) => sample.durationMs);
+  const payload = {
+    cache: options.cache,
+    cacheHitRatio: `${samples.at(-1)?.cached ?? 0}/${samples.at(-1)?.total ?? 0}`,
+    changedFiles: context.changedFiles,
+    maxMs: durations.length ? Math.max(...durations) : 0,
+    medianMs: percentile(durations, 50),
+    minMs: durations.length ? Math.min(...durations) : 0,
+    mode,
+    p90Ms: percentile(durations, 90),
+    samples,
+    status: samples.every((sample) => sample.status === "pass") ? "pass" : "fail",
+    strategy: strategyForMode(mode, options),
+  };
+  if (options.json) {
+    console.log(JSON.stringify(payload, null, 2));
+  } else {
+    console.log(`[quality] benchmark mode=${mode} status=${payload.status} samples=${samples.length} min=${payload.minMs}ms median=${payload.medianMs}ms p90=${payload.p90Ms}ms cache=${payload.cacheHitRatio}`);
+    for (const [index, sample] of samples.entries()) {
+      console.log(`- sample ${index + 1}: ${sample.durationMs}ms status=${sample.status} cached=${sample.cached}/${sample.total}`);
+    }
+  }
+  if (payload.status !== "pass") {
+    process.exit(1);
+  }
+}
+
 function cacheCommand(positionals, options) {
   const subcommand = positionals[1] ?? "";
   if (subcommand !== "gc") {
@@ -462,6 +549,10 @@ async function main() {
   }
   if (command === "stats") {
     printStats(options);
+    return;
+  }
+  if (command === "benchmark") {
+    await benchmarkMode(positionals[1] ?? "affected", options);
     return;
   }
   if (command === "cache") {

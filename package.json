@@ -42,6 +42,7 @@
     "check:ci": "node scripts/quality-runner.mjs run ci",
     "check:release": "node scripts/quality-runner.mjs run release",
     "check:quality:plan": "node scripts/quality-runner.mjs plan affected",
+    "check:quality:benchmark": "node scripts/quality-runner.mjs benchmark prepush",
     "check:quality:stats": "node scripts/quality-runner.mjs stats",
     "check:quality-runner": "node scripts/checks/quality-runner/behavior.mjs",
     "audit:python:target": "node scripts/python-scope-audit.mjs",
