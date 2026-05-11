@@ -7,7 +7,7 @@ import { computeActionContractFingerprint, resolveDeclaredOutputPath, resolveGat
 import { createQualityCacheBackend } from "./quality-cache-backend.mjs";
 export { getQualityCacheRoot } from "./quality-cache-backend.mjs";
 
-const CACHE_SCHEMA_VERSION = 2;
+const CACHE_SCHEMA_VERSION = 3;
 export const QUALITY_TIMING_MODEL_VERSION = "quality-timing-v2";
 const FILE_DIGEST_MANIFEST = "file-digests.json";
 const RECENT_TIMING_WINDOW = 5;
@@ -237,6 +237,7 @@ function actionComponentDigests(action) {
   return {
     contract: digestObject(action.contract),
     env: digestObject(action.env),
+    execution: digestObject(action.execution),
     files: digestObject(action.files),
     platform: digestObject(action.platform),
     toolchains: digestObject(action.toolchains),
@@ -296,6 +297,9 @@ function diffActionComponentDetails(currentAction, previousAction) {
   if (stableJson(currentAction.platform) !== stableJson(previousAction.platform)) {
     details.platform = [previousAction.platform, currentAction.platform].filter(Boolean);
   }
+  if (stableJson(currentAction.execution) !== stableJson(previousAction.execution)) {
+    details.execution = [previousAction.execution, currentAction.execution].filter(Boolean);
+  }
   return details;
 }
 
@@ -322,7 +326,8 @@ export function ensureQualityCacheDirs(repoRoot) {
   return createQualityCacheBackend(repoRoot).ensureDirs();
 }
 
-export function computeGateCacheKey(repoRoot, gate, context = null) {
+export function computeGateCacheKey(repoRoot, gate, context = null, options = {}) {
+  const executionEnvMode = options.strictEnv ? "strict" : "inherit";
   const actionContract = actionContractForGate(gate);
   const files = expandInputPatterns(repoRoot, actionContract.inputs ?? [], context);
   const fileDigests = files.map((file) => ({
@@ -337,6 +342,9 @@ export function computeGateCacheKey(repoRoot, gate, context = null) {
     contract: actionContract,
     contractFingerprint: computeActionContractFingerprint(actionContract),
     env: envValues,
+    execution: {
+      envMode: executionEnvMode,
+    },
     files: fileDigests,
     platform: `${process.platform}-${process.arch}`,
     toolchains: toolchainVersionValues,
@@ -453,6 +461,7 @@ function portableActionMetadata(cacheInfo, backend) {
     contract: cacheInfo.actionContract,
     contractFingerprint: cacheInfo.actionContractFingerprint,
     env: cacheInfo.action.env,
+    execution: cacheInfo.action.execution,
     files: cacheInfo.action.files,
     platform: cacheInfo.action.platform,
     toolchains: cacheInfo.action.toolchains,
@@ -617,9 +626,9 @@ export function writeGateCache(repoRoot, gate, cacheKey, result, cacheInfo = nul
   });
 }
 
-export function explainGateCache(repoRoot, gate, context = null) {
+export function explainGateCache(repoRoot, gate, context = null, options = {}) {
   const backend = createQualityCacheBackend(repoRoot);
-  const cacheInfo = computeGateCacheKey(repoRoot, gate, context);
+  const cacheInfo = computeGateCacheKey(repoRoot, gate, context, options);
   const actionPath = backend.actionCachePath(gate.name, cacheInfo.cacheKey);
   const legacyPath = backend.legacyCachePath(gate.name, cacheInfo.cacheKey);
   const readiness = cachedActionReadiness(repoRoot, gate, cacheInfo.cacheKey, { restoreOutputs: false });

@@ -17,23 +17,60 @@ export function defaultParallelism() {
   return Math.max(1, Math.min(os.cpus().length - 1, 6));
 }
 
-function createCommandEnv(repoRoot = process.cwd(), overrides = {}) {
+const STRICT_ENV_BASE_ALLOWLIST = Object.freeze([
+  "CI",
+  "FORCE_COLOR",
+  "HOME",
+  "LANG",
+  "LC_ALL",
+  "LOGNAME",
+  "NO_COLOR",
+  "PATH",
+  "SHELL",
+  "TEMP",
+  "TERM",
+  "TMP",
+  "TMPDIR",
+  "USER",
+]);
+
+function createCommandEnv(repoRoot = process.cwd(), overrides = {}, options = {}) {
+  const { declaredEnv = [], strictEnv = false } = options;
   const nodeBinPath = path.join(repoRoot, "node_modules", ".bin");
   const existingPath = process.env.PATH ?? "";
+  const resolvedPath = existingPath ? `${nodeBinPath}${path.delimiter}${existingPath}` : nodeBinPath;
+  if (!strictEnv) {
+    return {
+      ...process.env,
+      PATH: resolvedPath,
+      ...overrides,
+    };
+  }
+  const allowed = new Set([
+    ...STRICT_ENV_BASE_ALLOWLIST,
+    ...declaredEnv,
+    ...Object.keys(overrides),
+  ]);
+  const sanitized = {};
+  for (const name of allowed) {
+    if (process.env[name] !== undefined) {
+      sanitized[name] = process.env[name];
+    }
+  }
   return {
-    ...process.env,
-    PATH: existingPath ? `${nodeBinPath}${path.delimiter}${existingPath}` : nodeBinPath,
+    ...sanitized,
+    PATH: resolvedPath,
     ...overrides,
   };
 }
 
 function runShellCommand(command, options = {}) {
-  const { cwd, env = {}, verbose = false } = options;
+  const { cwd, declaredEnv = [], env = {}, strictEnv = false, verbose = false } = options;
   return new Promise((resolve) => {
     const startedAt = performance.now();
     const child = spawn(command, {
       cwd,
-      env: createCommandEnv(cwd, env),
+      env: createCommandEnv(cwd, env, { declaredEnv, strictEnv }),
       shell: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -277,6 +314,7 @@ export async function runQualityGates(gates, options = {}) {
     resourceLimits = defaultResourceLimits(parallel),
     repoRoot = process.cwd(),
     strategy = "interactive",
+    strictEnv = false,
     verbose = false,
   } = options;
   const startedAt = performance.now();
@@ -305,10 +343,11 @@ export async function runQualityGates(gates, options = {}) {
       };
     }
 
-    const cacheInfo = cache && gate.cacheable ? computeGateCacheKey(repoRoot, gate, cacheContext) : null;
+    const cacheInfo = cache && gate.cacheable ? computeGateCacheKey(repoRoot, gate, cacheContext, { strictEnv }) : null;
 
     logger?.gateStart?.(gate);
-    const commandResult = await runShellCommand(command, { cwd: repoRoot, env, verbose });
+    const declaredEnv = gate.actionContract?.env ?? gate.env ?? [];
+    const commandResult = await runShellCommand(command, { cwd: repoRoot, declaredEnv, env, strictEnv, verbose });
     const result = {
       cacheHit: false,
       command,
@@ -385,7 +424,7 @@ export async function runQualityGates(gates, options = {}) {
         if (!gate) {
           continue;
         }
-        const cacheInfo = cache && gate.cacheable ? computeGateCacheKey(repoRoot, gate, cacheContext) : null;
+        const cacheInfo = cache && gate.cacheable ? computeGateCacheKey(repoRoot, gate, cacheContext, { strictEnv }) : null;
         const cached = cacheInfo ? readGateCache(repoRoot, gate, cacheInfo.cacheKey) : null;
         if (cached) {
           const result = cachedGateResult(gate, cached);

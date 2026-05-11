@@ -44,13 +44,13 @@ const KNOWN_RUN_MODES = new Set(["affected", "quick", "prepush", "ci", "release"
 function printUsage() {
   console.error([
     "Usage:",
-    "  node scripts/quality-runner.mjs run <affected|quick|prepush|ci|release> [--list] [--compact] [--json] [--verbose] [--no-cache] [--parallel N] [--base REF] [--changed-files a,b]",
+    "  node scripts/quality-runner.mjs run <affected|quick|prepush|ci|release> [--list] [--compact] [--json] [--verbose] [--no-cache] [--strict-env] [--parallel N] [--base REF] [--changed-files a,b]",
     "  node scripts/quality-runner.mjs list [mode] [--compact] [--json]",
     "  node scripts/quality-runner.mjs plan <affected|quick|prepush|ci|release> [--json] [--strategy auto|interactive|throughput]",
     "  node scripts/quality-runner.mjs explain affected [--summary] [--base REF] [--changed-files a,b]",
     "  node scripts/quality-runner.mjs explain cache <gate> [--json]",
     "  node scripts/quality-runner.mjs stats [--json] [--slow N] [--limit N]",
-    "  node scripts/quality-runner.mjs benchmark <affected|quick|prepush|ci|release> [--samples N] [--json] [--no-cache] [--parallel N] [--changed-files a,b] [--fail-on-median-ms N] [--fail-on-p90-ms N] [--fail-on-max-ms N] [--fail-below-cache-hit-ratio PCT]",
+    "  node scripts/quality-runner.mjs benchmark <affected|quick|prepush|ci|release> [--samples N] [--json] [--no-cache] [--strict-env] [--parallel N] [--changed-files a,b] [--fail-on-median-ms N] [--fail-on-p90-ms N] [--fail-on-max-ms N] [--fail-below-cache-hit-ratio PCT]",
     "  node scripts/quality-runner.mjs cache gc [--max-age-days N] [--json]",
   ].join("\n"));
 }
@@ -68,6 +68,7 @@ function parseArgs(argv) {
     slowLimit: 10,
     strategy: "auto",
     summary: false,
+    strictEnv: false,
     verbose: false,
     maxAgeDays: 30,
     samples: 3,
@@ -91,6 +92,8 @@ function parseArgs(argv) {
       options.verbose = true;
     } else if (arg === "--no-cache") {
       options.cache = false;
+    } else if (arg === "--strict-env") {
+      options.strictEnv = true;
     } else if (arg === "--parallel") {
       options.parallel = Number.parseInt(argv[++index], 10);
       if (!Number.isInteger(options.parallel) || options.parallel <= 0) {
@@ -283,6 +286,7 @@ async function runMode(mode, options) {
     parallel: options.parallel,
     repoRoot,
     strategy: strategyForMode(mode, options),
+    strictEnv: options.strictEnv,
     verbose: options.verbose,
   });
   const summary = summarizeResults(run.results);
@@ -400,7 +404,7 @@ function explainCache(gateName, options) {
   if (!gate) {
     throw new Error(`unknown gate: ${gateName}`);
   }
-  const explanation = explainGateCache(repoRoot, gate, createQualityCacheContext(repoRoot));
+  const explanation = explainGateCache(repoRoot, gate, createQualityCacheContext(repoRoot), { strictEnv: options.strictEnv });
   if (options.json) {
     console.log(JSON.stringify(explanation, null, 2));
     return;
@@ -479,6 +483,7 @@ async function benchmarkMode(mode, options) {
       parallel: options.parallel,
       repoRoot,
       strategy: strategyForMode(mode, options),
+      strictEnv: options.strictEnv,
       verbose: false,
     });
     const summary = summarizeResults(run.results);

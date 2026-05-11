@@ -8,7 +8,7 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { buildQualityGateRegistry, gateNamesForMode, QUALITY_ENTRYPOINT_SCRIPTS, validateQualityGateRegistry } from "../../lib/quality-gate-registry.mjs";
 import { explainAffectedSelection, listChangedFiles, selectAffectedGates } from "../../lib/quality-affected.mjs";
-import { appendQualityEvent, computeGateTimingFingerprint, createQualityCacheContext, explainGateCache, summarizeQualityEvents, writeGateCache } from "../../lib/quality-cache.mjs";
+import { appendQualityEvent, computeGateCacheKey, computeGateTimingFingerprint, createQualityCacheContext, explainGateCache, summarizeQualityEvents, writeGateCache } from "../../lib/quality-cache.mjs";
 import { planQualityGates, runQualityGates } from "../../lib/quality-scheduler.mjs";
 import { computeActionContractFingerprint, resolveDeclaredOutputPath, resolveGateActionContract } from "../../lib/quality-action-contract.mjs";
 import { createQualityCacheBackend } from "../../lib/quality-cache-backend.mjs";
@@ -496,6 +496,13 @@ try {
   writeFileSync(join(tmp, "fail.mjs"), "process.exit(3);\n");
   writeFileSync(join(tmp, "slow-a.mjs"), "await new Promise((resolve) => setTimeout(resolve, 600));\nprocess.exit(0);\n");
   writeFileSync(join(tmp, "slow-b.mjs"), "await new Promise((resolve) => setTimeout(resolve, 600));\nprocess.exit(0);\n");
+  writeFileSync(join(tmp, "env-inherit.mjs"), "process.exit(process.env.GROBOT_QUALITY_UNDECLARED_ENV === 'leak' ? 0 : 4);\n");
+  writeFileSync(join(tmp, "env-strict.mjs"), [
+    "if (process.env.GROBOT_QUALITY_UNDECLARED_ENV === 'leak') { console.error('undeclared env leaked'); process.exit(2); }",
+    "if (process.env.GROBOT_QUALITY_DECLARED_ENV !== 'allowed') { console.error('declared env missing'); process.exit(3); }",
+    "process.exit(0);",
+    "",
+  ].join("\n"));
   execFileSync("git", ["init"], { cwd: tmp, stdio: "ignore" });
   execFileSync("git", ["config", "user.email", "quality-runner@example.invalid"], { cwd: tmp, stdio: "ignore" });
   execFileSync("git", ["config", "user.name", "Quality Runner"], { cwd: tmp, stdio: "ignore" });
@@ -531,6 +538,43 @@ try {
     },
   ], { cache: false, repoRoot: tmp });
   assert.equal(passRun.status, "pass", "dependent pass graph must pass");
+
+  process.env.GROBOT_QUALITY_UNDECLARED_ENV = "leak";
+  process.env.GROBOT_QUALITY_DECLARED_ENV = "allowed";
+  try {
+    const inheritedEnvRun = await runQualityGates([{
+      cacheable: false,
+      command: "node env-inherit.mjs",
+      cost: "cheap",
+      deps: [],
+      group: "test",
+      inputs: ["env-inherit.mjs"],
+      name: "env-inherit",
+      parallel: true,
+    }], { cache: false, repoRoot: tmp });
+    assert.equal(inheritedEnvRun.status, "pass", "default gate env must preserve legacy inherited environment behavior");
+    const strictEnvGate = {
+      cacheable: false,
+      command: "node env-strict.mjs",
+      cost: "cheap",
+      deps: [],
+      env: ["GROBOT_QUALITY_DECLARED_ENV"],
+      group: "test",
+      inputs: ["env-strict.mjs"],
+      name: "env-strict",
+      parallel: true,
+    };
+    const strictEnvRun = await runQualityGates([strictEnvGate], { cache: false, repoRoot: tmp, strictEnv: true });
+    assert.equal(strictEnvRun.status, "pass", "strict env mode must keep declared env while hiding undeclared env");
+    assert.notEqual(
+      computeGateCacheKey(tmp, strictEnvGate).cacheKey,
+      computeGateCacheKey(tmp, strictEnvGate, null, { strictEnv: true }).cacheKey,
+      "strict env mode must use a distinct action hash from inherited env mode",
+    );
+  } finally {
+    delete process.env.GROBOT_QUALITY_UNDECLARED_ENV;
+    delete process.env.GROBOT_QUALITY_DECLARED_ENV;
+  }
 
   const plan = planQualityGates([
     {
@@ -896,6 +940,7 @@ for (let iteration = 0; iteration < 1; iteration += 1) {
   assert.equal(outputExplanation.portableAction.actionHash, outputExplanation.cacheKey, "portable action metadata must include the action hash");
   assert.equal(outputExplanation.portableAction.backend.kind, outputExplanation.cacheBackend.kind, "portable action metadata must include backend kind");
   assert.equal(outputExplanation.portableAction.contractFingerprint, outputExplanation.actionContractFingerprint, "portable action metadata must include contract fingerprint");
+  assert.equal(outputExplanation.portableAction.execution.envMode, "inherit", "portable action metadata must include execution env mode");
   assert.equal(outputExplanation.portableAction.files[0]?.path, "write-output.mjs", "portable action metadata must include input file digests");
   assert.equal(typeof outputExplanation.portableAction.toolchains.node, "string", "portable action metadata must include toolchain versions");
   assert.equal(outputExplanation.outputCount, 1, "declared outputs must be counted in cache explanation");

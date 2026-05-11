@@ -36,6 +36,7 @@ Direct runner examples:
 ```bash
 node scripts/quality-runner.mjs run affected --list --compact
 node scripts/quality-runner.mjs run affected --changed-files runtime/src/extensions/handler.rs
+node scripts/quality-runner.mjs run affected --strict-env --changed-files scripts/quality-runner.mjs
 node scripts/quality-runner.mjs run quick --json --no-cache
 node scripts/quality-runner.mjs run ci --parallel 4
 node scripts/quality-runner.mjs plan affected --strategy throughput
@@ -240,24 +241,28 @@ model resets auditable: changing a command, declared input set, resource
 contract, cache policy, or declared env boundary intentionally creates a new
 action identity.
 Action cache entries also store component digests for `contract`, `env`,
-`files`, `platform`, and `toolchains`, plus portable action metadata containing
-the normalized contract, env values, input file digests, platform, toolchain
-versions, action hash, and backend kind. When `explain cache <gate>` misses but
-a previous action entry exists, the miss reason names the changed component set
-instead of only reporting an opaque hash drift. For entries with portable action
-metadata, JSON explain output also includes `actionDiff` with concrete changed
-input file paths, env keys, toolchain keys, contract keys, or platform values.
-This is intentionally similar to modern build runners: cache misses must be
-debuggable before the cache can be trusted for broader or remote use.
+`execution`, `files`, `platform`, and `toolchains`, plus portable action
+metadata containing the normalized contract, env values, execution env mode,
+input file digests, platform, toolchain versions, action hash, and backend kind.
+When `explain cache <gate>` misses but a previous action entry exists, the miss
+reason names the changed component set instead of only reporting an opaque hash
+drift. For entries with portable action metadata, JSON explain output also
+includes `actionDiff` with concrete changed input file paths, env keys,
+execution env mode, toolchain keys, contract keys, or platform values. This is
+intentionally similar to modern build runners: cache misses must be debuggable
+before the cache can be trusted for broader or remote use.
 
 Rules:
 
 - Only successful results are cached; failures are never cached.
 - Cache keys are action hashes. They include schema version, gate name, command,
-  platform, declared env values, declared toolchain versions, and input file
-  contents through the normalized action contract. Undeclared environment
-variables intentionally do not affect the hash.
-- v2 writes an action-cache entry under `ac/<gate>/<hash>.json` through the
+  platform, declared env values, execution env mode (`inherit` or `strict`),
+  declared toolchain versions, and input file contents through the normalized
+  action contract. Undeclared environment variables intentionally do not affect
+  the hash in inherited mode; strict mode prevents undeclared environment values
+  from reaching the gate process, and strict-mode cache entries use a distinct
+  action hash from inherited-mode entries.
+- v3 writes an action-cache entry under `ac/<gate>/<hash>.json` through the
   active cache backend and stores stdout/stderr payloads in a
   content-addressable store under `cas/`. The legacy `results/` pass cache is
   still written for backward compatibility.
@@ -296,6 +301,15 @@ variables intentionally do not affect the hash.
   cache backend, output restore policy, latest cached action, and miss reason.
 - `node scripts/quality-runner.mjs cache gc --max-age-days N` performs
   best-effort local cache garbage collection.
+
+Optional `--strict-env` mode executes gates with a narrowed environment made of
+a small process/tooling base allowlist (`PATH`, `HOME`, temp variables, locale,
+terminal/color flags, and CI identity), runner-provided overrides, and the
+gate's declared action-contract `env` entries. The default remains inherited
+environment mode for compatibility, but strict mode is the cache-correctness
+path for cacheable gates whose behavior must match the env dimensions included
+in the action hash. It is intentionally opt-in until every gate has an explicit
+environment contract.
 
 ### 5. Gateway smoke case/shard registry
 
