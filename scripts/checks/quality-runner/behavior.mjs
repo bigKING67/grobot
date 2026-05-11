@@ -522,12 +522,14 @@ try {
     computeActionContractFingerprint(cacheExplanation.actionContract),
     "cache explanation must expose the action contract fingerprint used by the action hash",
   );
+  const cacheBackend = createQualityCacheBackend(tmp);
+  const digestManifestPath = cacheBackend.manifestPath("file-digests.json");
   assert.equal(
-    existsSync(join(tmp, ".cache/grobot-quality/manifests/file-digests.json")),
+    existsSync(digestManifestPath),
     true,
     "cache explanation must persist a file digest manifest",
   );
-  const manifest = JSON.parse(readFileSync(join(tmp, ".cache/grobot-quality/manifests/file-digests.json"), "utf8"));
+  const manifest = JSON.parse(readFileSync(digestManifestPath, "utf8"));
   assert.equal(typeof manifest["pass-a.mjs"]?.digest, "string", "digest manifest must track hashed input files");
 
   const reusedContext = createQualityCacheContext(tmp);
@@ -734,7 +736,11 @@ try {
   assert.equal(outputRun.status, "pass", "output-producing gate must pass");
   const outputExplanation = explainGateCache(tmp, outputGate);
   assert.equal(outputExplanation.status, "hit", "output-producing gate should be cache-readable after a pass");
-  assert.equal(outputExplanation.cacheBackend.kind, "local", "cache explanations must expose the cache backend kind");
+  assert.equal(
+    outputExplanation.cacheBackend.kind,
+    createQualityCacheBackend(tmp).describe().kind,
+    "cache explanations must expose the active cache backend kind",
+  );
   await withQualityCacheEnv({
     GROBOT_QUALITY_CACHE_BACKEND: "filesystem",
     GROBOT_QUALITY_CACHE_ROOT: resolve(tmp, "shared-quality-cache"),
@@ -783,7 +789,7 @@ try {
     );
   });
   assert.equal(outputExplanation.portableAction.actionHash, outputExplanation.cacheKey, "portable action metadata must include the action hash");
-  assert.equal(outputExplanation.portableAction.backend.kind, "local", "portable action metadata must include backend kind");
+  assert.equal(outputExplanation.portableAction.backend.kind, outputExplanation.cacheBackend.kind, "portable action metadata must include backend kind");
   assert.equal(outputExplanation.portableAction.contractFingerprint, outputExplanation.actionContractFingerprint, "portable action metadata must include contract fingerprint");
   assert.equal(outputExplanation.portableAction.files[0]?.path, "write-output.mjs", "portable action metadata must include input file digests");
   assert.equal(typeof outputExplanation.portableAction.toolchains.node, "string", "portable action metadata must include toolchain versions");
@@ -802,7 +808,7 @@ try {
   assert.equal(readFileSync(join(tmp, "artifact.txt"), "utf8"), "artifact\n", "restored output content must match cached artifact");
   assert.equal(outputRestoreRun.results[0]?.outputRestore?.restoredCount, 1, "cache hit result must report restored output count");
   const restoredOutputDigest = outputExplanation.outputs.outputs[0]?.digest.replace(/^sha256:/, "");
-  rmSync(join(tmp, ".cache/grobot-quality/cas", restoredOutputDigest.slice(0, 2), restoredOutputDigest), { force: true });
+  rmSync(createQualityCacheBackend(tmp).casStoredPath(restoredOutputDigest), { force: true });
   unlinkSync(join(tmp, "artifact.txt"));
   const casMissingExplanation = explainGateCache(tmp, outputGate);
   assert.equal(casMissingExplanation.status, "miss", "missing output CAS artifact must prevent cache reuse");
@@ -851,7 +857,7 @@ try {
     },
   });
   assert.equal(explainGateCache(tmp, outputGate).status, "miss", "unsafe cacheInfo output paths must not be written to cache");
-  writeFileSync(join(tmp, ".cache/grobot-quality/ac/cache-output-test", `${outputExplanation.cacheKey}.json`), `${JSON.stringify({
+  writeFileSync(createQualityCacheBackend(tmp).actionCachePath(outputGate.name, outputExplanation.cacheKey), `${JSON.stringify({
     schema: 2,
     gate: outputGate.name,
     cacheKey: outputExplanation.cacheKey,
