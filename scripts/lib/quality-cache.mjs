@@ -493,6 +493,14 @@ function resolveCachedOutputs(repoRoot, cached, options = {}) {
         restorePolicy: "declared-outputs",
       };
     }
+    const casSizeBytes = backend.casBlobSize(output.digest);
+    if (typeof output.sizeBytes === "number" && casSizeBytes !== output.sizeBytes) {
+      return {
+        error: `cached output size mismatch in CAS: ${output.path}`,
+        restoredCount,
+        restorePolicy: "declared-outputs",
+      };
+    }
     if (!restore) {
       continue;
     }

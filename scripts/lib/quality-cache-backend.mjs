@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 export const QUALITY_CACHE_BACKEND_SCHEMA_VERSION = 1;
@@ -21,6 +21,35 @@ function readJsonFile(filePath) {
     return JSON.parse(readFileSync(filePath, "utf8"));
   } catch {
     return null;
+  }
+}
+
+function uniqueTemporaryPath(filePath) {
+  const suffix = `${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}`;
+  return path.join(path.dirname(filePath), `.${path.basename(filePath)}.${suffix}.tmp`);
+}
+
+function writeFileAtomic(filePath, data, options = "utf8") {
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  const temporaryPath = uniqueTemporaryPath(filePath);
+  try {
+    writeFileSync(temporaryPath, data, options);
+    renameSync(temporaryPath, filePath);
+  } catch (error) {
+    rmSync(temporaryPath, { force: true });
+    throw error;
+  }
+}
+
+function copyFileAtomic(sourcePath, targetPath) {
+  mkdirSync(path.dirname(targetPath), { recursive: true });
+  const temporaryPath = uniqueTemporaryPath(targetPath);
+  try {
+    copyFileSync(sourcePath, temporaryPath);
+    renameSync(temporaryPath, targetPath);
+  } catch (error) {
+    rmSync(temporaryPath, { force: true });
+    throw error;
   }
 }
 
@@ -67,20 +96,26 @@ export class LocalQualityCacheBackend {
     return existsSync(this.casStoredPath(digest));
   }
 
+  casBlobSize(digest) {
+    try {
+      return statSync(this.casStoredPath(digest)).size;
+    } catch {
+      return null;
+    }
+  }
+
   writeCasText(digest, text) {
     const filePath = this.casPath(digest);
-    mkdirSync(path.dirname(filePath), { recursive: true });
-    if (!existsSync(filePath)) {
-      writeFileSync(filePath, text, "utf8");
+    if (this.casBlobSize(digest) !== Buffer.byteLength(text, "utf8")) {
+      writeFileAtomic(filePath, text, "utf8");
     }
     return filePath;
   }
 
   writeCasFile(digest, sourcePath) {
     const filePath = this.casPath(digest);
-    mkdirSync(path.dirname(filePath), { recursive: true });
-    if (!existsSync(filePath)) {
-      copyFileSync(sourcePath, filePath);
+    if (this.casBlobSize(digest) !== statSync(sourcePath).size) {
+      copyFileAtomic(sourcePath, filePath);
     }
     return filePath;
   }
@@ -112,8 +147,7 @@ export class LocalQualityCacheBackend {
   }
 
   writeJson(filePath, payload) {
-    mkdirSync(path.dirname(filePath), { recursive: true });
-    writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    writeFileAtomic(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   }
 
   writeActionEntry(gateName, cacheKey, payload) {

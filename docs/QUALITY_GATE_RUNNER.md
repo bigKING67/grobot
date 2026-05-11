@@ -210,7 +210,13 @@ Set `GROBOT_QUALITY_CACHE_BACKEND=filesystem` and
 `GROBOT_QUALITY_CACHE_ROOT=/absolute/shared/cache/path` to use the same cache
 layout from a shared filesystem root. Invalid backend names, missing filesystem
 roots, and relative filesystem roots fail closed instead of silently falling
-back to local cache.
+back to local cache. Cache JSON entries and CAS blobs are written through
+same-directory temporary files followed by atomic `rename`, so concurrent or
+interrupted writers do not expose half-written action entries as cache hits.
+Corrupt or partial JSON entries parse as cache misses, and declared-output cache
+hits verify the stored CAS blob size before restore; a partial output blob is
+reported as `cached output size mismatch in CAS: <path>` instead of being
+restored.
 
 Each registry gate is normalized into an explicit action contract before it is
 planned, timed, or cached. The contract is the quality-runner equivalent of a

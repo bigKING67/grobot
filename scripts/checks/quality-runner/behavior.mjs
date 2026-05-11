@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { buildQualityGateRegistry, gateNamesForMode, QUALITY_ENTRYPOINT_SCRIPTS, validateQualityGateRegistry } from "../../lib/quality-gate-registry.mjs";
 import { explainAffectedSelection, listChangedFiles, selectAffectedGates } from "../../lib/quality-affected.mjs";
 import { appendQualityEvent, computeGateTimingFingerprint, createQualityCacheContext, explainGateCache, summarizeQualityEvents, writeGateCache } from "../../lib/quality-cache.mjs";
@@ -51,6 +52,31 @@ async function withQualityCacheEnv(env, callback) {
       process.env.GROBOT_QUALITY_CACHE_ROOT = previousCacheRoot;
     }
   }
+}
+
+function spawnNode(args, options = {}) {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(process.execPath, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      ...options,
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolvePromise({ stdout, stderr });
+        return;
+      }
+      reject(new Error(`node child exited ${code}\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+    });
+  });
 }
 
 const registry = buildQualityGateRegistry({ packageJson: packageJson(), repoRoot: process.cwd() });
@@ -737,6 +763,11 @@ try {
   const outputExplanation = explainGateCache(tmp, outputGate);
   assert.equal(outputExplanation.status, "hit", "output-producing gate should be cache-readable after a pass");
   assert.equal(
+    readdirSync(dirname(outputExplanation.actionCachePath)).some((entry) => entry.endsWith(".tmp")),
+    false,
+    "action cache writes must not leave temporary files behind",
+  );
+  assert.equal(
     outputExplanation.cacheBackend.kind,
     createQualityCacheBackend(tmp).describe().kind,
     "cache explanations must expose the active cache backend kind",
@@ -766,6 +797,44 @@ try {
       filesystemExplanation.actionCachePath.startsWith(resolve(tmp, "shared-quality-cache-run")),
       true,
       "filesystem cache action entries must be stored under the configured root",
+    );
+  });
+  const atomicWriterPath = join(tmp, "atomic-cache-writer.mjs");
+  writeFileSync(atomicWriterPath, `
+import { createQualityCacheBackend } from ${JSON.stringify(pathToFileURL(resolve(process.cwd(), "scripts/lib/quality-cache-backend.mjs")).href)};
+
+const backend = createQualityCacheBackend(process.argv[2]);
+const writer = process.argv[3];
+const targetPath = backend.actionCachePath("atomic-concurrent-test", "shared");
+for (let iteration = 0; iteration < 1; iteration += 1) {
+  backend.writeJson(targetPath, {
+    schema: 1,
+    writer,
+    iteration,
+    payload: "x".repeat(2048),
+  });
+}
+`, "utf8");
+  await withQualityCacheEnv({
+    GROBOT_QUALITY_CACHE_BACKEND: "filesystem",
+    GROBOT_QUALITY_CACHE_ROOT: resolve(tmp, "shared-quality-cache-atomic"),
+  }, async () => {
+    await Promise.all([0, 1].map((worker) => spawnNode([atomicWriterPath, tmp, `worker-${worker}`], {
+      cwd: tmp,
+      env: {
+        ...process.env,
+        GROBOT_QUALITY_CACHE_BACKEND: "filesystem",
+        GROBOT_QUALITY_CACHE_ROOT: resolve(tmp, "shared-quality-cache-atomic"),
+      },
+    })));
+    const atomicBackend = createQualityCacheBackend(tmp);
+    const atomicActionPath = atomicBackend.actionCachePath("atomic-concurrent-test", "shared");
+    const atomicPayload = atomicBackend.readJson(atomicActionPath);
+    assert.equal(typeof atomicPayload?.writer, "string", "concurrent filesystem action cache writes must leave valid JSON");
+    assert.equal(
+      readdirSync(dirname(atomicActionPath)).some((entry) => entry.endsWith(".tmp")),
+      false,
+      "concurrent filesystem action cache writes must clean up temporary files",
     );
   });
   await withQualityCacheEnv({
@@ -808,7 +877,21 @@ try {
   assert.equal(readFileSync(join(tmp, "artifact.txt"), "utf8"), "artifact\n", "restored output content must match cached artifact");
   assert.equal(outputRestoreRun.results[0]?.outputRestore?.restoredCount, 1, "cache hit result must report restored output count");
   const restoredOutputDigest = outputExplanation.outputs.outputs[0]?.digest.replace(/^sha256:/, "");
-  rmSync(createQualityCacheBackend(tmp).casStoredPath(restoredOutputDigest), { force: true });
+  const restoredOutputPath = createQualityCacheBackend(tmp).casStoredPath(restoredOutputDigest);
+  assert.equal(
+    readdirSync(dirname(restoredOutputPath)).some((entry) => entry.endsWith(".tmp")),
+    false,
+    "CAS writes must not leave temporary files behind",
+  );
+  writeFileSync(restoredOutputPath, "partial", "utf8");
+  const casSizeMismatchExplanation = explainGateCache(tmp, outputGate);
+  assert.equal(casSizeMismatchExplanation.status, "miss", "partial output CAS artifacts must prevent cache reuse");
+  assert.equal(
+    casSizeMismatchExplanation.missReason.includes("cached output size mismatch in CAS"),
+    true,
+    "partial output CAS artifacts must be reported as size mismatches",
+  );
+  rmSync(restoredOutputPath, { force: true });
   unlinkSync(join(tmp, "artifact.txt"));
   const casMissingExplanation = explainGateCache(tmp, outputGate);
   assert.equal(casMissingExplanation.status, "miss", "missing output CAS artifact must prevent cache reuse");
