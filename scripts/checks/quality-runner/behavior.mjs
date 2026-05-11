@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildQualityGateRegistry, gateNamesForMode, QUALITY_ENTRYPOINT_SCRIPTS, validateQualityGateRegistry } from "../../lib/quality-gate-registry.mjs";
@@ -358,6 +358,7 @@ try {
   writeFileSync(join(tmp, "tracked.txt"), "base\n");
   writeFileSync(join(tmp, "pass-a.mjs"), "process.exit(0);\n");
   writeFileSync(join(tmp, "pass-b.mjs"), "process.exit(0);\n");
+  writeFileSync(join(tmp, "write-output.mjs"), "import { writeFileSync } from 'node:fs';\nwriteFileSync('artifact.txt', 'artifact\\n');\n");
   writeFileSync(join(tmp, "fail.mjs"), "process.exit(3);\n");
   writeFileSync(join(tmp, "slow-a.mjs"), "await new Promise((resolve) => setTimeout(resolve, 600));\nprocess.exit(0);\n");
   writeFileSync(join(tmp, "slow-b.mjs"), "await new Promise((resolve) => setTimeout(resolve, 600));\nprocess.exit(0);\n");
@@ -441,6 +442,8 @@ try {
   });
   assert.equal(cacheExplanation.status, "miss", "uncached gate explanation must report miss");
   assert.equal(cacheExplanation.cacheable, true, "cache explanation must expose cacheability");
+  assert.equal(cacheExplanation.outputRestorePolicy, "no-output", "gates without declared outputs must not pretend to restore artifacts");
+  assert.equal(cacheExplanation.outputCount, 0, "gates without declared outputs must expose zero output count");
   assert.equal(cacheExplanation.actionContract.name, "cache-test", "cache explanation must expose the normalized action contract");
   assert.equal(
     cacheExplanation.actionContractFingerprint,
@@ -635,6 +638,43 @@ try {
     true,
     "cache miss reason must identify input-file drift when action components are available",
   );
+
+  const outputGate = {
+    cacheable: true,
+    command: "node write-output.mjs",
+    cost: "cheap",
+    deps: [],
+    env: [],
+    group: "test",
+    inputs: ["write-output.mjs"],
+    name: "cache-output-test",
+    outputs: ["artifact.txt"],
+    parallel: true,
+    resourceClass: "node",
+    resourceCost: 1,
+  };
+  const outputRun = await runQualityGates([outputGate], { cache: true, repoRoot: tmp });
+  assert.equal(outputRun.status, "pass", "output-producing gate must pass");
+  const outputExplanation = explainGateCache(tmp, outputGate);
+  assert.equal(outputExplanation.status, "hit", "output-producing gate should be cache-readable after a pass");
+  assert.equal(outputExplanation.outputCount, 1, "declared outputs must be counted in cache explanation");
+  assert.equal(outputExplanation.outputRestorePolicy, "declared-outputs", "declared outputs must expose restore policy");
+  assert.equal(outputExplanation.outputs.outputs[0]?.path, "artifact.txt", "output manifest must include declared output path");
+  assert.equal(outputExplanation.outputs.outputs[0]?.digest.startsWith("sha256:"), true, "output manifest must store output file digest");
+  unlinkSync(join(tmp, "artifact.txt"));
+  const outputRestoreRun = await runQualityGates([outputGate], { cache: true, repoRoot: tmp });
+  assert.equal(outputRestoreRun.status, "pass", "output cache hit must pass after declared output restore");
+  assert.equal(outputRestoreRun.results[0]?.cacheHit, true, "second output gate run must hit cache");
+  assert.equal(existsSync(join(tmp, "artifact.txt")), true, "declared output must be restored from cache on hit");
+  assert.equal(readFileSync(join(tmp, "artifact.txt"), "utf8"), "artifact\n", "restored output content must match cached artifact");
+  assert.equal(outputRestoreRun.results[0]?.outputRestore?.restoredCount, 1, "cache hit result must report restored output count");
+
+  const outputContractA = explainGateCache(tmp, outputGate).actionContractFingerprint;
+  const outputContractB = explainGateCache(tmp, {
+    ...outputGate,
+    outputs: ["artifact-renamed.txt"],
+  }).actionContractFingerprint;
+  assert.notEqual(outputContractA, outputContractB, "outputs declaration changes must change the action contract fingerprint");
 
   const failRun = await runQualityGates([
     {

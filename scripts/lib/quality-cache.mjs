@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { computeActionContractFingerprint, resolveGateActionContract, stableJson } from "./quality-action-contract.mjs";
@@ -345,6 +345,10 @@ function casFilePath(repoRoot, digest) {
   return path.join(getQualityCacheRoot(repoRoot), CAS_DIR, digest.slice(0, 2), digest);
 }
 
+function casStoredFilePath(repoRoot, digest) {
+  return casFilePath(repoRoot, String(digest).replace(/^sha256:/, ""));
+}
+
 function writeCasText(repoRoot, value) {
   const text = String(value ?? "");
   const digest = hashString(text);
@@ -357,6 +361,88 @@ function writeCasText(repoRoot, value) {
     digest,
     sizeBytes: Buffer.byteLength(text),
   };
+}
+
+function writeCasFile(repoRoot, filePath) {
+  const digest = hashString(readFileSync(filePath));
+  const storedPath = casFilePath(repoRoot, digest);
+  mkdirSync(path.dirname(storedPath), { recursive: true });
+  if (!existsSync(storedPath)) {
+    copyFileSync(filePath, storedPath);
+  }
+  return {
+    digest: `sha256:${digest}`,
+    sizeBytes: statSync(filePath).size,
+  };
+}
+
+function outputRestorePolicy(actionContract) {
+  return (actionContract.outputs ?? []).length > 0 ? "declared-outputs" : "no-output";
+}
+
+function outputManifest(repoRoot, actionContract) {
+  const outputs = [];
+  for (const outputPath of actionContract.outputs ?? []) {
+    const normalized = normalizePath(outputPath);
+    const absolutePath = path.join(repoRoot, normalized);
+    if (!existsSync(absolutePath)) {
+      outputs.push({
+        digest: "<missing>",
+        path: normalized,
+        sizeBytes: 0,
+        type: "missing",
+      });
+      continue;
+    }
+    const stat = statSync(absolutePath);
+    if (stat.isDirectory()) {
+      outputs.push({
+        digest: "<directory>",
+        path: normalized,
+        sizeBytes: 0,
+        type: "directory",
+      });
+      continue;
+    }
+    const storedOutput = writeCasFile(repoRoot, absolutePath);
+    outputs.push({
+      digest: storedOutput.digest,
+      path: normalized,
+      sizeBytes: storedOutput.sizeBytes,
+      type: "file",
+    });
+  }
+  return {
+    count: outputs.length,
+    outputs,
+    restorePolicy: outputRestorePolicy(actionContract),
+  };
+}
+
+function restoreCachedOutputs(repoRoot, cached) {
+  const outputs = cached?.outputs?.outputs ?? [];
+  if ((cached?.outputRestorePolicy ?? cached?.outputs?.restorePolicy) !== "declared-outputs") {
+    return { restoredCount: 0, restorePolicy: "no-output" };
+  }
+  let restoredCount = 0;
+  for (const output of outputs) {
+    if (output?.type !== "file" || typeof output.digest !== "string" || !output.digest.startsWith("sha256:")) {
+      continue;
+    }
+    const storedPath = casStoredFilePath(repoRoot, output.digest);
+    if (!existsSync(storedPath)) {
+      return {
+        error: `cached output missing from CAS: ${output.path}`,
+        restoredCount,
+        restorePolicy: "declared-outputs",
+      };
+    }
+    const outputPath = path.join(repoRoot, normalizePath(output.path));
+    mkdirSync(path.dirname(outputPath), { recursive: true });
+    copyFileSync(storedPath, outputPath);
+    restoredCount += 1;
+  }
+  return { restoredCount, restorePolicy: "declared-outputs" };
 }
 
 function readMostRecentActionCacheEntry(repoRoot, gateName) {
@@ -403,13 +489,30 @@ export function readGateCache(repoRoot, gate, cacheKey) {
   const actionPath = actionCacheFilePath(repoRoot, gate.name, cacheKey);
   if (existsSync(actionPath)) {
     const cached = readJsonFile(actionPath);
-    return cached?.status === "pass" ? cached : null;
+    if (cached?.status !== "pass") {
+      return null;
+    }
+    const restore = restoreCachedOutputs(repoRoot, cached);
+    if (restore.error) {
+      return null;
+    }
+    return { ...cached, outputRestore: restore };
   }
 
   const legacyPath = legacyCacheFilePath(repoRoot, gate.name, cacheKey);
   if (existsSync(legacyPath)) {
     const cached = readJsonFile(legacyPath);
-    return cached?.status === "pass" ? cached : null;
+    if (cached?.status !== "pass") {
+      return null;
+    }
+    if ((actionContractForGate(gate).outputs ?? []).length > 0) {
+      return null;
+    }
+    return {
+      ...cached,
+      outputRestore: { restoredCount: 0, restorePolicy: "no-output" },
+      outputRestorePolicy: "no-output",
+    };
   }
   return null;
 }
@@ -422,6 +525,7 @@ export function writeGateCache(repoRoot, gate, cacheKey, result, cacheInfo = nul
   const stderr = writeCasText(repoRoot, result.stderr ?? "");
   const resolvedCacheInfo = cacheInfo ?? computeGateCacheKey(repoRoot, gate);
   const actionPath = actionCacheFilePath(repoRoot, gate.name, cacheKey);
+  const outputs = outputManifest(repoRoot, resolvedCacheInfo.actionContract);
   mkdirSync(path.dirname(actionPath), { recursive: true });
   writeFileSync(
     actionPath,
@@ -434,6 +538,9 @@ export function writeGateCache(repoRoot, gate, cacheKey, result, cacheInfo = nul
       actionContractFingerprint: resolvedCacheInfo.actionContractFingerprint,
       status: "pass",
       durationMs: result.durationMs,
+      outputs,
+      outputCount: outputs.count,
+      outputRestorePolicy: outputs.restorePolicy,
       stdoutDigest: stdout.digest,
       stdoutSizeBytes: stdout.sizeBytes,
       stderrDigest: stderr.digest,
@@ -466,6 +573,7 @@ export function explainGateCache(repoRoot, gate, context = null) {
   const cached = readGateCache(repoRoot, gate, cacheInfo.cacheKey);
   const latest = readMostRecentActionCacheEntry(repoRoot, gate.name);
   const changedComponents = changedActionComponents(cacheInfo.actionComponents, latest?.payload?.actionComponents);
+  const currentOutputPolicy = outputRestorePolicy(cacheInfo.actionContract);
   return {
     gate: gate.name,
     cacheable: gate.cacheable === true,
@@ -478,6 +586,13 @@ export function explainGateCache(repoRoot, gate, context = null) {
     legacyCachePath: legacyPath,
     actionCacheEntries: countActionCacheEntries(repoRoot, gate.name),
     inputCount: cacheInfo.files.length,
+    outputCount: cacheInfo.actionContract.outputs.length,
+    outputRestorePolicy: cached?.outputRestorePolicy ?? currentOutputPolicy,
+    outputs: cached?.outputs ?? {
+      count: cacheInfo.actionContract.outputs.length,
+      outputs: [],
+      restorePolicy: currentOutputPolicy,
+    },
     sampleInputs: cacheInfo.files.slice(0, 20),
     latestEntry: latest?.payload
       ? {
@@ -487,6 +602,8 @@ export function explainGateCache(repoRoot, gate, context = null) {
         status: latest.payload.status ?? "",
         timestamp: latest.payload.timestamp ?? "",
         durationMs: latest.payload.durationMs ?? 0,
+        outputCount: latest.payload.outputCount ?? latest.payload.outputs?.count ?? 0,
+        outputRestorePolicy: latest.payload.outputRestorePolicy ?? latest.payload.outputs?.restorePolicy ?? "unknown",
       }
       : null,
     missReason: cached

@@ -229,10 +229,19 @@ Rules:
 - Cache keys are action hashes. They include schema version, gate name, command,
   platform, declared env values, declared toolchain versions, and input file
   contents through the normalized action contract. Undeclared environment
-  variables intentionally do not affect the hash.
+variables intentionally do not affect the hash.
 - v2 writes an action-cache entry under `ac/<gate>/<hash>.json` and stores
   stdout/stderr payloads in a local content-addressable store under `cas/`.
   The legacy `results/` pass cache is still written for backward compatibility.
+- Action cache entries record declared output manifests. Gates with
+  `outputs=[]` are explicitly tagged `outputRestorePolicy=no-output` so a cache
+  hit never pretends to restore artifacts. Gates that declare outputs are tagged
+  `outputRestorePolicy=declared-outputs` and store path/type/size/digest
+  metadata for each declared file output, with file bytes stored in the local
+  CAS. On cache hit, declared file outputs are restored before the gate is
+  reported as cached; if a required CAS entry is missing, the cache entry is not
+  reused. Output declaration changes are part of the action contract
+  fingerprint.
 - A single runner process reuses git file lists, glob expansion, file digests,
   and tool version probes to reduce repeated scanning.
 - v3 persists a best-effort file digest manifest under
@@ -250,7 +259,8 @@ Rules:
   five-second tail without adding coverage.
 - `--no-cache` disables the outer runner cache.
 - `node scripts/quality-runner.mjs explain cache <gate>` reports the current
-  action hash, cache status, input count, latest cached action, and miss reason.
+  action hash, action contract fingerprint, cache status, input/output count,
+  output restore policy, latest cached action, and miss reason.
 - `node scripts/quality-runner.mjs cache gc --max-age-days N` performs
   best-effort local cache garbage collection.
 

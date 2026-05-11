@@ -384,6 +384,7 @@ function explainCache(gateName, options) {
   console.log(`- actionHash: ${explanation.cacheKey}`);
   console.log(`- actionContract: ${explanation.actionContractFingerprint}`);
   console.log(`- inputs: ${explanation.inputCount}`);
+  console.log(`- outputs: ${explanation.outputCount} (${explanation.outputRestorePolicy})`);
   console.log(`- entries: ${explanation.actionCacheEntries}`);
   if (explanation.missReason) {
     console.log(`- miss: ${explanation.missReason}`);

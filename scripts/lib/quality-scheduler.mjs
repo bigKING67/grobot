@@ -300,6 +300,7 @@ export async function runQualityGates(gates, options = {}) {
         durationMs: 0,
         exitCode: 0,
         gate,
+        outputRestore: cached.outputRestore ?? null,
         status: "pass",
         stderr: "",
         stdout: "",
