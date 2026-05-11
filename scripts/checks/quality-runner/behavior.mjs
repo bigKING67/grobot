@@ -700,6 +700,11 @@ try {
   const outputExplanation = explainGateCache(tmp, outputGate);
   assert.equal(outputExplanation.status, "hit", "output-producing gate should be cache-readable after a pass");
   assert.equal(outputExplanation.cacheBackend.kind, "local", "cache explanations must expose the cache backend kind");
+  assert.equal(outputExplanation.portableAction.actionHash, outputExplanation.cacheKey, "portable action metadata must include the action hash");
+  assert.equal(outputExplanation.portableAction.backend.kind, "local", "portable action metadata must include backend kind");
+  assert.equal(outputExplanation.portableAction.contractFingerprint, outputExplanation.actionContractFingerprint, "portable action metadata must include contract fingerprint");
+  assert.equal(outputExplanation.portableAction.files[0]?.path, "write-output.mjs", "portable action metadata must include input file digests");
+  assert.equal(typeof outputExplanation.portableAction.toolchains.node, "string", "portable action metadata must include toolchain versions");
   assert.equal(outputExplanation.outputCount, 1, "declared outputs must be counted in cache explanation");
   assert.equal(outputExplanation.outputRestorePolicy, "declared-outputs", "declared outputs must expose restore policy");
   assert.equal(outputExplanation.outputs.outputs[0]?.path, "artifact.txt", "output manifest must include declared output path");

@@ -402,6 +402,23 @@ function outputManifest(repoRoot, actionContract) {
   };
 }
 
+function portableActionMetadata(cacheInfo, backend) {
+  return {
+    actionHash: cacheInfo.cacheKey,
+    backend: {
+      kind: backend.kind,
+      schema: backend.describe().schema,
+    },
+    components: cacheInfo.actionComponents,
+    contract: cacheInfo.actionContract,
+    contractFingerprint: cacheInfo.actionContractFingerprint,
+    env: cacheInfo.action.env,
+    files: cacheInfo.action.files,
+    platform: cacheInfo.action.platform,
+    toolchains: cacheInfo.action.toolchains,
+  };
+}
+
 function resolveCachedOutputs(repoRoot, cached, options = {}) {
   const { restore = false } = options;
   const outputs = cached?.outputs?.outputs ?? [];
@@ -520,15 +537,18 @@ export function writeGateCache(repoRoot, gate, cacheKey, result, cacheInfo = nul
   }
   const outputs = outputManifest(repoRoot, resolvedCacheInfo.actionContract);
   const backend = createQualityCacheBackend(repoRoot);
+  const portableAction = portableActionMetadata(resolvedCacheInfo, backend);
   backend.writeActionEntry(gate.name, cacheKey, {
     schema: CACHE_SCHEMA_VERSION,
     gate: gate.name,
     cacheKey,
     actionHash: cacheKey,
+    action: portableAction,
     actionComponents: resolvedCacheInfo.actionComponents,
     actionContractFingerprint: resolvedCacheInfo.actionContractFingerprint,
     status: "pass",
     durationMs: result.durationMs,
+    inputCount: resolvedCacheInfo.files.length,
     outputs,
     outputCount: outputs.count,
     outputRestorePolicy: outputs.restorePolicy,
@@ -570,6 +590,7 @@ export function explainGateCache(repoRoot, gate, context = null) {
     actionCachePath: actionPath,
     cacheBackend: backend.describe(),
     legacyCachePath: legacyPath,
+    portableAction: cached?.action ?? portableActionMetadata(cacheInfo, backend),
     actionCacheEntries: countActionCacheEntries(repoRoot, gate.name),
     inputCount: cacheInfo.files.length,
     outputCount: cacheInfo.actionContract.outputs.length,
@@ -583,6 +604,7 @@ export function explainGateCache(repoRoot, gate, context = null) {
     latestEntry: latest?.payload
       ? {
         cacheKey: latest.payload.cacheKey ?? "",
+        action: latest.payload.action ?? null,
         actionComponents: latest.payload.actionComponents ?? null,
         actionContractFingerprint: latest.payload.actionContractFingerprint ?? "",
         status: latest.payload.status ?? "",
