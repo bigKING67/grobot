@@ -29,6 +29,7 @@ not reduce quality coverage to gain speed; it changes when and how gates run.
 | `npm run check:release` | CI profile plus release-only gates. |
 | `npm run check:quality-runner` | Runner self-checks. |
 | `npm run check:quality:benchmark` | Repeated prepush benchmark samples for local regression checks. |
+| `npm run check:quality:benchmark:guard` | Reproducible quality-runner warm-path benchmark guard: median <= 1000ms, p90 <= 12000ms, final cache hit ratio >= 90%. |
 | `npm run check:quality:stats` | Local duration, cache-hit, and slow-gate diagnostics. |
 
 Direct runner examples:
@@ -678,6 +679,7 @@ Use:
 ```bash
 npm run check:quality:stats
 node scripts/quality-runner.mjs benchmark prepush --samples 5
+node scripts/quality-runner.mjs benchmark prepush --samples 3 --changed-files scripts/checks/quality-runner/behavior.mjs,scripts/lib/quality-gate-registry.mjs --fail-on-median-ms 1000 --fail-on-p90-ms 12000 --fail-below-cache-hit-ratio 90
 node scripts/quality-runner.mjs stats --json
 node scripts/quality-runner.mjs stats --slow 20
 ```

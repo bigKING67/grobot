@@ -43,6 +43,7 @@
     "check:release": "node scripts/quality-runner.mjs run release",
     "check:quality:plan": "node scripts/quality-runner.mjs plan affected",
     "check:quality:benchmark": "node scripts/quality-runner.mjs benchmark prepush",
+    "check:quality:benchmark:guard": "node scripts/quality-runner.mjs benchmark prepush --samples 3 --changed-files scripts/checks/quality-runner/behavior.mjs,scripts/lib/quality-gate-registry.mjs --fail-on-median-ms 1000 --fail-on-p90-ms 12000 --fail-below-cache-hit-ratio 90",
     "check:quality:stats": "node scripts/quality-runner.mjs stats",
     "check:quality-runner": "node scripts/checks/quality-runner/behavior.mjs",
     "audit:python:target": "node scripts/python-scope-audit.mjs",
