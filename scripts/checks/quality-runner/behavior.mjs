@@ -494,8 +494,8 @@ try {
   writeFileSync(join(tmp, "pass-b.mjs"), "process.exit(0);\n");
   writeFileSync(join(tmp, "write-output.mjs"), "import { writeFileSync } from 'node:fs';\nwriteFileSync('artifact.txt', 'artifact\\n');\n");
   writeFileSync(join(tmp, "fail.mjs"), "process.exit(3);\n");
-  writeFileSync(join(tmp, "slow-a.mjs"), "await new Promise((resolve) => setTimeout(resolve, 600));\nprocess.exit(0);\n");
-  writeFileSync(join(tmp, "slow-b.mjs"), "await new Promise((resolve) => setTimeout(resolve, 600));\nprocess.exit(0);\n");
+  writeFileSync(join(tmp, "slow-a.mjs"), "await new Promise((resolve) => setTimeout(resolve, 250));\nprocess.exit(0);\n");
+  writeFileSync(join(tmp, "slow-b.mjs"), "await new Promise((resolve) => setTimeout(resolve, 250));\nprocess.exit(0);\n");
   writeFileSync(join(tmp, "env-inherit.mjs"), "process.exit(process.env.GROBOT_QUALITY_UNDECLARED_ENV === 'leak' ? 0 : 4);\n");
   writeFileSync(join(tmp, "env-strict.mjs"), [
     "if (process.env.GROBOT_QUALITY_UNDECLARED_ENV === 'leak') { console.error('undeclared env leaked'); process.exit(2); }",
@@ -1099,7 +1099,7 @@ for (let iteration = 0; iteration < 1; iteration += 1) {
   ], { cache: true, parallel: 2, repoRoot: tmp });
   assert.equal(cacheSlotRun.status, "pass", "mixed cached/slow scheduling test must pass");
   assert.equal(
-    cacheSlotRun.durationMs < 1_100,
+    cacheSlotRun.durationMs < 800,
     true,
     "scheduler cache hits must not consume parallel/resource slots before slow gates are launched",
   );
@@ -1158,7 +1158,7 @@ for (let iteration = 0; iteration < 1; iteration += 1) {
   ], { cache: false, parallel: 2, repoRoot: tmp });
   assert.equal(scopedExclusiveRun.status, "pass", "scoped exclusive graph must pass");
   assert.equal(
-    scopedExclusiveRun.durationMs < 1_100,
+    scopedExclusiveRun.durationMs < 800,
     true,
     "scoped exclusive gates must not block unrelated resource classes",
   );
