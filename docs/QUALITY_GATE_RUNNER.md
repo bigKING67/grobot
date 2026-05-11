@@ -481,9 +481,11 @@ p90, last, and recent samples per timing context. Internal worker runs write a
 global historical estimate so focused reproduction timings cannot understate the
 default parallel plan while real suite-worker spikes are still retained. This
 keeps worker scheduling from being driven by zero-cost unknowns, stale
-averages, or context-polluted fast samples. The quality registry runs this suite
-with five internal workers so CI no longer serializes the former large control
-monoliths.
+averages, or context-polluted fast samples. Estimates use trimmed recent p90
+once enough samples exist, and only trust `lastMs` when it is within the normal
+recent band, so a single machine-contention spike cannot permanently overpack or
+underpack later worker buckets. The quality registry runs this suite with five
+internal workers so CI no longer serializes the former large control monoliths.
 Set `GROBOT_GATEWAY_TIMINGS_PATH=<path>` when benchmarking alternate timing
 snapshots without mutating the default `.cache/grobot-quality/gateway-timings.json`
 cache; set `GROBOT_GATEWAY_TIMING_CONTEXT=<name>` only for harness experiments.

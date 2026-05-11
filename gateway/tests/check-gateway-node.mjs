@@ -229,6 +229,8 @@ const TIMING_CONTEXT_SUITE_WORKER = "suite-worker";
 const TIMING_CONTEXT_DEFAULT = "default";
 const TIMING_RECENT_SAMPLE_LIMIT = 24;
 const TIMING_EWMA_ALPHA = 0.35;
+const TIMING_TRIMMED_MIN_SAMPLES = 8;
+const TIMING_LAST_SPIKE_RATIO = 1.25;
 
 function positiveNumber(value) {
   const parsed = Number(value);
@@ -254,6 +256,14 @@ function recentTimingSamples(current) {
   return Array.isArray(current?.recentMs)
     ? current.recentMs.map((value) => positiveNumber(value)).filter((value) => value > 0)
     : [];
+}
+
+function trimmedRecentTimingSamples(samples) {
+  if (samples.length < TIMING_TRIMMED_MIN_SAMPLES) {
+    return samples;
+  }
+  const ordered = [...samples].sort((left, right) => left - right);
+  return ordered.slice(0, -1);
 }
 
 function currentTimingContext() {
@@ -321,12 +331,15 @@ function writeTiming(caseId, durationMs, status) {
 }
 
 function estimateFromStats(stats, seedEstimateMs) {
+  const recentSamples = recentTimingSamples(stats);
+  const trimmedRecentSamples = trimmedRecentTimingSamples(recentSamples);
+  const trimmedRecentP90Ms = percentileMs(trimmedRecentSamples, 0.9);
+  const recentP90Ms = percentileMs(recentSamples, 0.9);
   const historicalEstimateMs = positiveNumber(stats?.avgMs);
   const recentEstimateMs = Math.max(
     positiveNumber(stats?.ewmaMs),
-    positiveNumber(stats?.p90Ms),
-    percentileMs(recentTimingSamples(stats), 0.9),
-    positiveNumber(stats?.lastMs),
+    trimmedRecentP90Ms || positiveNumber(stats?.p90Ms),
+    trimmedRecentP90Ms || recentP90Ms,
   );
   const count = positiveNumber(stats?.count);
   const maxEstimateMs = positiveNumber(stats?.maxMs);
@@ -336,7 +349,11 @@ function estimateFromStats(stats, seedEstimateMs) {
       Math.round(Math.max(seedEstimateMs, historicalEstimateMs, recentEstimateMs, 1) * 1.5),
     )
     : 0;
-  return Math.max(seedEstimateMs, historicalEstimateMs, recentEstimateMs, lowConfidenceSpikeMs);
+  const lastMs = positiveNumber(stats?.lastMs);
+  const lastSpikeMs = lastMs > 0 && lastMs <= Math.max(seedEstimateMs, recentEstimateMs, historicalEstimateMs, 1) * TIMING_LAST_SPIKE_RATIO
+    ? lastMs
+    : 0;
+  return Math.max(seedEstimateMs, historicalEstimateMs, recentEstimateMs, lowConfidenceSpikeMs, lastSpikeMs);
 }
 
 function estimateCaseMs(caseId, splitCase, timings) {

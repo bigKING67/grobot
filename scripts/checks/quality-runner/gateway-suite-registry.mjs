@@ -342,6 +342,8 @@ for (const requiredTimingMechanism of [
   "p90Ms",
   "recentMs",
   "estimateCaseMs",
+  "trimmedRecentTimingSamples",
+  "TIMING_LAST_SPIKE_RATIO",
 ]) {
   assert.equal(
     gatewayHarnessSource.includes(requiredTimingMechanism),
@@ -363,6 +365,62 @@ assert.equal(
   true,
   "gateway case sharding and worker scheduling must share the bounded optimal bucket planner",
 );
+const timingEstimateDir = mkdtempSync(join(tmpdir(), "grobot-gateway-timing-estimate-"));
+try {
+  const timingEstimatePath = join(timingEstimateDir, "timings.json");
+  writeFileSync(
+    timingEstimatePath,
+    `${JSON.stringify({
+      "workflow:full": {
+        count: 9,
+        failures: 0,
+        avgMs: 100,
+        ewmaMs: 100,
+        maxMs: 10_000,
+        p90Ms: 10_000,
+        recentMs: [100, 100, 100, 100, 100, 100, 100, 100, 10_000],
+        lastMs: 10_000,
+        lastStatus: "ok",
+        contexts: {
+          "suite-worker": {
+            count: 9,
+            failures: 0,
+            avgMs: 100,
+            ewmaMs: 100,
+            maxMs: 10_000,
+            p90Ms: 10_000,
+            recentMs: [100, 100, 100, 100, 100, 100, 100, 100, 10_000],
+            lastMs: 10_000,
+            lastStatus: "ok",
+          },
+        },
+      },
+    }, null, 2)}\n`,
+  );
+  const timingEstimateResult = spawnSync("node", ["gateway/tests/check-gateway-node.mjs", "--list-cases", "--json"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GROBOT_GATEWAY_TIMINGS_PATH: timingEstimatePath,
+    },
+    maxBuffer: 1024 * 1024,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  assert.equal(
+    timingEstimateResult.status,
+    0,
+    `timing estimate spike-trim smoke must pass\nstdout:\n${timingEstimateResult.stdout}\nstderr:\n${timingEstimateResult.stderr}`,
+  );
+  const timingEstimatePayload = JSON.parse(timingEstimateResult.stdout);
+  const workflowCase = timingEstimatePayload.cases.find((testCase) => testCase.id === "workflow:full");
+  assert.equal(
+    workflowCase?.estimatedMs,
+    100,
+    "case timing estimates must trim isolated recent spikes instead of scheduling from lastMs/p90Ms alone",
+  );
+} finally {
+  rmSync(timingEstimateDir, { recursive: true, force: true });
+}
 const runtimeControlsPlanDir = mkdtempSync(join(tmpdir(), "grobot-runtime-controls-plan-"));
 try {
   const runtimeControlsPlanPath = join(runtimeControlsPlanDir, "plan.json");
