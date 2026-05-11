@@ -37,6 +37,7 @@ import { isMemoryStrategyProfileInputError } from "./memory-strategy-profile";
 import {
   createGaMechanismRuntime,
   isGaMechanismRuntimeConfigInputError,
+  validateGaMechanismRuntimeConfigInputs,
 } from "../services/ga-mechanism-runtime";
 import { createExperiencePoolRuntime } from "../services/experience-pool-runtime";
 import {
@@ -95,7 +96,10 @@ export async function runStart(
   const isTurnInterruptedCode = (code: number): boolean =>
     code === TURN_INTERRUPTED_EXIT_CODE;
   let context: ReturnType<typeof resolveRunStartContext>;
+  let startEnvControls: ReturnType<typeof resolveStartEnvControls>;
   try {
+    startEnvControls = resolveStartEnvControls();
+    validateGaMechanismRuntimeConfigInputs();
     context = resolveRunStartContext(options);
   } catch (error) {
     if (isRouteDecisionNamespaceInputError(error)) {
@@ -159,6 +163,10 @@ export async function runStart(
       return 2;
     }
     if (isMemoryStrategyProfileInputError(error)) {
+      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
+      return 2;
+    }
+    if (isGaMechanismRuntimeConfigInputError(error)) {
       process.stderr.write(`error: ${error.code}: ${error.message}\n`);
       return 2;
     }
@@ -461,27 +469,11 @@ export async function runStart(
   let memoryMaintenanceEnabled: boolean;
   let memoryMaintenanceIntervalMs: number;
   let promptQualityWindowSize: number;
-  try {
-    ({
-      memoryMaintenanceEnabled,
-      memoryMaintenanceIntervalMs,
-      promptQualityWindowSize,
-    } = resolveStartEnvControls());
-  } catch (error) {
-    if (isCliStringOptionInputError(error)) {
-      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
-      return 2;
-    }
-    if (isCliNumericOptionInputError(error)) {
-      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
-      return 2;
-    }
-    if (isMemoryStrategyProfileInputError(error)) {
-      process.stderr.write(`error: ${error.code}: ${error.message}\n`);
-      return 2;
-    }
-    throw error;
-  }
+  ({
+    memoryMaintenanceEnabled,
+    memoryMaintenanceIntervalMs,
+    promptQualityWindowSize,
+  } = startEnvControls);
   let memoryMaintenanceRunning = false;
   const runMemoryMaintenance = async (
     reason: MemoryMaintenanceReason,

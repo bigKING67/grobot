@@ -412,3 +412,7 @@ export function createGaMechanismRuntime(): GaMechanismRuntime {
     },
   };
 }
+
+export function validateGaMechanismRuntimeConfigInputs(): void {
+  resolveAskUserPendingMaxAgeMs();
+}

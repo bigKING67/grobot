@@ -274,6 +274,13 @@ for high-value composite smoke surfaces. Current split cases include:
 - `runtime:controls:status-line-cache`
 - `runtime:controls:status-line-segment-toggle`
 - `runtime:controls:status-line-valid-boundary`
+- `runtime:start-controls:runtime-options`
+- `runtime:start-controls:provider-env`
+- `runtime:start-controls:maintenance-env`
+- `runtime:start-controls:memory-maintenance-env`
+- `runtime:start-controls:context-window-env`
+- `runtime:start-controls:ask-user-ttl-env`
+- `runtime:start-controls:runtime-controls`
 - `runtime:management-gc-controls:management-config`
 - `runtime:management-gc-controls:management-cli`
 - `runtime:management-gc-controls:management-policy`
@@ -392,6 +399,13 @@ env/TOML/boundary, experience runtime start/serve, and status-line
 basic/order/threshold/cache/segment/boundary. The quality registry runs this
 suite with five internal workers so CI no longer serializes the former
 large control monoliths.
+Runtime start controls are split by control source: CLI runtime options,
+provider env controls, memory maintenance env, context-window env, and
+ask-user TTL env controls. The aggregate `runtime:start-controls:runtime-controls`
+and `:maintenance-env` cases remain available for focused reproduction, while
+suite selection runs the finer split cases in a single process because early
+input validation makes the suite smaller than the child-worker startup and
+resource-contention cost.
 Runtime management/GC controls follow the same split-case pattern: management
 config validation is split into read-policy, storage/Redis, env, token/TOML,
 and experience controls, while the aggregate `:management-cli` case remains for

@@ -125,6 +125,21 @@ assert.equal(
   "runtime provider status must expose case-level clean alternate smoke",
 );
 assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:start-controls:runtime-options"),
+  true,
+  "runtime start controls must expose case-level runtime option controls",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:start-controls:memory-maintenance-env"),
+  true,
+  "runtime start controls must expose case-level memory maintenance environment controls",
+);
+assert.equal(
+  casesPayload.cases.some((testCase) => testCase.id === "runtime:start-controls:ask-user-ttl-env"),
+  true,
+  "runtime start controls must expose case-level ask-user TTL environment controls",
+);
+assert.equal(
   casesPayload.cases.some((testCase) => testCase.id === "runtime:management-gc-controls:management-policy"),
   true,
   "runtime management/gc controls must expose case-level management policy controls",

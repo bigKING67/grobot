@@ -38,21 +38,116 @@ export function runRuntimeNamespaceStartControlSmoke() {
 }
 
 export function runRuntimeStartControlSmoke() {
+  const payload = runRuntimeStartControlContract("start-invalid-runtime-controls-reject-flow");
+  assertRuntimeStartOptionControlsPayload(payload);
+  assertRuntimeStartProviderEnvControlsPayload(payload);
+  assertRuntimeStartMaintenanceEnvControlsPayload(payload);
+  assertRuntimeStartFooter(payload);
+  logStep("start-smoke-contract start-invalid-runtime-controls-reject-flow");
+}
+
+function runRuntimeStartControlContract(command) {
   const result = runContract(
     "start-smoke-contract.mjs",
-    "start-invalid-runtime-controls-reject-flow",
+    command,
     ["--repo-root", repoRoot],
     { timeoutMs: 240_000 },
   );
-  const payload = parseJsonOutput(
-    "start-smoke-contract start-invalid-runtime-controls-reject-flow",
-    result.stdout,
-  );
-  assert.deepEqual([payload.invalid_timeout_exit_code, payload.missing_timeout_exit_code, payload.invalid_circuit_failures_exit_code, payload.invalid_provider_limit_exit_code, payload.invalid_env_provider_burst_exit_code, payload.invalid_env_memory_maintenance_enabled_exit_code, payload.invalid_env_memory_maintenance_interval_exit_code, payload.invalid_env_context_graph_window_exit_code, payload.invalid_env_ask_user_pending_ttl_exit_code], [2, 2, 2, 2, 2, 2, 2, 2, 2]);
-  assert.deepEqual([payload.invalid_timeout_has_stable_error, payload.missing_timeout_has_stable_error, payload.invalid_circuit_failures_has_stable_error, payload.invalid_provider_limit_has_stable_error, payload.invalid_env_provider_burst_has_stable_error, payload.invalid_env_memory_maintenance_enabled_has_stable_error, payload.invalid_env_memory_maintenance_interval_has_stable_error, payload.invalid_env_context_graph_window_has_stable_error, payload.invalid_env_ask_user_pending_ttl_has_stable_error], [true, true, true, true, true, true, true, true, true]);
+  return parseJsonOutput(`start-smoke-contract ${command}`, result.stdout);
+}
+
+function assertRuntimeStartFooter(payload) {
   assert.equal(payload.hides_top_level_fatal, true);
   assert.equal(payload.has_start_banner, false);
-  logStep("start-smoke-contract start-invalid-runtime-controls-reject-flow");
+}
+
+function assertRuntimeStartOptionControlsPayload(payload) {
+  assert.deepEqual([
+    payload.invalid_timeout_exit_code,
+    payload.missing_timeout_exit_code,
+    payload.invalid_circuit_failures_exit_code,
+    payload.invalid_provider_limit_exit_code,
+  ], [2, 2, 2, 2]);
+  assert.deepEqual([
+    payload.invalid_timeout_has_stable_error,
+    payload.missing_timeout_has_stable_error,
+    payload.invalid_circuit_failures_has_stable_error,
+    payload.invalid_provider_limit_has_stable_error,
+  ], [true, true, true, true]);
+}
+
+function assertRuntimeStartProviderEnvControlsPayload(payload) {
+  assert.equal(payload.invalid_env_provider_burst_exit_code, 2);
+  assert.equal(payload.invalid_env_provider_burst_has_stable_error, true);
+}
+
+function assertRuntimeStartMaintenanceEnvControlsPayload(payload) {
+  assertRuntimeStartMemoryMaintenanceEnvControlsPayload(payload);
+  assertRuntimeStartContextWindowEnvControlsPayload(payload);
+  assertRuntimeStartAskUserTtlEnvControlsPayload(payload);
+}
+
+function assertRuntimeStartMemoryMaintenanceEnvControlsPayload(payload) {
+  assert.deepEqual([
+    payload.invalid_env_memory_maintenance_enabled_exit_code,
+    payload.invalid_env_memory_maintenance_interval_exit_code,
+  ], [2, 2]);
+  assert.deepEqual([
+    payload.invalid_env_memory_maintenance_enabled_has_stable_error,
+    payload.invalid_env_memory_maintenance_interval_has_stable_error,
+  ], [true, true]);
+}
+
+function assertRuntimeStartContextWindowEnvControlsPayload(payload) {
+  assert.equal(payload.invalid_env_context_graph_window_exit_code, 2);
+  assert.equal(payload.invalid_env_context_graph_window_has_stable_error, true);
+}
+
+function assertRuntimeStartAskUserTtlEnvControlsPayload(payload) {
+  assert.equal(payload.invalid_env_ask_user_pending_ttl_exit_code, 2);
+  assert.equal(payload.invalid_env_ask_user_pending_ttl_has_stable_error, true);
+}
+
+export function runRuntimeStartOptionControlSmoke() {
+  const payload = runRuntimeStartControlContract("start-invalid-runtime-option-controls-reject-flow");
+  assertRuntimeStartOptionControlsPayload(payload);
+  assertRuntimeStartFooter(payload);
+  logStep("start-smoke-contract start-invalid-runtime-option-controls-reject-flow");
+}
+
+export function runRuntimeStartProviderEnvControlSmoke() {
+  const payload = runRuntimeStartControlContract("start-invalid-provider-env-controls-reject-flow");
+  assertRuntimeStartProviderEnvControlsPayload(payload);
+  assertRuntimeStartFooter(payload);
+  logStep("start-smoke-contract start-invalid-provider-env-controls-reject-flow");
+}
+
+export function runRuntimeStartMaintenanceEnvControlSmoke() {
+  const payload = runRuntimeStartControlContract("start-invalid-maintenance-env-controls-reject-flow");
+  assertRuntimeStartMaintenanceEnvControlsPayload(payload);
+  assertRuntimeStartFooter(payload);
+  logStep("start-smoke-contract start-invalid-maintenance-env-controls-reject-flow");
+}
+
+export function runRuntimeStartMemoryMaintenanceEnvControlSmoke() {
+  const payload = runRuntimeStartControlContract("start-invalid-memory-maintenance-env-controls-reject-flow");
+  assertRuntimeStartMemoryMaintenanceEnvControlsPayload(payload);
+  assertRuntimeStartFooter(payload);
+  logStep("start-smoke-contract start-invalid-memory-maintenance-env-controls-reject-flow");
+}
+
+export function runRuntimeStartContextWindowEnvControlSmoke() {
+  const payload = runRuntimeStartControlContract("start-invalid-context-window-env-controls-reject-flow");
+  assertRuntimeStartContextWindowEnvControlsPayload(payload);
+  assertRuntimeStartFooter(payload);
+  logStep("start-smoke-contract start-invalid-context-window-env-controls-reject-flow");
+}
+
+export function runRuntimeStartAskUserTtlEnvControlSmoke() {
+  const payload = runRuntimeStartControlContract("start-invalid-ask-user-ttl-env-controls-reject-flow");
+  assertRuntimeStartAskUserTtlEnvControlsPayload(payload);
+  assertRuntimeStartFooter(payload);
+  logStep("start-smoke-contract start-invalid-ask-user-ttl-env-controls-reject-flow");
 }
 
 export function runRuntimeModelControlSurfaceSmoke() {

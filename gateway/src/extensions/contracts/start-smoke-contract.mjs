@@ -61,7 +61,6 @@ import {
 } from "./start-smoke-contract/start-interactive-flows.mjs";
 import {
   runStartInvalidNamespaceRejectFlow,
-  runStartInvalidRuntimeControlsRejectFlow,
   runStartInvalidExperienceControlsRejectFlow,
   runStartInvalidSessionControlsRejectFlow,
   runStartInvalidStorageControlsRejectFlow,
@@ -70,6 +69,15 @@ import {
   runStartMessageProviderConfigTsRust,
   runStartMessageSmoke,
 } from "./start-smoke-contract/start-basic-flows.mjs";
+import {
+  runStartInvalidAskUserTtlEnvControlsRejectFlow,
+  runStartInvalidContextWindowEnvControlsRejectFlow,
+  runStartInvalidMaintenanceEnvControlsRejectFlow,
+  runStartInvalidMemoryMaintenanceEnvControlsRejectFlow,
+  runStartInvalidProviderEnvControlsRejectFlow,
+  runStartInvalidRuntimeControlsRejectFlow,
+  runStartInvalidRuntimeOptionControlsRejectFlow,
+} from "./start-smoke-contract/runtime-start-control-flows.mjs";
 import {
   runStartInvalidToolSurfaceProfileControlsRejectFlow,
   runStartInvalidToolLoopControlsRejectFlow,
@@ -144,6 +152,24 @@ function runCli(argv) {
       break;
     case "start-invalid-runtime-controls-reject-flow":
       payload = runStartInvalidRuntimeControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-runtime-option-controls-reject-flow":
+      payload = runStartInvalidRuntimeOptionControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-provider-env-controls-reject-flow":
+      payload = runStartInvalidProviderEnvControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-maintenance-env-controls-reject-flow":
+      payload = runStartInvalidMaintenanceEnvControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-memory-maintenance-env-controls-reject-flow":
+      payload = runStartInvalidMemoryMaintenanceEnvControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-context-window-env-controls-reject-flow":
+      payload = runStartInvalidContextWindowEnvControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
+      break;
+    case "start-invalid-ask-user-ttl-env-controls-reject-flow":
+      payload = runStartInvalidAskUserTtlEnvControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
       break;
     case "start-invalid-runtime-model-controls-reject-flow":
       payload = runStartInvalidRuntimeModelControlsRejectFlow(buildStartSmokeFlowContext(repoRoot));
