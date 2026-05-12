@@ -1,33 +1,8 @@
 name: core-packaging-check
 
 on:
+  workflow_dispatch:
   pull_request:
-    paths:
-      - "packages/cli/**"
-      - "packages/core-*/**"
-      - "scripts/install-core-binary.sh"
-      - "scripts/install-core-from-url.sh"
-      - "scripts/core-generate-manifest.sh"
-      - "scripts/core-stage-artifacts.sh"
-      - "scripts/core-status.sh"
-      - "scripts/core-verify-packages.sh"
-      - "scripts/core-release-gate.sh"
-      - "scripts/lib/**"
-      - "gateway/src/extensions/contracts/runtime-tool-*.ts"
-      - "scripts/check-runtime-tool-contracts.mjs"
-      - "scripts/test-runtime-tool-contracts-json-schema.mjs"
-      - "scripts/test-runtime-tool-quality-report-module.mjs"
-      - "scripts/test-runtime-tool-quality-registry-parity.mjs"
-      - "scripts/test-runtime-tool-release-report.mjs"
-      - "shared/contracts/runtime-tool-quality-v1.json"
-      - "scripts/core-release-prepare.sh"
-      - "package.json"
-      - "grobot"
-      - "README.md"
-      - ".github/workflows/core-packaging-check.yml"
-  push:
-    branches:
-      - main
     paths:
       - "packages/cli/**"
       - "packages/core-*/**"
