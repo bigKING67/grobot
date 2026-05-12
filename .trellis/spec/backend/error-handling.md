@@ -342,6 +342,20 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     values must return JSON-RPC `-32602` with stable
     `invalid_system_prompt_shape`, `invalid_context_lines_shape`, or
     `invalid_attachments_*_shape` diagnostics before runtime execution.
+    Runtime JSON-RPC params must also reject unknown object fields before serde
+    parsing so misspelled explicit controls cannot be silently ignored.
+    `runtime.turn.execute` only accepts documented top-level fields
+    (`request_id`, `session_key`, `system_prompt`, `user_message`,
+    `context_lines`, `model_config`, `tool_context`, `attachments`,
+    `event_stream`) and documented nested fields for `model_config`,
+    `provider_options`, `provider_options.kimi`, Kimi `prompt_cache`,
+    `tool_context`, and each attachment object. Unknown fields must return
+    JSON-RPC `-32602` with stable diagnostics such as
+    `invalid_turn_execute_param_field`, `invalid_model_config_field`,
+    `invalid_model_config_provider_options_field`,
+    `invalid_model_config_provider_options_kimi_field`,
+    `invalid_model_config_provider_options_kimi_prompt_cache_field`,
+    `invalid_tool_context_field`, or `invalid_attachments_field`.
 41. Runtime health cache-window controls must fail closed on explicit invalid
     values. `runtime.health` may omit `cache_stats_window_ms` to disable window
     rotation, but explicit `null`, non-integer, or zero values must return
@@ -351,7 +365,9 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     values must return structured `invalid_runtime_health_params` data.
     Explicit malformed `cache_stats_reset_window` values must return
     structured `invalid_cache_stats_reset_window` data instead of falling back
-    to `false`.
+    to `false`. Unknown `runtime.health` params fields must return
+    `invalid_runtime_health_params` with structured
+    `invalid_runtime_health_param_field` diagnostics rather than being ignored.
 42. Runtime JSON-RPC envelopes must fail closed before typed request
     deserialization. Each stdin line must be a JSON object with
     `jsonrpc:"2.0"`, a response-correlatable `id` (`string`, `number`, or
@@ -366,6 +382,9 @@ Error handling follows fail-fast plus explicit fallback boundaries:
     being collapsed into omitted/default. `runtime.tools.describe` accepts
     omitted or object params only; explicit `params:null` or non-object values
     must return JSON-RPC `-32602` with `invalid_runtime_tools_describe_params`.
+    Since `runtime.tools.describe` currently has no supported params fields,
+    any object field must return `invalid_runtime_tools_describe_params` with
+    structured `invalid_runtime_tools_describe_param_field` diagnostics.
     Malformed JSON remains JSON-RPC `-32700` parse error.
 
 ---

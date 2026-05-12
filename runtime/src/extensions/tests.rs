@@ -381,6 +381,7 @@ mod tests {
     }
 
     include!("tests/turn_params.rs");
+    include!("tests/turn_unknown_fields.rs");
 
     #[test]
     fn turn_execute_rejects_invalid_event_stream() {

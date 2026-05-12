@@ -24,6 +24,10 @@ fn invalid_runtime_health_field(field: &str, raw_value: Value, recovery_hint: &s
     })
 }
 
+const RUNTIME_HEALTH_ALLOWED_FIELDS: &[&str] =
+    &["cache_stats_window_ms", "cache_stats_reset_window"];
+const RUNTIME_TOOLS_DESCRIBE_ALLOWED_FIELDS: &[&str] = &[];
+
 fn invalid_runtime_params_shape(
     method: &str,
     diagnostic_kind: &str,
@@ -39,6 +43,43 @@ fn invalid_runtime_params_shape(
     })
 }
 
+fn invalid_runtime_param_field(
+    method: &str,
+    diagnostic_kind: &str,
+    field: &str,
+    raw_value: Value,
+    recovery_hint: &str,
+) -> Value {
+    json!({
+        "diagnostic_kind": diagnostic_kind,
+        "field": field,
+        "source": format!("{method}.params.{field}"),
+        "raw_value": raw_value,
+        "recovery_hint": recovery_hint,
+    })
+}
+
+fn validate_runtime_params_known_fields(
+    params_object: &serde_json::Map<String, Value>,
+    allowed: &[&str],
+    method: &str,
+    diagnostic_kind: &str,
+    recovery_hint: &str,
+) -> Result<(), Value> {
+    for (key, value) in params_object {
+        if !allowed.contains(&key.as_str()) {
+            return Err(invalid_runtime_param_field(
+                method,
+                diagnostic_kind,
+                key,
+                value.clone(),
+                recovery_hint,
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn parse_runtime_health_params(params: Option<&Value>) -> Result<RuntimeHealthParams, Value> {
     let Some(params) = params else {
         return Ok(RuntimeHealthParams::default());
@@ -51,6 +92,13 @@ fn parse_runtime_health_params(params: Option<&Value>) -> Result<RuntimeHealthPa
             "omit runtime.health params or pass an object with supported health controls",
         ));
     };
+    validate_runtime_params_known_fields(
+        params_object,
+        RUNTIME_HEALTH_ALLOWED_FIELDS,
+        "runtime.health",
+        "invalid_runtime_health_param_field",
+        "remove unsupported runtime.health param or use cache_stats_window_ms/cache_stats_reset_window",
+    )?;
 
     let cache_stats_window_ms = match params_object.get("cache_stats_window_ms") {
         Some(value) => {
@@ -98,6 +146,7 @@ fn invalid_runtime_health_message(data: &Value) -> &'static str {
     {
         "invalid_cache_stats_reset_window" => "invalid_cache_stats_reset_window",
         "invalid_cache_stats_window_ms" => "invalid_cache_stats_window_ms",
+        "invalid_runtime_health_param_field" => "invalid_runtime_health_params",
         "invalid_runtime_health_params" => "invalid_runtime_health_params",
         _ => "invalid runtime.health params",
     }
@@ -107,8 +156,14 @@ fn validate_runtime_tools_describe_params(params: Option<&Value>) -> Result<(), 
     let Some(params) = params else {
         return Ok(());
     };
-    if params.as_object().is_some() {
-        return Ok(());
+    if let Some(params_object) = params.as_object() {
+        return validate_runtime_params_known_fields(
+            params_object,
+            RUNTIME_TOOLS_DESCRIBE_ALLOWED_FIELDS,
+            "runtime.tools.describe",
+            "invalid_runtime_tools_describe_param_field",
+            "remove unsupported runtime.tools.describe param; this method does not accept params",
+        );
     }
     Err(invalid_runtime_params_shape(
         "runtime.tools.describe",
@@ -125,6 +180,7 @@ fn invalid_runtime_tools_describe_message(data: &Value) -> &'static str {
         .unwrap_or_default()
     {
         "invalid_runtime_tools_describe_params" => "invalid_runtime_tools_describe_params",
+        "invalid_runtime_tools_describe_param_field" => "invalid_runtime_tools_describe_params",
         _ => "invalid runtime.tools.describe params",
     }
 }

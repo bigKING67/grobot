@@ -236,6 +236,13 @@ fn validate_optional_string_array_shape(
 fn validate_turn_prompt_cache_field_shapes(
     prompt_cache: &serde_json::Map<String, Value>,
 ) -> Result<(), Value> {
+    validate_known_fields(
+        prompt_cache,
+        TURN_PROMPT_CACHE_ALLOWED_FIELDS,
+        "model_config.provider_options.kimi.prompt_cache",
+        "invalid_model_config_provider_options_kimi_prompt_cache_field",
+        "remove unsupported prompt_cache field or use enabled/strategy/user_last_n/capability",
+    )?;
     validate_optional_bool_shape(
         prompt_cache,
         "enabled",
@@ -270,6 +277,13 @@ fn validate_turn_prompt_cache_field_shapes(
 fn validate_turn_kimi_field_shapes(
     kimi_options: &serde_json::Map<String, Value>,
 ) -> Result<(), Value> {
+    validate_known_fields(
+        kimi_options,
+        TURN_KIMI_ALLOWED_FIELDS,
+        "model_config.provider_options.kimi",
+        "invalid_model_config_provider_options_kimi_field",
+        "remove unsupported kimi option or use a documented Kimi provider option",
+    )?;
     validate_optional_string_shape(
         kimi_options,
         "web_search_mode",
@@ -356,6 +370,13 @@ fn validate_turn_kimi_field_shapes(
 fn validate_turn_model_config_field_shapes(
     model_config: &serde_json::Map<String, Value>,
 ) -> Result<(), Value> {
+    validate_known_fields(
+        model_config,
+        TURN_MODEL_CONFIG_ALLOWED_FIELDS,
+        "model_config",
+        "invalid_model_config_field",
+        "remove unsupported model_config field or use base_url/api_key/model/timeout_ms/provider_kind/provider_options",
+    )?;
     validate_optional_string_shape(
         model_config,
         "base_url",
@@ -402,6 +423,13 @@ fn validate_turn_model_config_field_shapes(
         .get("provider_options")
         .and_then(Value::as_object)
     {
+        validate_known_fields(
+            provider_options,
+            TURN_PROVIDER_OPTIONS_ALLOWED_FIELDS,
+            "model_config.provider_options",
+            "invalid_model_config_provider_options_field",
+            "remove unsupported provider_options field or use kimi",
+        )?;
         validate_optional_object_shape(
             provider_options,
             "kimi",
@@ -420,6 +448,13 @@ fn validate_turn_attachment_field_shapes(
     attachment: &serde_json::Map<String, Value>,
     index: usize,
 ) -> Result<(), Value> {
+    validate_known_fields(
+        attachment,
+        TURN_ATTACHMENT_ALLOWED_FIELDS,
+        &format!("attachments[{index}]"),
+        "invalid_attachments_field",
+        "remove unsupported attachment field or use type/source_type/source/mime_type/filename",
+    )?;
     validate_optional_string_shape(
         attachment,
         "type",
@@ -489,6 +524,13 @@ fn validate_turn_attachments_shape(
 fn validate_turn_tool_context_field_shapes(
     tool_context: &serde_json::Map<String, Value>,
 ) -> Result<(), Value> {
+    validate_known_fields(
+        tool_context,
+        TURN_TOOL_CONTEXT_ALLOWED_FIELDS,
+        "tool_context",
+        "invalid_tool_context_field",
+        "remove unsupported tool_context field or use the documented runtime tool context controls",
+    )?;
     validate_optional_string_shape(
         tool_context,
         "work_dir",
@@ -586,6 +628,13 @@ fn validate_turn_execute_param_shapes(params: &Value) -> Result<(), Value> {
         ));
     };
 
+    validate_known_fields(
+        params_object,
+        TURN_EXECUTE_ALLOWED_FIELDS,
+        "",
+        "invalid_turn_execute_param_field",
+        "remove unsupported runtime.turn.execute param or use request_id/session_key/system_prompt/user_message/context_lines/model_config/tool_context/attachments/event_stream",
+    )?;
     validate_required_string_shape(
         params_object,
         "request_id",
@@ -658,6 +707,7 @@ fn invalid_turn_execute_params_message(data: &Value) -> &'static str {
         "invalid_user_message_shape" => "invalid_user_message",
         "invalid_model_config_shape" => "invalid_model_config",
         "invalid_model_config_provider_options_shape" => "invalid_provider_options",
+        "invalid_model_config_provider_options_field" => "invalid_provider_options",
         "invalid_model_config_provider_options_kimi_shape" => "invalid_provider_options_kimi",
         "invalid_model_config_provider_options_kimi_prompt_cache_shape" => "invalid_prompt_cache",
         "invalid_turn_execute_params" => "invalid params",
