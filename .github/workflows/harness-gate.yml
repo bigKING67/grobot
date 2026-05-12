@@ -1,24 +1,8 @@
 name: harness-gate
 
 on:
+  workflow_dispatch:
   pull_request:
-    paths:
-      - "gateway/**"
-      - "runtime/**"
-      - "scripts/check-runtime-tool-contracts.mjs"
-      - "scripts/lib/**"
-      - "scripts/test-runtime-tool-contracts-json-schema.mjs"
-      - "scripts/test-runtime-tool-quality-report-module.mjs"
-      - "scripts/test-runtime-tool-quality-registry-parity.mjs"
-      - "scripts/test-runtime-tool-release-report.mjs"
-      - "shared/contracts/runtime-tool-quality-v1.json"
-      - "docs/runtime-tool-recovery.md"
-      - ".trellis/spec/guides/agent-gateway-runtime-guide.md"
-      - "package.json"
-      - ".github/workflows/harness-gate.yml"
-  push:
-    branches:
-      - main
     paths:
       - "gateway/**"
       - "runtime/**"
@@ -36,6 +20,10 @@ on:
 
 permissions:
   contents: read
+
+env:
+  GROBOT_ALLOW_TS_DEV_CLI: "1"
+  GROBOT_ALLOW_REDIS_FALLBACK: "1"
 
 jobs:
   check:

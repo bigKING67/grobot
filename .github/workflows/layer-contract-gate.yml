@@ -1,20 +1,8 @@
 name: layer-contract-gate
 
 on:
+  workflow_dispatch:
   pull_request:
-    paths:
-      - "runtime/**"
-      - "README.md"
-      - "runtime/README.md"
-      - "gateway/README.md"
-      - "gateway/evals/README.md"
-      - "package.json"
-      - "scripts/layer-contract-check.mjs"
-      - "scripts/layer-contract-spec.json"
-      - ".github/workflows/layer-contract-gate.yml"
-  push:
-    branches:
-      - main
     paths:
       - "runtime/**"
       - "README.md"

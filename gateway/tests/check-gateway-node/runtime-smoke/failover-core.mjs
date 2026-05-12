@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { startMockModelServer } from "../../../src/extensions/contracts/_shared/mock-model-server.mjs";
+import { ensureFreshRuntimeBinary } from "./runtime-binary.mjs";
 import {
   logRetry,
   logStep,
@@ -24,6 +25,8 @@ export async function runRuntimeFailoverCoreSmoke() {
   const failoverRejectPayload = parseJsonOutput("start-smoke-contract failover-rejects-python", failoverRejectResult.stdout);
   assert.equal(failoverRejectPayload.exit_code, 2);
   logStep("start-smoke-contract failover-rejects-python");
+
+  await ensureFreshRuntimeBinary();
 
   let failoverRunsPayload = null;
   let failoverRunsCalls = [];

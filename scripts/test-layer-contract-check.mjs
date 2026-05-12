@@ -46,6 +46,13 @@ function runGit(root, args) {
   }
 }
 
+function initTempGitRepo(root) {
+  runGit(root, ["init"]);
+  runGit(root, ["config", "user.email", "ci@grobot.local"]);
+  runGit(root, ["config", "user.name", "Grobot CI"]);
+  runGit(root, ["config", "commit.gpgsign", "false"]);
+}
+
 function testPackageScriptsUseStrictDefault() {
   const packageJson = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8"));
   const scripts = packageJson.scripts ?? {};
@@ -111,7 +118,7 @@ function testPackageScriptsUseStrictDefault() {
 function testTrackedGeneratedStateTriggersWarning() {
   const root = makeTempRepo();
   try {
-    runGit(root, ["init"]);
+    initTempGitRepo(root);
     write(".grobot/context/cache.jsonl", "{}\n", root);
     write(".grobot/memory/README.md", "# Memory\n", root);
     runGit(root, ["add", "."]);
@@ -144,7 +151,7 @@ function testTrackedGeneratedStateTriggersWarning() {
 function testLegacyPathRatchetTriggersWarningOnlyWhenDebtGrows() {
   const root = makeTempRepo();
   try {
-    runGit(root, ["init"]);
+    initTempGitRepo(root);
     write("gateway/src/orchestration/entrypoints/dev-cli/index.ts", "export {};\n", root);
     write("gateway/src/orchestration/entrypoints/dev-cli/start/run.ts", "export {};\n", root);
     runGit(root, ["add", "."]);
@@ -178,7 +185,7 @@ function testLegacyPathRatchetTriggersWarningOnlyWhenDebtGrows() {
 function testLegacyPathRatchetIncludesUntrackedFiles() {
   const root = makeTempRepo();
   try {
-    runGit(root, ["init"]);
+    initTempGitRepo(root);
     write("gateway/src/orchestration/entrypoints/dev-cli/index.ts", "export {};\n", root);
     runGit(root, ["add", "."]);
     runGit(root, ["commit", "-m", "init"]);
@@ -213,7 +220,7 @@ function testLegacyPathRatchetIncludesUntrackedFiles() {
 function testDirectFileCountRatchetTriggersWarningOnlyWhenRootGrows() {
   const root = makeTempRepo();
   try {
-    runGit(root, ["init"]);
+    initTempGitRepo(root);
     write("gateway/src/cli/start/run.ts", "export {};\n", root);
     write("gateway/src/cli/start/session/ops.ts", "export {};\n", root);
     runGit(root, ["add", "."]);
@@ -248,7 +255,7 @@ function testDirectFileCountRatchetTriggersWarningOnlyWhenRootGrows() {
 function testSourceSizeAggregateRatchetFailsOnGrowth() {
   const root = makeTempRepo();
   try {
-    runGit(root, ["init"]);
+    initTempGitRepo(root);
     write("gateway/src/example.ts", `${"x\n".repeat(12)}`, root);
     runGit(root, ["add", "."]);
     const spec = baseSpec();
@@ -290,7 +297,7 @@ function testSourceSizeAggregateRatchetFailsOnGrowth() {
 function testSourceSizeRatchetIncludesUntrackedFiles() {
   const root = makeTempRepo();
   try {
-    runGit(root, ["init"]);
+    initTempGitRepo(root);
     write(".gitignore", "ignored.ts\n", root);
     write("gateway/tests/large-untracked.mjs", `${"x\n".repeat(9)}`, root);
     write("gateway/tests/ignored.ts", `${"x\n".repeat(40)}`, root);
@@ -339,7 +346,7 @@ function testSourceSizeRatchetIncludesUntrackedFiles() {
 function testForbiddenTextTriggersWarningWithAllowlist() {
   const root = makeTempRepo();
   try {
-    runGit(root, ["init"]);
+    initTempGitRepo(root);
     write("gateway/src/cli/index.ts", "export const runDevCli = () => 0;\n", root);
     write("gateway/src/orchestration/entrypoints/dev-cli/index.ts", "export const runDevCli = () => 0;\n", root);
     runGit(root, ["add", "."]);
@@ -390,7 +397,7 @@ function testForbiddenTextTriggersWarningWithAllowlist() {
 function testForbiddenTextBlocksTsDevCliImplementationNames() {
   const root = makeTempRepo();
   try {
-    runGit(root, ["init"]);
+    initTempGitRepo(root);
     write(
       "gateway/src/cli/gc/run-gc.ts",
       "function resolveDefaultTsDevCliCacheRoot() { return ''; }\nconst target = 'ts_dev_cli_cache';\n",
@@ -442,7 +449,7 @@ function testForbiddenTextBlocksTsDevCliImplementationNames() {
 function testLegacyContractNameTriggersWarning() {
   const root = makeTempRepo();
   try {
-    runGit(root, ["init"]);
+    initTempGitRepo(root);
     write("gateway/src/extensions/contracts/dev-cli-ui-renderer-contract.ts", "export {};\n", root);
     write("gateway/src/extensions/contracts/run-start-plan-mode-contract.ts", "export {};\n", root);
     runGit(root, ["add", "."]);

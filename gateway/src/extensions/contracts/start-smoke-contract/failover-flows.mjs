@@ -56,6 +56,7 @@ export function runFailoverTsRust(context) {
     "--no-shadow-mode",
     "--provider",
     "failing",
+    "--no-handoff-auto-on-exit",
     "--message",
     "ts rust hard-cut",
   ]);
